@@ -83,6 +83,18 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Content centering wrapper for readability on wide screens */
+
+.messagesInner {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 100%;
+}
+
 /* Welcome state */
 
 .welcome {
@@ -211,9 +223,10 @@
 }
 
 .role_user > .textBlock {
-  padding: 8px 14px;
+  padding: 10px 14px;
   background: var(--bg-2);
   border: 1px solid var(--border);
+  border-radius: 4px;
   font-size: 13px;
 }
 
@@ -565,6 +578,7 @@
   gap: 2px;
   padding: 8px 12px;
   border: 1px solid;
+  border-radius: 3px;
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -601,6 +615,7 @@
   margin-top: 12px;
   padding: 8px 16px;
   border: 1px solid;
+  border-radius: 3px;
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -715,6 +730,7 @@
   font-family: inherit;
   font-size: 11px;
   border: 1px solid;
+  border-radius: 16px;
   cursor: pointer;
   z-index: 10;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -732,11 +748,20 @@
 .inputArea {
   display: flex;
   align-items: flex-end;
+  justify-content: center;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid;
   background: var(--bg-1);
   flex-shrink: 0;
+}
+
+.inputInner {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
+  max-width: 860px;
 }
 
 .input {
@@ -798,43 +823,58 @@
   opacity: 0.8;
 }
 
-/* ---- Mobile responsive ---- */
+/* ---- Mobile responsive (≤600px) ---- */
 
 @media (max-width: 600px) {
   .statusBar {
-    padding: 6px 12px;
+    padding: 6px 10px;
   }
 
   .messages {
-    padding: 12px;
+    padding: 10px 8px;
   }
 
   .role_user {
-    padding-left: 8px;
+    padding-left: 6px;
+    margin-top: 12px;
   }
 
   .role_assistant {
-    padding-left: 8px;
+    padding-left: 6px;
+    margin-top: 8px;
+  }
+
+  .textBlock {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .role_user > .textBlock {
+    padding: 8px 12px;
   }
 
   .toolInput {
-    padding: 6px 8px 6px 16px;
+    padding: 6px 8px 6px 14px;
     font-size: 10px;
+    max-height: 200px;
   }
 
   .toolResultContent {
-    padding: 6px 8px 6px 16px;
+    padding: 6px 8px 6px 14px;
     font-size: 10px;
+    max-height: 200px;
   }
 
   .toolHeader {
     padding: 6px 8px;
     gap: 4px;
+    font-size: 11px;
   }
 
   .toolGroupHeader {
     padding: 6px 8px;
     gap: 4px;
+    font-size: 11px;
   }
 
   .toolGroupItems {
@@ -842,11 +882,11 @@
   }
 
   .toolPairRunning {
-    padding: 4px 8px 4px 16px;
+    padding: 4px 8px 4px 14px;
   }
 
   .diffView {
-    padding: 0 8px 0 16px;
+    padding: 0 6px 0 14px;
     font-size: 10px;
   }
 
@@ -856,25 +896,35 @@
   }
 
   .subagentBody {
-    padding: 0 8px 8px 12px;
+    padding: 0 8px 8px 10px;
   }
 
   .questionBlock {
-    padding: 10px 12px;
+    padding: 10px 10px;
+  }
+
+  .questionHeader {
+    font-size: 12px;
+    gap: 6px;
   }
 
   .inputArea {
-    padding: 10px 12px;
-    /* Add safe area for devices with bottom bars */
+    padding: 10px 10px;
     padding-bottom: max(10px, env(safe-area-inset-bottom));
+    gap: 6px;
+  }
+
+  .input {
+    font-size: 16px; /* Prevents iOS zoom on focus */
   }
 
   .expandBtn {
-    padding: 4px 16px;
+    padding: 4px 14px;
+    font-size: 10px;
   }
 
   .welcomeShortcuts {
-    display: none; /* Hide keyboard shortcuts on mobile */
+    display: none;
   }
 
   .welcome {
@@ -884,9 +934,68 @@
   .welcomeHint {
     font-size: 13px;
   }
+
+  .resultMeta {
+    gap: 12px 16px;
+  }
+
+  .resultBlock {
+    padding: 8px 0;
+    margin-top: 8px;
+  }
+
+  .jumpToBottom {
+    font-size: 11px;
+    padding: 8px 14px;
+  }
 }
 
-/* Touch devices: ensure good tap targets */
+/* ---- Very small screens (≤380px) ---- */
+
+@media (max-width: 380px) {
+  .messages {
+    padding: 6px 4px;
+  }
+
+  .role_user {
+    padding-left: 4px;
+  }
+
+  .role_assistant {
+    padding-left: 4px;
+  }
+
+  .role_user > .textBlock {
+    padding: 6px 10px;
+  }
+
+  .toolInput {
+    padding: 4px 6px 4px 10px;
+    font-size: 9px;
+  }
+
+  .toolResultContent {
+    padding: 4px 6px 4px 10px;
+    font-size: 9px;
+  }
+
+  .toolHeader {
+    padding: 5px 6px;
+    font-size: 10px;
+  }
+
+  .inputArea {
+    padding: 8px 6px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .questionBlock {
+    padding: 8px;
+  }
+}
+
+/* ---- Touch devices: good tap targets ---- */
+
 @media (pointer: coarse) {
   .toolHeader {
     min-height: 40px;
@@ -926,12 +1035,21 @@
   }
 
   .sendBtn {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+    border-radius: 6px;
   }
 
   .stopBtn {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+
+  .input {
+    font-size: 16px;
+    min-height: 40px;
   }
 }

@@ -578,6 +578,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
       {/* Messages */}
       <div className={styles.messagesWrap}>
         <div className={styles.messages} ref={scrollRef}>
+          <div className={styles.messagesInner}>
           <MessageErrorBoundary theme={theme}>
             {messages.length === 0 && !isStreaming && (
               <div className={styles.welcome}>
@@ -731,6 +732,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
               )
             )}
           </MessageErrorBoundary>
+          </div>
         </div>
 
         {showJumpToBottom && (
@@ -750,6 +752,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
 
       {/* Input */}
       <div className={styles.inputArea} style={{ borderColor: `${theme.cursor}40` }}>
+        <div className={styles.inputInner}>
         <textarea
           ref={inputRef}
           className={styles.input}
@@ -792,6 +795,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
             \u21B5
           </button>
         )}
+        </div>
       </div>
     </div>
   );

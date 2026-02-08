@@ -365,6 +365,7 @@ function CodeBlock({ lang, content, theme }: { lang: string; content: string; th
         lineHeight: 1.5,
         background: `${theme.foreground}08`,
         border: `1px solid ${theme.foreground}15`,
+        borderRadius: 4,
         overflowX: "auto",
         position: "relative",
       }}
@@ -399,7 +400,8 @@ function CodeBlock({ lang, content, theme }: { lang: string; content: string; th
             color: copied ? theme.green : `${theme.foreground}40`,
             cursor: "pointer",
             fontSize: 10,
-            padding: "2px 6px",
+            padding: "4px 8px",
+            minHeight: 24,
             fontFamily: "inherit",
             transition: "color 0.15s",
           }}
@@ -407,7 +409,7 @@ function CodeBlock({ lang, content, theme }: { lang: string; content: string; th
           {copied ? "copied" : "copy"}
         </button>
       </div>
-      <code>{content}</code>
+      <code style={{ wordBreak: "break-all", whiteSpace: "pre-wrap" }}>{content}</code>
     </pre>
   );
 }
@@ -466,6 +468,8 @@ function renderInlineNode(
             padding: "1px 5px",
             fontSize: "0.92em",
             background: `${theme.foreground}12`,
+            borderRadius: 3,
+            wordBreak: "break-all",
           }}
         >
           {node.text}
