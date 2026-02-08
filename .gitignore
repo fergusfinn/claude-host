@@ -2,3 +2,5 @@ node_modules/
 .next/
 data/
 *.db
+coverage/
+tui/claude-tui

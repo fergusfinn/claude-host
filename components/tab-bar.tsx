@@ -2,17 +2,20 @@
 
 import { useState, useRef, useEffect } from "react";
 import { themesForMode, fonts, type TerminalTheme, type TerminalFont, ensureFontLoaded } from "@/lib/themes";
+import { getAllLeaves, getLeafCount } from "@/lib/layout";
+import type { TabState } from "@/app/page";
 import styles from "./tab-bar.module.css";
 
 interface Props {
-  activeTab: string | null;
-  openTabs: string[];
+  tabs: TabState[];
+  activeTabId: string | null;
   currentTheme: TerminalTheme;
   currentFont: TerminalFont;
   keyMode: "insert" | "control";
+  showHints: boolean;
   onKeyModeChange: (mode: "insert" | "control") => void;
-  onSelect: (tab: string | null) => void;
-  onClose: (tab: string) => void;
+  onSelectTab: (tabId: string | null) => void;
+  onCloseTab: (tabId: string) => void;
   onNew: () => void;
   onThemeChange: (themeId: string) => void;
   onFontChange: (fontId: string) => void;
@@ -21,7 +24,13 @@ interface Props {
   onModeChange: (mode: "dark" | "light") => void;
 }
 
-export function TabBar({ activeTab, openTabs, currentTheme, currentFont, keyMode, onKeyModeChange, onSelect, onClose, onNew, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
+function tabLabel(tab: TabState): string {
+  const leaves = getAllLeaves(tab.layout);
+  if (leaves.length === 1) return leaves[0].sessionName;
+  return `${leaves[0].sessionName} +${leaves.length - 1}`;
+}
+
+export function TabBar({ tabs, activeTabId, currentTheme, currentFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onNew, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const themePickerRef = useRef<HTMLDivElement>(null);
@@ -46,33 +55,33 @@ export function TabBar({ activeTab, openTabs, currentTheme, currentFont, keyMode
     <div className={styles.wrapper}>
       <div className={styles.bar}>
         <button
-          className={`${styles.tab} ${activeTab === null ? styles.active : ""}`}
-          onClick={() => onSelect(null)}
-          title="Dashboard (⌘0)"
+          className={`${styles.tab} ${activeTabId === null ? styles.active : ""}`}
+          onClick={() => onSelectTab(null)}
+          title="Dashboard (^A 0)"
         >
           <div className={styles.logoMark} />
           <span>dashboard</span>
-          <kbd className={styles.kbd}>⌘0</kbd>
+          <kbd className={styles.kbd}>^A 0</kbd>
         </button>
 
-        {openTabs.map((name, i) => (
+        {tabs.map((tab, i) => (
           <div
-            key={name}
-            className={`${styles.tab} ${activeTab === name ? styles.active : ""}`}
+            key={tab.id}
+            className={`${styles.tab} ${activeTabId === tab.id ? styles.active : ""}`}
             role="tab"
             tabIndex={0}
-            onClick={() => onSelect(name)}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(name); } }}
-            title={`${name} (⌘${i + 1})`}
+            onClick={() => onSelectTab(tab.id)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectTab(tab.id); } }}
+            title={`${tabLabel(tab)} (^A ${i + 1})`}
           >
             <div className={styles.dot} />
-            <span className={styles.tabName}>{name}</span>
-            {i < 9 && <kbd className={styles.kbd}>⌘{i + 1}</kbd>}
+            <span className={styles.tabName}>{tabLabel(tab)}</span>
+            {i < 9 && <kbd className={styles.kbd}>^A {i + 1}</kbd>}
             <button
               className={styles.closeBtn}
               onClick={(e) => {
                 e.stopPropagation();
-                onClose(name);
+                onCloseTab(tab.id);
               }}
               title="Close tab"
             >
@@ -84,7 +93,7 @@ export function TabBar({ activeTab, openTabs, currentTheme, currentFont, keyMode
         <button
           className={styles.newBtn}
           onClick={onNew}
-          title="New session (esc esc → t)"
+          title="New session (^A c)"
         >
           +
         </button>
@@ -92,61 +101,7 @@ export function TabBar({ activeTab, openTabs, currentTheme, currentFont, keyMode
         <div className={styles.spacer} />
       </div>
 
-      <div className={styles.modeWrap}>
-        <button
-          className={`${styles.modeIndicator} ${keyMode === "control" ? styles.modeControl : ""}`}
-          onClick={() => onKeyModeChange(keyMode === "control" ? "insert" : "control")}
-          title="Toggle control mode (Ctrl+A)"
-        >
-          {keyMode === "control" ? "CONTROL" : "INSERT"}
-        </button>
-        {keyMode === "control" && (
-          <div className={styles.controlDropdown}>
-            <div className={styles.controlRow}><kbd>n</kbd><span>new tab</span></div>
-            <div className={styles.controlRow}><kbd>x</kbd><span>close tab</span></div>
-            <div className={styles.controlRow}><kbd>d</kbd><span>dashboard</span></div>
-            <div className={styles.controlRow}><kbd>[ ]</kbd><span>cycle tabs</span></div>
-            <div className={styles.controlRow}><kbd>1-9</kbd><span>go to tab</span></div>
-            <div className={styles.controlRow}><kbd>r</kbd><span>refresh</span></div>
-            <div className={styles.controlSep} />
-            <div className={styles.controlRow}><kbd>esc</kbd><span>back to insert</span></div>
-          </div>
-        )}
-      </div>
-
-      <div className={styles.themePicker} ref={fontPickerRef}>
-        <button
-          className={styles.themeBtn}
-          onClick={() => {
-            if (!fontPickerOpen) fonts.forEach(ensureFontLoaded);
-            setFontPickerOpen(!fontPickerOpen);
-            setThemePickerOpen(false);
-          }}
-          title={`Font: ${currentFont.name}`}
-        >
-          <span className={styles.fontIcon}>A</span>
-          <span className={styles.themeName}>{currentFont.name}</span>
-        </button>
-        {fontPickerOpen && (
-          <div className={styles.themeDropdown}>
-            {fonts.map((f) => (
-              <button
-                key={f.id}
-                className={`${styles.themeOption} ${f.id === currentFont.id ? styles.themeOptionActive : ""}`}
-                onClick={() => {
-                  onFontChange(f.id);
-                  setFontPickerOpen(false);
-                }}
-              >
-                <span className={styles.fontPreviewLabel} style={{ fontFamily: f.fontFamily }}>{f.name}</span>
-                {!f.googleFontsUrl && <span className={styles.fontSystem}>system</span>}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {activeTab !== null && (
+      {activeTabId !== null && (
         <button
           className={styles.refreshBtn}
           onClick={onRefresh}
@@ -179,6 +134,38 @@ export function TabBar({ activeTab, openTabs, currentTheme, currentFont, keyMode
           </svg>
         )}
       </button>
+
+      <div className={styles.themePicker} ref={fontPickerRef}>
+        <button
+          className={styles.themeBtn}
+          onClick={() => {
+            if (!fontPickerOpen) fonts.forEach(ensureFontLoaded);
+            setFontPickerOpen(!fontPickerOpen);
+            setThemePickerOpen(false);
+          }}
+          title={`Font: ${currentFont.name}`}
+        >
+          <span className={styles.fontIcon}>A</span>
+          <span className={styles.themeName}>{currentFont.name}</span>
+        </button>
+        {fontPickerOpen && (
+          <div className={styles.themeDropdown}>
+            {fonts.map((f) => (
+              <button
+                key={f.id}
+                className={`${styles.themeOption} ${f.id === currentFont.id ? styles.themeOptionActive : ""}`}
+                onClick={() => {
+                  onFontChange(f.id);
+                  setFontPickerOpen(false);
+                }}
+              >
+                <span className={styles.fontPreviewLabel} style={{ fontFamily: f.fontFamily }}>{f.name}</span>
+                {!f.googleFontsUrl && <span className={styles.fontSystem}>system</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className={styles.themePicker} ref={themePickerRef}>
         <button
@@ -218,6 +205,34 @@ export function TabBar({ activeTab, openTabs, currentTheme, currentFont, keyMode
                 </div>
               </button>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className={styles.modeWrap}>
+        <button
+          className={`${styles.modeIndicator} ${keyMode === "control" ? styles.modeControl : ""}`}
+          onClick={() => onKeyModeChange(keyMode === "control" ? "insert" : "control")}
+          title="Prefix: Ctrl+A"
+        >
+          {keyMode === "control" ? "PREFIX" : "INSERT"}
+        </button>
+        {keyMode === "control" && showHints && (
+          <div className={styles.controlDropdown}>
+            <div className={styles.controlRow}><kbd>c</kbd><span>new tab</span></div>
+            <div className={styles.controlRow}><kbd>C</kbd><span>fork tab</span></div>
+            <div className={styles.controlRow}><kbd>x</kbd><span>close pane</span></div>
+            <div className={styles.controlRow}><kbd>d</kbd><span>dashboard</span></div>
+            <div className={styles.controlRow}><kbd>[ ]</kbd><span>cycle tabs</span></div>
+            <div className={styles.controlRow}><kbd>0-9</kbd><span>go to tab</span></div>
+            <div className={styles.controlRow}><kbd>r</kbd><span>refresh</span></div>
+            <div className={styles.controlSep} />
+            <div className={styles.controlRow}><kbd>v</kbd><span>fork split right</span></div>
+            <div className={styles.controlRow}><kbd>s</kbd><span>fork split down</span></div>
+            <div className={styles.controlRow}><kbd>V</kbd><span>split right</span></div>
+            <div className={styles.controlRow}><kbd>S</kbd><span>split down</span></div>
+            <div className={styles.controlRow}><kbd>b</kbd><span>break pane</span></div>
+            <div className={styles.controlRow}><kbd>hjkl</kbd><span>navigate</span></div>
           </div>
         )}
       </div>

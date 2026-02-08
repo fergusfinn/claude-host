@@ -40,13 +40,25 @@ export function TerminalView({ sessionName, isActive, theme, font, onClose, onSw
         theme: toXtermTheme(theme),
         cursorBlink: true,
         allowProposedApi: true,
-        scrollback: 10000,
+        scrollback: 0,
       });
 
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(container);
       fitAddon.fit();
+
+      // Handle OSC 52 clipboard sequences from tmux
+      term.parser.registerOscHandler(52, (data) => {
+        const idx = data.indexOf(";");
+        if (idx === -1) return true;
+        const b64 = data.slice(idx + 1);
+        if (!b64 || b64 === "?") return true;
+        try {
+          navigator.clipboard.writeText(atob(b64)).catch(() => {});
+        } catch {}
+        return true;
+      });
 
       const ro = new ResizeObserver(() => {
         fitAddon.fit();

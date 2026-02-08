@@ -9,16 +9,20 @@ interface Session {
   created_at: string;
   description: string;
   command: string;
-  alive: boolean;
+  parent: string | null;
+  last_activity: number;
 }
 
-export function Dashboard({ onConnect }: { onConnect: (name: string) => void }) {
+interface SessionGroup {
+  root: Session;
+  children: Session[];
+  maxActivity: number; // most recent activity across the group
+}
+
+export function Dashboard({ onConnect, config }: { onConnect: (name: string) => void; config: Record<string, string> }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [config, setConfig] = useState<Record<string, string>>({});
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const settingsRef = useRef<HTMLDialogElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -27,19 +31,11 @@ export function Dashboard({ onConnect }: { onConnect: (name: string) => void }) 
     } catch {}
   }, []);
 
-  const loadConfig = useCallback(async () => {
-    try {
-      const res = await fetch("/api/config");
-      setConfig(await res.json());
-    } catch {}
-  }, []);
-
   useEffect(() => {
     load();
-    loadConfig();
     const t = setInterval(load, 3000);
     return () => clearInterval(t);
-  }, [load, loadConfig]);
+  }, [load]);
 
   // Keyboard shortcut: N to create
   useEffect(() => {
@@ -61,14 +57,17 @@ export function Dashboard({ onConnect }: { onConnect: (name: string) => void }) 
     else dialogRef.current?.close();
   }, [dialogOpen]);
 
-  useEffect(() => {
-    if (settingsOpen) settingsRef.current?.showModal();
-    else settingsRef.current?.close();
-  }, [settingsOpen]);
+  const groups = buildGroups(sessions);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  const alive = sessions.filter((s) => s.alive);
-  const dead = sessions.filter((s) => !s.alive);
-  const sorted = [...alive, ...dead];
+  function toggleCollapse(rootName: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(rootName)) next.delete(rootName);
+      else next.add(rootName);
+      return next;
+    });
+  }
 
   async function handleCreate(name: string, description: string, command: string) {
     const res = await fetch("/api/sessions", {
@@ -90,49 +89,8 @@ export function Dashboard({ onConnect }: { onConnect: (name: string) => void }) 
     load();
   }
 
-  async function cleanupDead() {
-    for (const s of dead) {
-      await fetch(`/api/sessions/${encodeURIComponent(s.name)}`, { method: "DELETE" });
-    }
-    load();
-  }
-
   return (
     <div className={styles.root}>
-      <header className={styles.header}>
-        <div className={styles.headerLeft}>
-          <div className={styles.logoMark} />
-          <h1 className={styles.title}>
-            claude<span className={styles.dim}>/</span>host
-          </h1>
-          {sessions.length > 0 && (
-            <span className={styles.count}>
-              {alive.length} live{dead.length > 0 && ` / ${dead.length} dead`}
-            </span>
-          )}
-        </div>
-        <div className={styles.headerRight}>
-          {dead.length > 0 && (
-            <button className="btn-ghost" onClick={cleanupDead}>
-              Clear dead
-            </button>
-          )}
-          <button
-            className={styles.settingsBtn}
-            onClick={() => setSettingsOpen(true)}
-            title="Settings"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-            </svg>
-          </button>
-          <button className="btn-accent" onClick={() => setDialogOpen(true)}>
-            New session <kbd>N</kbd>
-          </button>
-        </div>
-      </header>
-
       {sessions.length === 0 ? (
         <div className={styles.empty}>
           <pre className={styles.emptyArt}>{`  _\n |_|\n | |_`}</pre>
@@ -142,13 +100,15 @@ export function Dashboard({ onConnect }: { onConnect: (name: string) => void }) 
           </button>
         </div>
       ) : (
-        <div className={styles.grid}>
-          {sorted.map((s) => (
-            <SessionCard
-              key={s.name}
-              session={s}
-              onConnect={() => onConnect(s.name)}
-              onDelete={() => handleDelete(s.name)}
+        <div className={styles.list}>
+          {groups.map((g) => (
+            <SessionGroupView
+              key={g.root.name}
+              group={g}
+              isCollapsed={collapsed.has(g.root.name)}
+              onToggle={() => toggleCollapse(g.root.name)}
+              onConnect={onConnect}
+              onDelete={handleDelete}
             />
           ))}
         </div>
@@ -167,56 +127,111 @@ export function Dashboard({ onConnect }: { onConnect: (name: string) => void }) 
           />
         )}
       </dialog>
-
-      <dialog
-        ref={settingsRef}
-        className={styles.dialog}
-        onClose={() => setSettingsOpen(false)}
-      >
-        <SettingsForm
-          config={config}
-          onSave={async (updated) => {
-            const res = await fetch("/api/config", {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(updated),
-            });
-            setConfig(await res.json());
-            setSettingsOpen(false);
-          }}
-          onCancel={() => setSettingsOpen(false)}
-        />
-      </dialog>
     </div>
   );
 }
 
-function SessionCard({
+function SessionGroupView({
+  group,
+  isCollapsed,
+  onToggle,
+  onConnect,
+  onDelete,
+}: {
+  group: SessionGroup;
+  isCollapsed: boolean;
+  onToggle: () => void;
+  onConnect: (name: string) => void;
+  onDelete: (name: string) => void;
+}) {
+  const hasChildren = group.children.length > 0;
+
+  return (
+    <div className={styles.group}>
+      <SessionRow
+        session={group.root}
+        depth={0}
+        hasChildren={hasChildren}
+        childCount={group.children.length}
+        isCollapsed={isCollapsed}
+        onToggle={onToggle}
+        onConnect={() => onConnect(group.root.name)}
+        onDelete={() => onDelete(group.root.name)}
+      />
+      {hasChildren && !isCollapsed && (
+        <div className={styles.groupChildren}>
+          {group.children.map((child) => (
+            <SessionRow
+              key={child.name}
+              session={child}
+              depth={1}
+              hasChildren={false}
+              childCount={0}
+              isCollapsed={false}
+              onToggle={() => {}}
+              onConnect={() => onConnect(child.name)}
+              onDelete={() => onDelete(child.name)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SessionRow({
   session: s,
+  depth,
+  hasChildren,
+  childCount,
+  isCollapsed,
+  onToggle,
   onConnect,
   onDelete,
 }: {
   session: Session;
+  depth: number;
+  hasChildren: boolean;
+  childCount: number;
+  isCollapsed: boolean;
+  onToggle: () => void;
   onConnect: () => void;
   onDelete: () => void;
 }) {
   const [snapshot, setSnapshot] = useState<string | null>(null);
+  const [description, setDescription] = useState(s.description);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const summarizeRequested = useRef(false);
 
   useEffect(() => {
-    if (!s.alive) return;
     let cancelled = false;
     fetch(`/api/sessions/${encodeURIComponent(s.name)}/snapshot`)
       .then((r) => r.json())
       .then(({ text }) => {
         if (!cancelled) {
           const lines = text.replace(/\n+$/, "").split("\n");
-          setSnapshot(lines.slice(-18).join("\n"));
+          setSnapshot(lines.slice(-12).join("\n"));
         }
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [s.name, s.alive]);
+  }, [s.name]);
+
+  // Auto-summarize sessions without a meaningful description
+  useEffect(() => {
+    const hasDesc = s.description && !s.description.startsWith("forked from");
+    if (hasDesc || summarizeRequested.current) return;
+    // Wait a bit for the session to produce output
+    const timer = setTimeout(() => {
+      summarizeRequested.current = true;
+      fetch(`/api/sessions/${encodeURIComponent(s.name)}/summarize`, { method: "POST" })
+        .then((r) => r.json())
+        .then(({ description: desc }) => { if (desc) setDescription(desc); })
+        .catch(() => {});
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [s.name, s.description]);
 
   function handleDelete(e: React.MouseEvent) {
     e.stopPropagation();
@@ -228,33 +243,67 @@ function SessionCard({
     onDelete();
   }
 
+  function handleToggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    onToggle();
+  }
+
+  const isStale = (Date.now() / 1000 - s.last_activity) > 600; // 10 min
+
+  function handlePreviewToggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    setPreviewOpen((v) => !v);
+  }
+
   return (
     <div
-      className={`${styles.card} ${s.alive ? "" : styles.dead}`}
-      onClick={() => s.alive && onConnect()}
+      className={`${styles.row} ${depth > 0 ? styles.rowChild : ""}`}
+      onClick={() => onConnect()}
     >
-      <div className={styles.cardTop}>
-        <div className={styles.cardName}>
-          <div className={`${styles.dot} ${s.alive ? "" : styles.dotDead}`} />
-          <span>{s.name}</span>
+      <div className={styles.rowMain}>
+        <div className={styles.rowLeft}>
+          {hasChildren ? (
+            <button className={styles.collapseBtn} onClick={handleToggle}>
+              {isCollapsed ? "\u25b8" : "\u25be"}
+            </button>
+          ) : (
+            <button className={styles.collapseBtn} onClick={handlePreviewToggle}>
+              {previewOpen ? "\u25be" : "\u25b8"}
+            </button>
+          )}
+          <div className={`${styles.dot} ${isStale ? styles.dotStale : ""}`} />
+          <span className={styles.rowName}>{s.name}</span>
+          <span className={styles.rowTime}>{activityAgo(s.last_activity)}</span>
+          {s.command && s.command !== "claude" && (
+            <span className={styles.rowCmd}>{s.command}</span>
+          )}
         </div>
-        <div className={styles.cardActions}>
-          <button
-            className={confirmDelete ? styles.confirmBtn : styles.deleteBtn}
-            onClick={handleDelete}
-          >
-            {confirmDelete ? "confirm?" : "delete"}
-          </button>
+        <div className={styles.rowRight}>
+          {hasChildren && isCollapsed && (
+            <span className={styles.forkCount}>
+              +{childCount} fork{childCount !== 1 ? "s" : ""}
+            </span>
+          )}
+          <div className={styles.cardActions}>
+            <button
+              className={confirmDelete ? styles.confirmBtn : styles.deleteBtn}
+              onClick={handleDelete}
+            >
+              {confirmDelete ? "confirm?" : "delete"}
+            </button>
+          </div>
         </div>
       </div>
-      <div className={styles.cardMeta}>
-        {timeAgo(s.created_at)}
-        {s.description && ` \u00b7 ${s.description}`}
-        {s.command && s.command !== "claude" && ` \u00b7 ${s.command}`}
-      </div>
-      <div className={`${styles.cardPreview} ${snapshot === null ? styles.loading : ""}`}>
-        {snapshot ?? ""}
-      </div>
+      {description && !description.startsWith("forked from") && (
+        <div className={styles.rowDesc}>{description}</div>
+      )}
+      {previewOpen && !isCollapsed && (
+        <div className={styles.rowPreviewWrap}>
+          <div className={`${styles.rowPreview} ${snapshot === null ? styles.loading : ""}`}>
+            {snapshot ?? ""}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -356,7 +405,7 @@ function CreateForm({
   );
 }
 
-function SettingsForm({
+export function SettingsForm({
   config,
   onSave,
   onCancel,
@@ -366,13 +415,47 @@ function SettingsForm({
   onCancel: () => void;
 }) {
   const [defaultCommand, setDefaultCommand] = useState(config.defaultCommand || "claude");
+  const [defaultCwd, setDefaultCwd] = useState(config.defaultCwd || "");
+  const [showHints, setShowHints] = useState(config.showHints !== "false");
   const [saving, setSaving] = useState(false);
+
+  const parsedHooks: Record<string, string> = (() => {
+    try { return config.forkHooks ? JSON.parse(config.forkHooks) : {}; } catch { return {}; }
+  })();
+  const [hooks, setHooks] = useState<Array<{ command: string; path: string }>>(
+    Object.entries(parsedHooks).length > 0
+      ? Object.entries(parsedHooks).map(([command, path]) => ({ command, path }))
+      : [{ command: "claude", path: "hooks/fork-claude.sh" }],
+  );
+
+  function addHook() {
+    setHooks((prev) => [...prev, { command: "", path: "" }]);
+  }
+
+  function removeHook(index: number) {
+    setHooks((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateHook(index: number, field: "command" | "path", value: string) {
+    setHooks((prev) => prev.map((h, i) => (i === index ? { ...h, [field]: value } : h)));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
-      await onSave({ defaultCommand: defaultCommand.trim() || "claude" });
+      const forkHooks: Record<string, string> = {};
+      for (const h of hooks) {
+        const cmd = h.command.trim();
+        const path = h.path.trim();
+        if (cmd && path) forkHooks[cmd] = path;
+      }
+      await onSave({
+        defaultCommand: defaultCommand.trim() || "claude",
+        defaultCwd: defaultCwd.trim(),
+        forkHooks: JSON.stringify(forkHooks),
+        showHints: String(showHints),
+      });
     } finally {
       setSaving(false);
     }
@@ -395,6 +478,75 @@ function SettingsForm({
         />
         <div className={styles.hint}>
           Command to run when creating new sessions
+        </div>
+
+        <label className={styles.label} style={{ marginTop: 12 }}>Working directory</label>
+        <input
+          type="text"
+          value={defaultCwd}
+          onChange={(e) => setDefaultCwd(e.target.value)}
+          placeholder="(server working directory)"
+          autoComplete="off"
+          spellCheck={false}
+          className={styles.input}
+        />
+        <div className={styles.hint}>
+          Starting directory for new sessions (leave empty for server default)
+        </div>
+
+        <label className={styles.checkboxLabel} style={{ marginTop: 12 }}>
+          <input
+            type="checkbox"
+            checked={showHints}
+            onChange={(e) => setShowHints(e.target.checked)}
+          />
+          Show control mode hints
+        </label>
+        <div className={styles.hint}>
+          Show shortcut hints when control mode is active (Ctrl+A)
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <label className={styles.label}>Fork hooks</label>
+          <div className={styles.hint} style={{ marginBottom: 8 }}>
+            When splitting a pane, run a hook script to determine the command for the new pane.
+            The hook receives SOURCE_SESSION, SOURCE_CWD, and SOURCE_COMMAND as env vars.
+          </div>
+          {hooks.map((hook, i) => (
+            <div key={i} className={styles.hookRow}>
+              <input
+                type="text"
+                value={hook.command}
+                onChange={(e) => updateHook(i, "command", e.target.value)}
+                placeholder="command"
+                autoComplete="off"
+                spellCheck={false}
+                className={styles.input}
+                style={{ width: 100, flex: "0 0 100px" }}
+              />
+              <input
+                type="text"
+                value={hook.path}
+                onChange={(e) => updateHook(i, "path", e.target.value)}
+                placeholder="path/to/hook.sh"
+                autoComplete="off"
+                spellCheck={false}
+                className={styles.input}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className={styles.hookRemoveBtn}
+                onClick={() => removeHook(i)}
+                title="Remove hook"
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+          <button type="button" className="btn-ghost" onClick={addHook} style={{ marginTop: 4, fontSize: 12 }}>
+            + Add hook
+          </button>
         </div>
       </div>
       <div className={styles.dialogFooter}>
@@ -419,4 +571,52 @@ function timeAgo(dateStr: string): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}m`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
   return `${Math.floor(diff / 86400)}d`;
+}
+
+function activityAgo(unixTs: number): string {
+  const diff = Math.floor(Date.now() / 1000 - unixTs);
+  if (diff < 5) return "active";
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+/** Build session groups: root sessions with their fork children, sorted by most recent activity */
+function buildGroups(sessions: Session[]): SessionGroup[] {
+  const byName = new Map(sessions.map((s) => [s.name, s]));
+
+  // Find root for each session (walk parent chain)
+  function findRoot(s: Session): string {
+    const visited = new Set<string>();
+    let current = s;
+    while (current.parent && byName.has(current.parent) && !visited.has(current.name)) {
+      visited.add(current.name);
+      current = byName.get(current.parent)!;
+    }
+    return current.name;
+  }
+
+  // Group by root
+  const groupMap = new Map<string, Session[]>();
+  for (const s of sessions) {
+    const rootName = findRoot(s);
+    if (!groupMap.has(rootName)) groupMap.set(rootName, []);
+    groupMap.get(rootName)!.push(s);
+  }
+
+  // Build groups
+  const groups: SessionGroup[] = [];
+  for (const [rootName, members] of groupMap) {
+    const root = byName.get(rootName)!;
+    const children = members
+      .filter((s) => s.name !== rootName)
+      .sort((a, b) => b.last_activity - a.last_activity);
+    const maxActivity = Math.max(...members.map((s) => s.last_activity));
+    groups.push({ root, children, maxActivity });
+  }
+
+  // Sort groups by most recent activity (most active first)
+  groups.sort((a, b) => b.maxActivity - a.maxActivity);
+  return groups;
 }

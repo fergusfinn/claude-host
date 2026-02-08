@@ -6,7 +6,17 @@ import { execFileSync, spawnSync } from "child_process";
 import { bridgeSession } from "./lib/pty-bridge.js";
 
 const dev = process.env.NODE_ENV !== "production";
-const port = parseInt(process.env.PORT || "3000");
+
+// Support --port <n> CLI flag, falling back to PORT env, then 3000
+function resolvePort(): number {
+  const idx = process.argv.indexOf("--port");
+  if (idx !== -1 && process.argv[idx + 1]) {
+    const n = parseInt(process.argv[idx + 1]);
+    if (n > 0) return n;
+  }
+  return parseInt(process.env.PORT || "3000");
+}
+const port = resolvePort();
 
 // Preflight: verify tmux
 let tmuxVersion: string;
@@ -32,10 +42,10 @@ app.prepare().then(() => {
 
   server.on("upgrade", (req, socket, head) => {
     const { pathname } = parse(req.url!);
-    const match = pathname?.match(/^\/ws\/sessions\/([^/]+)$/);
+    const terminalMatch = pathname?.match(/^\/ws\/sessions\/([^/]+)$/);
 
-    if (match) {
-      const sessionName = decodeURIComponent(match[1]);
+    if (terminalMatch) {
+      const sessionName = decodeURIComponent(terminalMatch[1]);
       wss.handleUpgrade(req, socket, head, (ws) => {
         bridgeSession(ws, sessionName);
       });

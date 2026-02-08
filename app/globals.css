@@ -17,6 +17,9 @@
   --danger: #ef4444;
   --danger-dim: rgba(239, 68, 68, 0.1);
   --mono: 'IBM Plex Mono', 'SF Mono', monospace;
+  --term-bg: #050507;
+  --term-text: #8a8a95;
+  --term-border: #1a1c1f;
   --shadow-dropdown: rgba(0, 0, 0, 0.4);
   --shadow-dialog: rgba(0, 0, 0, 0.6);
   --backdrop: rgba(0, 0, 0, 0.6);
@@ -39,6 +42,9 @@
   --accent-hover: #047857;
   --danger: #dc2626;
   --danger-dim: rgba(220, 38, 38, 0.1);
+  --term-bg: #1a1a18;
+  --term-text: #8a8a82;
+  --term-border: #b0b0a8;
   --shadow-dropdown: rgba(0, 0, 0, 0.1);
   --shadow-dialog: rgba(0, 0, 0, 0.15);
   --backdrop: rgba(0, 0, 0, 0.2);
@@ -75,6 +81,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  border-radius: 3px;
 }
 .btn-accent:hover { background: var(--accent-hover); }
 .btn-accent:disabled { opacity: 0.5; cursor: default; }
@@ -84,15 +91,89 @@ button {
   font-weight: 500;
   background: rgba(0,0,0,0.2);
   padding: 2px 5px;
-  border-radius: 0;
+  border-radius: 2px;
 }
 
 .btn-ghost {
   background: transparent;
   color: var(--text-2);
   padding: 6px 10px;
+  border-radius: 3px;
 }
 .btn-ghost:hover { color: var(--text-1); background: var(--bg-3); }
+
+/* ---- Universal header ---- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  padding: 0 20px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.app-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.app-header-left:hover .app-header-title { color: var(--text-0); }
+
+.app-header-logo {
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border-radius: 2px;
+  box-shadow: 0 0 6px var(--accent-dim);
+  flex-shrink: 0;
+}
+
+.app-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  transition: color 0.1s;
+}
+
+.app-header-dim { color: var(--text-3); }
+
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.app-header-settings {
+  background: transparent;
+  color: var(--text-3);
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+}
+.app-header-settings:hover { color: var(--text-1); background: var(--bg-3); }
+
+/* ---- Settings dialog (from page.tsx) ---- */
+
+.settings-dialog {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-0);
+  padding: 0;
+  width: 420px;
+  font-family: var(--mono);
+  box-shadow: 0 16px 64px var(--shadow-dialog);
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+}
+.settings-dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 
 /* ---- Scrollbar ---- */
 
