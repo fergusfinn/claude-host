@@ -284,7 +284,7 @@ class SessionManager {
     writeFileSync(launcherScript, [
       "#!/bin/bash",
       `PROMPT=$(cat ${JSON.stringify(promptFile)})`,
-      `exec claude --session-id ${sessionId} "$PROMPT"`,
+      `exec claude --dangerously-skip-permissions --session-id ${sessionId} "$PROMPT"`,
       "",
     ].join("\n"));
 
