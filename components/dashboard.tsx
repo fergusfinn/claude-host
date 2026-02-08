@@ -416,6 +416,7 @@ export function SettingsForm({
 }) {
   const [defaultCommand, setDefaultCommand] = useState(config.defaultCommand || "claude");
   const [defaultCwd, setDefaultCwd] = useState(config.defaultCwd || "");
+  const [prefixTimeout, setPrefixTimeout] = useState(config.prefixTimeout || "800");
   const [showHints, setShowHints] = useState(config.showHints !== "false");
   const [saving, setSaving] = useState(false);
 
@@ -453,6 +454,7 @@ export function SettingsForm({
       await onSave({
         defaultCommand: defaultCommand.trim() || "claude",
         defaultCwd: defaultCwd.trim(),
+        prefixTimeout: String(parseInt(prefixTimeout) || 800),
         forkHooks: JSON.stringify(forkHooks),
         showHints: String(showHints),
       });
@@ -492,6 +494,21 @@ export function SettingsForm({
         />
         <div className={styles.hint}>
           Starting directory for new sessions (leave empty for server default)
+        </div>
+
+        <label className={styles.label} style={{ marginTop: 12 }}>Prefix timeout (ms)</label>
+        <input
+          type="number"
+          value={prefixTimeout}
+          onChange={(e) => setPrefixTimeout(e.target.value)}
+          min="100"
+          step="100"
+          autoComplete="off"
+          className={styles.input}
+          style={{ width: 100 }}
+        />
+        <div className={styles.hint}>
+          How long control mode stays active after a shortcut key (default 800ms)
         </div>
 
         <label className={styles.checkboxLabel} style={{ marginTop: 12 }}>

@@ -90,6 +90,9 @@ export function TerminalView({ sessionName, isActive, theme, font, onClose, onSw
         term.loadAddon(new WebglAddon());
       } catch {}
 
+      const { WebLinksAddon } = await import("@xterm/addon-web-links");
+      term.loadAddon(new WebLinksAddon());
+
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       ws = new WebSocket(
         `${proto}//${location.host}/ws/sessions/${encodeURIComponent(sessionName)}`

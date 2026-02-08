@@ -527,7 +527,8 @@ export default function Home() {
         // Reset cooldown — stay in control mode briefly so repeated
         // keys work (e.g. Ctrl+A ]]] to move 3 tabs right)
         if (controlTimeoutRef.current) clearTimeout(controlTimeoutRef.current);
-        controlTimeoutRef.current = setTimeout(() => setKeyMode("insert"), 800);
+        const ms = parseInt(configRef.current.prefixTimeout) || 800;
+        controlTimeoutRef.current = setTimeout(() => setKeyMode("insert"), ms);
       } else {
         // Unrecognized key — exit control mode and let it pass through
         if (controlTimeoutRef.current) clearTimeout(controlTimeoutRef.current);
