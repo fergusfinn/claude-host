@@ -113,33 +113,44 @@ export class TmuxRunner {
 
     this.configureTmuxSession(name);
 
-    const paneCwd = this.getPaneCwd(name) || cwd;
-
-    // Write ralph-loop state file
-    const claudeDir = join(paneCwd, ".claude");
-    mkdirSync(claudeDir, { recursive: true });
-    const stateContent = [
-      "---",
-      `max_iterations: ${maxIterations}`,
-      `promise: DONE`,
-      "---",
-      "",
-      prompt,
-      "",
-    ].join("\n");
-    writeFileSync(join(claudeDir, "ralph-loop.local.md"), stateContent);
-
-    // Write prompt to temp file (avoids shell escaping)
+    // Write prompt to temp file (avoids shell escaping issues)
     const sessionId = randomUUID();
     const promptFile = `/tmp/claude-job-${sessionId}-prompt.txt`;
-    writeFileSync(promptFile, prompt);
+    const augmentedPrompt = prompt + "\n\nWhen you have fully completed the task, output exactly <promise>DONE</promise> to signal completion.";
+    writeFileSync(promptFile, augmentedPrompt);
 
-    // Write launcher script
+    // Write self-contained launcher script with iteration loop
+    const outputFile = `/tmp/claude-job-${sessionId}-output.txt`;
     const launcherScript = `/tmp/claude-job-${sessionId}.sh`;
     writeFileSync(launcherScript, [
       "#!/bin/bash",
-      `PROMPT=$(cat ${JSON.stringify(promptFile)})`,
-      `exec claude --dangerously-skip-permissions --session-id ${sessionId} "$PROMPT"`,
+      `SID=${JSON.stringify(sessionId)}`,
+      `PROMPT_FILE=${JSON.stringify(promptFile)}`,
+      `OUTPUT_FILE=${JSON.stringify(outputFile)}`,
+      `LAUNCHER=${JSON.stringify(launcherScript)}`,
+      `MAX_ITER=${maxIterations}`,
+      "",
+      "cleanup() { rm -f \"$PROMPT_FILE\" \"$OUTPUT_FILE\" \"$LAUNCHER\"; }",
+      "trap cleanup EXIT",
+      "trap 'exit 0' INT TERM",
+      "",
+      "PROMPT=$(cat \"$PROMPT_FILE\")",
+      "",
+      "for (( i=1; i<=MAX_ITER; i++ )); do",
+      "  echo \"\"",
+      "  echo \"=== Job iteration $i / $MAX_ITER ===\"",
+      "  echo \"\"",
+      "  if [ $i -eq 1 ]; then",
+      "    claude -p --dangerously-skip-permissions --session-id \"$SID\" \"$PROMPT\" | tee \"$OUTPUT_FILE\"",
+      "  else",
+      "    claude -p --dangerously-skip-permissions --resume \"$SID\" \"Continue working on the task. Output <promise>DONE</promise> when complete.\" | tee \"$OUTPUT_FILE\"",
+      "  fi",
+      "  if grep -q '<promise>DONE</promise>' \"$OUTPUT_FILE\" 2>/dev/null; then",
+      "    echo \"\"",
+      "    echo \"=== Job completed (iteration $i) ===\"",
+      "    break",
+      "  fi",
+      "done",
       "",
     ].join("\n"));
 

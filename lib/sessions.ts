@@ -1,7 +1,6 @@
 import Database from "better-sqlite3";
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync } from "fs";
 import { dirname, join } from "path";
-import { randomUUID } from "crypto";
 import type { Session, ExecutorInfo } from "../shared/types";
 import { LocalExecutor } from "./executor-interface";
 import { cleanupRichSession, richSessionExists } from "./claude-bridge";
@@ -234,70 +233,21 @@ class SessionManager {
   }
 
   async createJob(name: string, prompt: string, maxIterations = 50, executor = "local"): Promise<Session> {
-    const { spawnSync } = await import("child_process");
-    const defaultCwd = this.getConfig("defaultCwd") || join(process.env.HOME || "/tmp", "workspace");
-    mkdirSync(defaultCwd, { recursive: true });
-
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
       throw new Error("Name must be alphanumeric, hyphens, underscores only");
     }
 
-    if (!this.localExecutor) throw new Error("Local executor is disabled (DISABLE_LOCAL_EXECUTOR=1)");
+    const exec = this.getExecutor(executor);
+    const defaultCwd = executor === "local"
+      ? (this.getConfig("defaultCwd") || join(process.env.HOME || "/tmp", "workspace"))
+      : undefined;
 
-    if (this.localExecutor.tmuxExists(name)) {
-      throw new Error(`Session "${name}" already exists`);
-    }
-
-    // Create tmux session (same setup as regular sessions)
-    const r = spawnSync("tmux", ["new-session", "-d", "-s", name, "-x", "200", "-y", "50", "-c", defaultCwd], { stdio: "pipe" });
-    if (r.status !== 0) {
-      throw new Error(`Failed to create tmux session: ${r.stderr?.toString()}`);
-    }
-    // Configure: status off, mouse on, scrollback
-    spawnSync("tmux", ["set-option", "-t", name, "status", "off"], { stdio: "pipe" });
-    spawnSync("tmux", ["set-option", "-t", name, "mouse", "on"], { stdio: "pipe" });
-    spawnSync("tmux", ["set-option", "-t", name, "history-limit", "50000"], { stdio: "pipe" });
-
-    const cwd = this.localExecutor.getPaneCwd(name) || defaultCwd;
-
-    // Write ralph-loop state file
-    const claudeDir = join(cwd, ".claude");
-    mkdirSync(claudeDir, { recursive: true });
-    const stateContent = [
-      "---",
-      `max_iterations: ${maxIterations}`,
-      `promise: DONE`,
-      "---",
-      "",
-      prompt,
-      "",
-    ].join("\n");
-    writeFileSync(join(claudeDir, "ralph-loop.local.md"), stateContent);
-
-    // Write prompt to temp file (avoids shell escaping)
-    const sessionId = randomUUID();
-    const promptFile = `/tmp/claude-job-${sessionId}-prompt.txt`;
-    writeFileSync(promptFile, prompt);
-
-    // Write launcher script
-    const launcherScript = `/tmp/claude-job-${sessionId}.sh`;
-    writeFileSync(launcherScript, [
-      "#!/bin/bash",
-      `PROMPT=$(cat ${JSON.stringify(promptFile)})`,
-      `exec claude --dangerously-skip-permissions --session-id ${sessionId} "$PROMPT"`,
-      "",
-    ].join("\n"));
-
-    // Store session ID in tmux environment
-    spawnSync("tmux", ["set-environment", "-t", name, "CLAUDE_SESSION_ID", sessionId], { stdio: "pipe" });
-
-    // Launch via tmux send-keys
-    spawnSync("tmux", ["send-keys", "-t", name, `bash ${launcherScript}`, "Enter"], { stdio: "pipe" });
+    await exec.createJob({ name, prompt, maxIterations, defaultCwd });
 
     // Insert into DB with job fields
     this.db
       .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, job_prompt, job_max_iterations) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(name, prompt.slice(0, 200), "claude", "local", prompt, maxIterations);
+      .run(name, prompt.slice(0, 200), "claude", executor, prompt, maxIterations);
 
     return {
       name,
@@ -305,7 +255,7 @@ class SessionManager {
       command: "claude",
       mode: "terminal" as const,
       parent: null,
-      executor: "local",
+      executor,
       last_activity: Math.floor(Date.now() / 1000),
       created_at: new Date().toISOString(),
       alive: true,

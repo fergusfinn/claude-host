@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -294,6 +294,73 @@ describe("SessionManager", () => {
       const m = mgr();
       m.setConfig("forkHooks", "not json");
       expect(m.getForkHooks()).toEqual({});
+    });
+  });
+
+  describe("createJob", () => {
+    it("creates a job session and stores job fields in DB", async () => {
+      const session = await mgr().createJob("test-job", "do something", 10);
+
+      expect(session.name).toBe("test-job");
+      expect(session.job_prompt).toBe("do something");
+      expect(session.job_max_iterations).toBe(10);
+      expect(session.command).toBe("claude");
+      expect(session.alive).toBe(true);
+    });
+
+    it("delegates to executor (tmux new-session via TmuxRunner)", async () => {
+      await mgr().createJob("job-delegate", "task prompt", 5);
+
+      const calls = vi.mocked(spawnSync).mock.calls;
+      const newSessionCall = calls.find(
+        (c) => c[1] && (c[1] as string[]).includes("new-session"),
+      );
+      expect(newSessionCall).toBeDefined();
+    });
+
+    it("does not create ralph-loop.local.md", async () => {
+      await mgr().createJob("no-ralph", "prompt", 3);
+
+      // Check neither the temp dir .claude nor any ralph-loop file was created
+      const claudeDir = join(tempDir, ".claude");
+      expect(existsSync(join(claudeDir, "ralph-loop.local.md"))).toBe(false);
+    });
+
+    it("launcher script contains for-loop pattern", async () => {
+      await mgr().createJob("loop-job", "test prompt", 5);
+
+      // The launcher script path is passed to tmux send-keys as "bash /tmp/claude-job-<uuid>.sh"
+      const calls = vi.mocked(spawnSync).mock.calls;
+      const sendKeysCall = calls.find(
+        (c) => c[1] && (c[1] as string[]).includes("send-keys"),
+      );
+      expect(sendKeysCall).toBeDefined();
+      const sentCommand = (sendKeysCall![1] as string[])[3];
+      const launcherPath = sentCommand.replace("bash ", "");
+
+      // Read the actual launcher script from disk
+      const script = readFileSync(launcherPath, "utf-8");
+      expect(script).toContain("for (( i=1; i<=MAX_ITER; i++ ))");
+      expect(script).toContain("--resume");
+      expect(script).toContain("<promise>DONE</promise>");
+      expect(script).toContain("trap");
+    });
+
+    it("rejects invalid names", async () => {
+      await expect(mgr().createJob("bad name!", "prompt")).rejects.toThrow("Name must be alphanumeric");
+    });
+
+    it("stores CLAUDE_SESSION_ID in tmux env", async () => {
+      await mgr().createJob("env-job", "prompt", 3);
+
+      const calls = vi.mocked(spawnSync).mock.calls;
+      const setEnvCall = calls.find(
+        (c) =>
+          c[1] &&
+          (c[1] as string[]).includes("set-environment") &&
+          (c[1] as string[]).includes("CLAUDE_SESSION_ID"),
+      );
+      expect(setEnvCall).toBeDefined();
     });
   });
 
