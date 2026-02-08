@@ -228,7 +228,9 @@
   border-radius: 6px;
   color: var(--text-0);
   padding: 0;
-  width: 420px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   font-family: var(--mono);
   box-shadow: 0 16px 64px var(--shadow-dialog);
   position: fixed;
@@ -471,4 +473,61 @@
   padding: 8px 20px;
   gap: 8px;
   border-bottom: 1px solid var(--border);
+}
+
+/* ---- Mobile responsive ---- */
+
+@media (max-width: 600px) {
+  .rowMain {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .rowLeft {
+    gap: 6px;
+  }
+
+  .rowDesc {
+    padding: 0 12px 6px 40px;
+  }
+
+  .rowChild .rowDesc {
+    padding-left: 48px;
+  }
+
+  .rowPreviewWrap {
+    padding: 0 12px 12px 40px;
+  }
+
+  .rowChild .rowPreviewWrap {
+    padding-left: 48px;
+  }
+
+  .listHeader {
+    padding: 8px 12px;
+  }
+
+  /* Show delete button always on touch devices */
+  .cardActions {
+    opacity: 1;
+  }
+
+  .dialogBody {
+    padding: 12px;
+  }
+}
+
+@media (pointer: coarse) {
+  .rowMain {
+    min-height: 44px;
+  }
+
+  .cardActions {
+    opacity: 1;
+  }
+
+  .deleteBtn, .confirmBtn {
+    padding: 6px 10px;
+    min-height: 32px;
+  }
 }

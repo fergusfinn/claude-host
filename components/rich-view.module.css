@@ -22,6 +22,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .statusDot {
@@ -30,6 +31,7 @@
   border-radius: 50%;
   background: var(--text-3);
   transition: background 0.2s;
+  flex-shrink: 0;
 }
 
 .statusConnected {
@@ -44,11 +46,19 @@
 
 .statusText {
   color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .statusError {
   color: var(--danger);
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 50%;
+  flex-shrink: 0;
 }
 
 /* Messages wrapper — holds scroll container + jump button */
@@ -65,10 +75,12 @@
   position: absolute;
   inset: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Welcome state */
@@ -81,6 +93,7 @@
   justify-content: center;
   gap: 16px;
   opacity: 0.6;
+  padding: 24px;
 }
 
 .welcomeIcon {
@@ -115,7 +128,9 @@
 
 .welcomeShortcuts {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 16px;
   font-size: 10px;
   margin-top: 8px;
   color: var(--text-3);
@@ -136,6 +151,7 @@
   flex-direction: column;
   gap: 4px;
   max-width: 100%;
+  min-width: 0;
 }
 
 /* Message entrance animation */
@@ -190,6 +206,8 @@
   font-size: 13px;
   line-height: 1.6;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .role_user > .textBlock {
@@ -204,6 +222,7 @@
 .toolPair {
   border-left: 2px solid;
   margin: 4px 0;
+  min-width: 0;
 }
 
 .toolPairCompact {
@@ -224,6 +243,7 @@
 
 .toolPairResult {
   position: relative;
+  min-width: 0;
 }
 
 /* Pending indicator */
@@ -264,6 +284,8 @@
   text-align: left;
   cursor: pointer;
   border: none;
+  min-height: 32px;
+  min-width: 0;
 }
 
 .toolHeader:hover {
@@ -306,6 +328,9 @@
   max-height: 300px;
   overflow-y: auto;
   border: none;
+  word-break: break-all;
+  white-space: pre-wrap;
+  min-width: 0;
 }
 
 /* Tool result (inline) */
@@ -319,6 +344,9 @@
   max-height: 300px;
   overflow-y: auto;
   overflow-x: auto;
+  word-break: break-word;
+  white-space: pre-wrap;
+  min-width: 0;
 }
 
 .toolResultError {
@@ -332,6 +360,7 @@
   font-size: 11px;
   padding: 2px 28px;
   cursor: pointer;
+  min-height: 28px;
 }
 .expandBtn:hover {
   text-decoration: underline;
@@ -343,16 +372,20 @@
   padding: 0 12px 0 28px;
   font-size: 11px;
   line-height: 1.5;
+  min-width: 0;
 }
 
 .diffFilePath {
   font-size: 10px;
   padding: 4px 0 2px;
+  word-break: break-all;
 }
 
 .diffContent {
   margin: 0;
   overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .diffContext {
@@ -370,6 +403,7 @@
 .toolGroup {
   border-left: 2px solid;
   margin: 4px 0;
+  min-width: 0;
 }
 
 .toolGroupHeader {
@@ -384,6 +418,7 @@
   text-align: left;
   cursor: pointer;
   border: none;
+  min-height: 32px;
 }
 
 .toolGroupHeader:hover {
@@ -405,6 +440,7 @@
   border-left: 3px solid;
   margin: 8px 0;
   border-radius: 0;
+  min-width: 0;
 }
 
 .subagentHeader {
@@ -419,6 +455,8 @@
   text-align: left;
   cursor: pointer;
   border: none;
+  min-height: 36px;
+  flex-wrap: wrap;
 }
 
 .subagentHeader:hover {
@@ -437,6 +475,7 @@
 
 .subagentBody {
   padding: 0 12px 8px 16px;
+  min-width: 0;
 }
 
 .subagentDescription {
@@ -444,6 +483,7 @@
   line-height: 1.5;
   padding: 4px 0;
   opacity: 0.85;
+  word-break: break-word;
 }
 
 /* Subagent working animation */
@@ -495,10 +535,11 @@
 
 .questionHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   font-size: 13px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .questionBadge {
@@ -529,6 +570,7 @@
   cursor: pointer;
   font-family: inherit;
   transition: all 0.1s;
+  min-height: 40px;
 }
 
 .questionOption:hover:not(:disabled) {
@@ -547,21 +589,24 @@
 .questionOptionLabel {
   font-size: 12px;
   font-weight: 500;
+  word-break: break-word;
 }
 
 .questionOptionDesc {
   font-size: 11px;
+  word-break: break-word;
 }
 
 .questionSubmit {
   margin-top: 12px;
-  padding: 6px 16px;
+  padding: 8px 16px;
   border: 1px solid;
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
+  min-height: 36px;
 }
 
 .questionSubmit:disabled {
@@ -591,11 +636,13 @@
 .resultError {
   font-size: 12px;
   font-weight: 500;
+  word-break: break-word;
 }
 
 .resultMeta {
   display: flex;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 16px 20px;
   font-size: 11px;
 }
 
@@ -627,6 +674,7 @@
   height: 6px;
   border-radius: 50%;
   animation: pulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
 @keyframes pulse {
@@ -672,6 +720,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(4px);
   transition: opacity 0.15s;
+  white-space: nowrap;
 }
 
 .jumpToBottom:hover {
@@ -695,10 +744,10 @@
   background: transparent;
   border: none;
   outline: none;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   resize: none;
-  min-height: 20px;
+  min-height: 22px;
   max-height: 200px;
 }
 
@@ -711,13 +760,14 @@
 }
 
 .sendBtn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  font-size: 14px;
+  border-radius: 4px;
+  font-size: 16px;
   cursor: pointer;
   flex-shrink: 0;
   font-family: inherit;
@@ -730,12 +780,13 @@
 }
 
 .stopBtn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
+  border-radius: 4px;
   font-size: 12px;
   cursor: pointer;
   flex-shrink: 0;
@@ -745,4 +796,142 @@
 
 .stopBtn:hover {
   opacity: 0.8;
+}
+
+/* ---- Mobile responsive ---- */
+
+@media (max-width: 600px) {
+  .statusBar {
+    padding: 6px 12px;
+  }
+
+  .messages {
+    padding: 12px;
+  }
+
+  .role_user {
+    padding-left: 8px;
+  }
+
+  .role_assistant {
+    padding-left: 8px;
+  }
+
+  .toolInput {
+    padding: 6px 8px 6px 16px;
+    font-size: 10px;
+  }
+
+  .toolResultContent {
+    padding: 6px 8px 6px 16px;
+    font-size: 10px;
+  }
+
+  .toolHeader {
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .toolGroupHeader {
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .toolGroupItems {
+    padding-left: 4px;
+  }
+
+  .toolPairRunning {
+    padding: 4px 8px 4px 16px;
+  }
+
+  .diffView {
+    padding: 0 8px 0 16px;
+    font-size: 10px;
+  }
+
+  .subagentHeader {
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .subagentBody {
+    padding: 0 8px 8px 12px;
+  }
+
+  .questionBlock {
+    padding: 10px 12px;
+  }
+
+  .inputArea {
+    padding: 10px 12px;
+    /* Add safe area for devices with bottom bars */
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .expandBtn {
+    padding: 4px 16px;
+  }
+
+  .welcomeShortcuts {
+    display: none; /* Hide keyboard shortcuts on mobile */
+  }
+
+  .welcome {
+    padding: 16px;
+  }
+
+  .welcomeHint {
+    font-size: 13px;
+  }
+}
+
+/* Touch devices: ensure good tap targets */
+@media (pointer: coarse) {
+  .toolHeader {
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+
+  .toolGroupHeader {
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+
+  .subagentHeader {
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+
+  .questionOption {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+
+  .questionSubmit {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+
+  .expandBtn {
+    min-height: 36px;
+    padding: 6px 28px;
+  }
+
+  .jumpToBottom {
+    padding: 10px 20px;
+    font-size: 12px;
+    bottom: 12px;
+  }
+
+  .sendBtn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .stopBtn {
+    width: 36px;
+    height: 36px;
+  }
 }

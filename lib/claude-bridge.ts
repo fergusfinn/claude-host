@@ -1,5 +1,8 @@
 import { spawn, type ChildProcess } from "child_process";
 import { WebSocket } from "ws";
+import Database from "better-sqlite3";
+import { mkdirSync } from "fs";
+import { dirname, join } from "path";
 
 /**
  * Rich-mode bridge: spawns a long-lived `claude -p` process with
@@ -11,8 +14,8 @@ import { WebSocket } from "ws";
  * like AskUserQuestion (the CLI auto-denies it in per-turn mode, but
  * the user can answer and send a follow-up in the same session).
  *
- * Session state (event log, session ID) persists across WS reconnects
- * so page refreshes restore the full conversation.
+ * Session state (event log, session ID) persists to SQLite across both
+ * WS reconnects and server restarts, so conversations survive crashes.
  *
  * Protocol (client <-> server over WebSocket):
  *   Client -> Server:  { type: "prompt", text: string }
@@ -29,21 +32,112 @@ interface RichState {
   ws: WebSocket | null;
   turning: boolean;
   initReceived: boolean;
+  spawning: boolean;
+  dirty: boolean; // true when events need to be flushed to DB
 }
+
+// --- SQLite persistence ---
+
+const DB_PATH = join(process.cwd(), "data", "sessions.db");
+
+let _db: Database.Database | null = null;
+
+function getDb(): Database.Database {
+  if (!_db) {
+    mkdirSync(dirname(DB_PATH), { recursive: true });
+    _db = new Database(DB_PATH);
+    _db.pragma("journal_mode = WAL");
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS rich_sessions (
+        name TEXT PRIMARY KEY,
+        session_id TEXT,
+        events TEXT NOT NULL DEFAULT '[]',
+        updated_at INTEGER DEFAULT (unixepoch())
+      )
+    `);
+  }
+  return _db;
+}
+
+function loadState(name: string): { sessionId: string | null; events: object[] } | null {
+  const db = getDb();
+  const row = db.prepare("SELECT session_id, events FROM rich_sessions WHERE name = ?").get(name) as
+    | { session_id: string | null; events: string }
+    | undefined;
+  if (!row) return null;
+  try {
+    return { sessionId: row.session_id, events: JSON.parse(row.events) };
+  } catch {
+    return { sessionId: row.session_id, events: [] };
+  }
+}
+
+function saveState(name: string, sessionId: string | null, events: object[]): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO rich_sessions (name, session_id, events, updated_at)
+    VALUES (?, ?, ?, unixepoch())
+    ON CONFLICT(name) DO UPDATE SET
+      session_id = excluded.session_id,
+      events = excluded.events,
+      updated_at = excluded.updated_at
+  `).run(name, sessionId, JSON.stringify(events));
+}
+
+function deleteState(name: string): void {
+  const db = getDb();
+  db.prepare("DELETE FROM rich_sessions WHERE name = ?").run(name);
+}
+
+// --- In-memory state ---
 
 // Module-level state survives across WS connections
 const sessions = new Map<string, RichState>();
+const flushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Debounced flush: batches rapid event writes into one DB write per 2s */
+function schedulePersist(name: string, state: RichState): void {
+  state.dirty = true;
+  if (flushTimers.has(name)) return;
+  flushTimers.set(
+    name,
+    setTimeout(() => {
+      flushTimers.delete(name);
+      if (state.dirty) {
+        saveState(name, state.sessionId, state.events);
+        state.dirty = false;
+      }
+    }, 2000),
+  );
+}
+
+/** Immediately flush pending state to DB */
+function flushPersist(name: string, state: RichState): void {
+  const timer = flushTimers.get(name);
+  if (timer) {
+    clearTimeout(timer);
+    flushTimers.delete(name);
+  }
+  if (state.dirty) {
+    saveState(name, state.sessionId, state.events);
+    state.dirty = false;
+  }
+}
 
 function getOrCreate(name: string): RichState {
   let state = sessions.get(name);
   if (!state) {
+    // Try to restore from DB first
+    const saved = loadState(name);
     state = {
-      sessionId: null,
-      events: [],
+      sessionId: saved?.sessionId ?? null,
+      events: saved?.events ?? [],
       proc: null,
       ws: null,
       turning: false,
       initReceived: false,
+      spawning: false,
+      dirty: false,
     };
     sessions.set(name, state);
   }
@@ -61,8 +155,10 @@ function send(ws: WebSocket, msg: object) {
  * If the process died (crash, etc.), restart with --resume to
  * restore conversation context.
  */
-function ensureProcess(state: RichState): ChildProcess {
+function ensureProcess(name: string, state: RichState): ChildProcess {
   if (state.proc) return state.proc;
+  if (state.spawning) throw new Error("Process is already starting");
+  state.spawning = true;
 
   const args = [
     "-p",
@@ -83,6 +179,7 @@ function ensureProcess(state: RichState): ChildProcess {
   });
 
   state.proc = proc;
+  state.spawning = false;
   let buffer = "";
 
   proc.stdout!.on("data", (chunk: Buffer) => {
@@ -114,21 +211,26 @@ function ensureProcess(state: RichState): ChildProcess {
         if (event.type === "result") {
           state.turning = false;
           state.events.push(event);
+          schedulePersist(name, state);
           if (state.ws) {
             send(state.ws, { type: "event", event });
             send(state.ws, { type: "turn_complete" });
           }
+          // Flush immediately at turn boundaries for reliability
+          flushPersist(name, state);
           continue;
         }
 
         // Don't persist ephemeral stream deltas
         if (event.type !== "stream_event") {
           state.events.push(event);
+          schedulePersist(name, state);
         }
         if (state.ws) send(state.ws, { type: "event", event });
       } catch {
         const raw = { type: "raw", text: trimmed };
         state.events.push(raw);
+        schedulePersist(name, state);
         if (state.ws) send(state.ws, { type: "event", event: raw });
       }
     }
@@ -139,6 +241,7 @@ function ensureProcess(state: RichState): ChildProcess {
     if (text) {
       const event = { type: "stderr", text };
       state.events.push(event);
+      schedulePersist(name, state);
       if (state.ws) send(state.ws, { type: "event", event });
     }
   });
@@ -159,6 +262,8 @@ function ensureProcess(state: RichState): ChildProcess {
     state.proc = null;
     state.turning = false;
     state.initReceived = false; // Reset so next process gets its init shown
+    // Flush on close to ensure all events are persisted
+    flushPersist(name, state);
     // Don't send error for clean exits (code 0) — process may have been
     // intentionally stopped. Non-zero means unexpected crash.
     if (code !== 0 && code !== null && state.ws) {
@@ -168,6 +273,7 @@ function ensureProcess(state: RichState): ChildProcess {
 
   proc.on("error", (err) => {
     state.proc = null;
+    state.spawning = false;
     state.turning = false;
     state.initReceived = false;
     if (state.ws) send(state.ws, { type: "error", message: err.message });
@@ -219,7 +325,7 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string): void {
 
       let proc: ChildProcess;
       try {
-        proc = ensureProcess(state);
+        proc = ensureProcess(sessionName, state);
       } catch (e: any) {
         send(ws, { type: "error", message: `Failed to spawn claude: ${e.message}` });
         return;
@@ -255,7 +361,11 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string): void {
 /** Clean up all state for a rich session (called on session delete) */
 export function cleanupRichSession(name: string): void {
   const state = sessions.get(name);
-  if (!state) return;
+  if (!state) {
+    // Even if not in memory, clean up DB
+    deleteState(name);
+    return;
+  }
   if (state.proc) {
     try {
       state.proc.stdin?.end();
@@ -265,10 +375,18 @@ export function cleanupRichSession(name: string): void {
   if (state.ws && state.ws.readyState === WebSocket.OPEN) {
     state.ws.close();
   }
+  const timer = flushTimers.get(name);
+  if (timer) {
+    clearTimeout(timer);
+    flushTimers.delete(name);
+  }
   sessions.delete(name);
+  deleteState(name);
 }
 
 /** Check if a rich session has state (for alive status) */
 export function richSessionExists(name: string): boolean {
-  return sessions.has(name);
+  if (sessions.has(name)) return true;
+  // Check DB for persisted sessions that survived a restart
+  return loadState(name) !== null;
 }
