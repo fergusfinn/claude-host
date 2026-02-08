@@ -155,10 +155,16 @@ export default function Home() {
     }
   }
 
+  const prevSessionsJsonRef = useRef("");
   const loadSessions = useCallback(async () => {
     try {
       const res = await fetch("/api/sessions");
       const data: Session[] = await res.json();
+      // Skip state updates if data hasn't changed — avoids re-renders
+      // that steal focus on mobile during tap interactions.
+      const json = JSON.stringify(data);
+      if (json === prevSessionsJsonRef.current) return;
+      prevSessionsJsonRef.current = json;
       setLiveSessions(data.filter((s) => s.alive));
       const modes: Record<string, "terminal" | "rich"> = {};
       for (const s of data) {
@@ -567,7 +573,7 @@ export default function Home() {
   if (!configLoaded) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
       <div className="app-header">
         <div className="app-header-left" onClick={() => setActiveTabId(null)}>
           <div className="app-header-logo" />
