@@ -3,4 +3,5 @@ node_modules/
 data/
 *.db
 coverage/
+tsconfig.tsbuildinfo
 tui/claude-tui

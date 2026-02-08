@@ -3,46 +3,67 @@ set -euo pipefail
 
 REMOTE_HOST="fergus@gotenks"
 REMOTE_DIR="/home/fergus/claude-host"
-SERVICE_NAME="claude-host"
-NODE_VERSION="23"
+REPO_URL="https://github.com/fergusfinn/claude-host.git"
 
-echo "==> Backing up server directory"
-BACKUP_DIR="${REMOTE_DIR}.backup-$(date +%Y%m%d-%H%M%S)"
-ssh "$REMOTE_HOST" "rsync -a --exclude node_modules --exclude .next $REMOTE_DIR/ $BACKUP_DIR/ && echo '  -> Backup: $BACKUP_DIR'"
+IS_LOCAL=false
+if [ "$(hostname)" = "gotenks" ]; then
+  IS_LOCAL=true
+fi
 
-echo "==> Syncing files to $REMOTE_HOST:$REMOTE_DIR"
-rsync -avz --delete \
-  --exclude node_modules \
-  --exclude .next \
-  --exclude data \
-  --exclude coverage \
-  --exclude '*.db' \
-  --exclude .git \
-  --exclude tsconfig.tsbuildinfo \
-  ./ "$REMOTE_HOST:$REMOTE_DIR/"
+# Ensure working tree is clean and push
+if [ -n "$(git status --porcelain)" ]; then
+  echo "ERROR: Working tree is dirty. Commit or stash changes first."
+  exit 1
+fi
 
-echo "==> Installing deps, building, and restarting service"
-ssh "$REMOTE_HOST" bash -s <<'REMOTE_SCRIPT'
-set -euo pipefail
+echo "==> Pushing to origin/main"
+git push origin main
 
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-nvm use 23 > /dev/null
+deploy() {
+  set -euo pipefail
 
-cd /home/fergus/claude-host
+  export NVM_DIR="$HOME/.nvm"
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+  nvm use 23 > /dev/null
 
-echo "  -> npm install"
-npm install --omit=dev
+  REMOTE_DIR="/home/fergus/claude-host"
+  REPO_URL="https://github.com/fergusfinn/claude-host.git"
 
-echo "  -> next build"
-npx next build
+  if [ ! -d "$REMOTE_DIR/.git" ]; then
+    echo "  -> No git repo found — cloning"
+    if [ -d "$REMOTE_DIR/data" ]; then
+      mv "$REMOTE_DIR/data" /tmp/claude-host-data-backup
+    fi
+    rm -rf "$REMOTE_DIR"
+    git clone "$REPO_URL" "$REMOTE_DIR"
+    if [ -d /tmp/claude-host-data-backup ]; then
+      mv /tmp/claude-host-data-backup "$REMOTE_DIR/data"
+    fi
+  else
+    cd "$REMOTE_DIR"
+    if [ -n "$(git status --porcelain)" ]; then
+      echo "ERROR: Working tree on gotenks is dirty. Commit or stash changes first."
+      git status --short
+      exit 1
+    fi
+    echo "  -> Pulling latest"
+    git pull --ff-only origin main
+  fi
 
-# Set up systemd user service if it doesn't exist or has changed
-mkdir -p ~/.config/systemd/user
-SERVICE_FILE="$HOME/.config/systemd/user/claude-host.service"
-NVM_NODE_DIR="$(dirname "$(which node)")"
+  cd "$REMOTE_DIR"
 
-cat > "$SERVICE_FILE" <<EOF
+  echo "  -> npm install"
+  npm install --omit=dev
+
+  echo "  -> next build"
+  npx next build
+
+  # Set up systemd user service
+  mkdir -p ~/.config/systemd/user
+  SERVICE_FILE="$HOME/.config/systemd/user/claude-host.service"
+  NVM_NODE_DIR="$(dirname "$(which node)")"
+
+  cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Claude Host - web-based tmux session manager
 After=network.target
@@ -61,17 +82,29 @@ Environment=PATH=${NVM_NODE_DIR}:/home/fergus/.local/bin:/usr/local/bin:/usr/bin
 WantedBy=default.target
 EOF
 
-systemctl --user daemon-reload
-systemctl --user enable claude-host
-systemctl --user restart claude-host
+  systemctl --user daemon-reload
+  systemctl --user enable claude-host
+  systemctl --user restart claude-host
 
-echo "  -> Waiting for service to start..."
-sleep 2
-if systemctl --user is-active --quiet claude-host; then
-  echo "==> Deployed successfully. Running at http://gotenks:3000"
+  echo "  -> Waiting for service to start..."
+  sleep 2
+  if systemctl --user is-active --quiet claude-host; then
+    echo "==> Deployed successfully. Running at http://gotenks:3000"
+  else
+    echo "==> Service failed to start. Logs:"
+    journalctl --user -u claude-host --no-pager -n 20
+    exit 1
+  fi
+}
+
+if [ "$IS_LOCAL" = true ]; then
+  echo "==> Deploying locally on gotenks"
+  deploy
 else
-  echo "==> Service failed to start. Logs:"
-  journalctl --user -u claude-host --no-pager -n 20
-  exit 1
-fi
+  echo "==> Deploying on $REMOTE_HOST"
+  # Export the function and run it over SSH
+  ssh "$REMOTE_HOST" bash -s <<REMOTE_SCRIPT
+$(declare -f deploy)
+deploy
 REMOTE_SCRIPT
+fi
