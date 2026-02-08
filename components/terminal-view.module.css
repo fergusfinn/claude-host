@@ -1,0 +1,21 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* background set via inline style from terminal theme */
+}
+
+.container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  padding: 8px;
+}
+
+.errorBar {
+  font-size: 11px;
+  color: var(--danger);
+  padding: 4px 12px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+}
