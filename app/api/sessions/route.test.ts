@@ -51,7 +51,7 @@ describe("POST /api/sessions", () => {
 
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual(created);
-    expect(mockCreate).toHaveBeenCalledWith("new-sess", "test", "bash");
+    expect(mockCreate).toHaveBeenCalledWith("new-sess", "test", "bash", undefined, undefined);
   });
 
   it("returns 400 when name is missing", async () => {

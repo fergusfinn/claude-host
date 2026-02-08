@@ -78,6 +78,16 @@
   text-overflow: ellipsis;
 }
 
+.executorBadge {
+  font-size: 9px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 0 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .kbd {
   font-size: 9px;
   font-family: var(--mono);

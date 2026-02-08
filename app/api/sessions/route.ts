@@ -7,11 +7,11 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, description, command } = await req.json();
+    const { name, description, command, executor, mode } = await req.json();
     if (!name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
-    const session = getSessionManager().create(name, description, command);
+    const session = await getSessionManager().create(name, description, command, executor, mode);
     return NextResponse.json(session, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 400 });

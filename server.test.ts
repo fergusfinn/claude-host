@@ -2,9 +2,25 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // --- Mock setup (must come before any imports that trigger server.ts) ---
 
-const mockBridgeSession = vi.fn();
-vi.mock("./lib/pty-bridge.js", () => ({
-  bridgeSession: mockBridgeSession,
+const mockAttachSession = vi.fn();
+const mockSetRegistry = vi.fn();
+const mockUpsertExecutor = vi.fn();
+
+vi.mock("./lib/sessions.js", () => ({
+  getSessionManager: () => ({
+    attachSession: mockAttachSession,
+    setRegistry: mockSetRegistry,
+    upsertExecutor: mockUpsertExecutor,
+  }),
+}));
+
+const mockHandleControlConnection = vi.fn();
+vi.mock("./lib/executor-registry.js", () => ({
+  ExecutorRegistry: class MockExecutorRegistry {
+    handleControlConnection = mockHandleControlConnection;
+    resolveTerminalChannel = vi.fn(() => false);
+    constructor(_cb?: any) {}
+  },
 }));
 
 // Capture the upgrade handler and listen callback
@@ -60,7 +76,7 @@ let origExit: typeof process.exit;
 beforeEach(() => {
   origExit = process.exit;
   process.exit = vi.fn() as any;
-  mockBridgeSession.mockReset();
+  mockAttachSession.mockReset();
   mockHandleUpgrade.mockReset();
   mockHandleUpgrade.mockImplementation((_req: any, _socket: any, _head: any, cb: Function) => {
     cb({ fake: "ws" });
@@ -90,7 +106,7 @@ describe("server", () => {
     expect(upgradeHandler).toBeTypeOf("function");
   });
 
-  it("calls bridgeSession for /ws/sessions/{name} upgrades", () => {
+  it("calls attachSession for /ws/sessions/{name} upgrades", () => {
     const mockSocket = { destroy: vi.fn() };
     const mockHead = Buffer.alloc(0);
     const mockReq = { url: "/ws/sessions/my-session" };
@@ -103,7 +119,7 @@ describe("server", () => {
       mockHead,
       expect.any(Function),
     );
-    expect(mockBridgeSession).toHaveBeenCalledWith({ fake: "ws" }, "my-session");
+    expect(mockAttachSession).toHaveBeenCalledWith("my-session", { fake: "ws" });
   });
 
   it("decodes URL-encoded session names", () => {
@@ -112,7 +128,7 @@ describe("server", () => {
 
     upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
 
-    expect(mockBridgeSession).toHaveBeenCalledWith({ fake: "ws" }, "my session");
+    expect(mockAttachSession).toHaveBeenCalledWith("my session", { fake: "ws" });
   });
 
   it("does not bridge non-matching paths (dev mode allows HMR)", () => {
@@ -123,7 +139,7 @@ describe("server", () => {
     upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
 
     expect(mockHandleUpgrade).not.toHaveBeenCalled();
-    expect(mockBridgeSession).not.toHaveBeenCalled();
+    expect(mockAttachSession).not.toHaveBeenCalled();
     // In dev mode, socket should NOT be destroyed (allows HMR)
     expect(mockSocket.destroy).not.toHaveBeenCalled();
   });
@@ -176,5 +192,9 @@ describe("server setup", () => {
 
   it("called app.prepare() during startup", () => {
     expect(mockPrepare).toHaveBeenCalled();
+  });
+
+  it("wires up executor registry to session manager", () => {
+    expect(mockSetRegistry).toHaveBeenCalled();
   });
 });

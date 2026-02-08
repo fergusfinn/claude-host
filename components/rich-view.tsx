@@ -1,0 +1,1607 @@
+"use client";
+
+import React, { useEffect, useRef, useState, useCallback, useMemo, useReducer } from "react";
+import { type TerminalTheme, type TerminalFont } from "@/lib/themes";
+import { renderMarkdown, MemoizedMarkdown } from "@/lib/markdown";
+import styles from "./rich-view.module.css";
+
+interface Props {
+  sessionName: string;
+  isActive: boolean;
+  theme: TerminalTheme;
+  font: TerminalFont;
+}
+
+// ---- Stream-JSON event types (subset of Claude Code output) ----
+
+interface ContentBlockText {
+  type: "text";
+  text: string;
+}
+
+interface ContentBlockToolUse {
+  type: "tool_use";
+  id: string;
+  name: string;
+  input: Record<string, any>;
+}
+
+interface ContentBlockToolResult {
+  type: "tool_result";
+  tool_use_id: string;
+  content: string | Array<{ type: string; text?: string }>;
+  is_error?: boolean;
+}
+
+type ContentBlock = ContentBlockText | ContentBlockToolUse | ContentBlockToolResult;
+
+interface MessageEvent {
+  type: "assistant" | "user";
+  message: {
+    role: string;
+    content: ContentBlock[];
+    model?: string;
+  };
+  session_id?: string;
+}
+
+interface ResultEvent {
+  type: "result";
+  result?: string;
+  total_cost_usd?: number;
+  duration_ms?: number;
+  duration_api_ms?: number;
+  num_turns?: number;
+  is_error?: boolean;
+  session_id?: string;
+}
+
+interface SystemEvent {
+  type: "system";
+  subtype?: string;
+  [key: string]: any;
+}
+
+type ClaudeEvent = MessageEvent | ResultEvent | SystemEvent | { type: string; [key: string]: any };
+
+// ---- Rendered message types ----
+
+interface RenderedMessage {
+  id: string;
+  role: "assistant" | "user" | "system" | "result";
+  blocks: ContentBlock[];
+  result?: ResultEvent;
+  timestamp: number;
+}
+
+// ---- Render items (render-time grouping) ----
+
+type RenderItem =
+  | { kind: "text"; block: ContentBlockText }
+  | { kind: "tool_pair"; toolUse: ContentBlockToolUse; toolResult: ContentBlockToolResult | null }
+  | { kind: "tool_group"; name: string; pairs: Array<{ toolUse: ContentBlockToolUse; toolResult: ContentBlockToolResult | null }> }
+  | { kind: "subagent"; toolUse: ContentBlockToolUse; toolResult: ContentBlockToolResult | null }
+  | { kind: "question"; toolUse: ContentBlockToolUse; toolResult: ContentBlockToolResult | null };
+
+interface RenderPlanEntry {
+  msg: RenderedMessage;
+  items: RenderItem[] | null; // null = render as-is (system/result), [] = skip (pure tool_result user msg)
+}
+
+function buildRenderItems(
+  blocks: ContentBlock[],
+  resultMap: Map<string, ContentBlockToolResult>,
+): RenderItem[] {
+  const items: RenderItem[] = [];
+  let i = 0;
+  while (i < blocks.length) {
+    const block = blocks[i];
+
+    if (block.type === "text") {
+      items.push({ kind: "text", block });
+      i++;
+      continue;
+    }
+
+    if (block.type === "tool_result") {
+      // Skip — rendered inline via resultMap
+      i++;
+      continue;
+    }
+
+    // tool_use
+    if (block.type === "tool_use") {
+      // AskUserQuestion — render as interactive question card
+      if (block.name === "AskUserQuestion") {
+        items.push({
+          kind: "question",
+          toolUse: block,
+          toolResult: resultMap.get(block.id) ?? null,
+        });
+        i++;
+        continue;
+      }
+
+      // Subagent
+      if (block.name === "Task") {
+        items.push({
+          kind: "subagent",
+          toolUse: block,
+          toolResult: resultMap.get(block.id) ?? null,
+        });
+        i++;
+        continue;
+      }
+
+      // Collect consecutive tool_use with same name
+      const run: ContentBlockToolUse[] = [block];
+      let j = i + 1;
+      while (j < blocks.length && blocks[j].type === "tool_use" && (blocks[j] as ContentBlockToolUse).name === block.name) {
+        run.push(blocks[j] as ContentBlockToolUse);
+        j++;
+      }
+
+      if (run.length >= 2) {
+        items.push({
+          kind: "tool_group",
+          name: block.name,
+          pairs: run.map((tu) => ({
+            toolUse: tu,
+            toolResult: resultMap.get(tu.id) ?? null,
+          })),
+        });
+      } else {
+        items.push({
+          kind: "tool_pair",
+          toolUse: block,
+          toolResult: resultMap.get(block.id) ?? null,
+        });
+      }
+      i = j;
+      continue;
+    }
+
+    i++;
+  }
+  return items;
+}
+
+// ---- Connection state ----
+
+type ConnectionState = "connecting" | "connected" | "disconnected" | "reconnecting";
+
+// ---- Error boundary ----
+
+class MessageErrorBoundary extends React.Component<
+  { children: React.ReactNode; theme: TerminalTheme },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          padding: 16,
+          color: this.props.theme.red,
+          fontSize: 12,
+        }}>
+          <p>Rendering error: {this.state.error.message}</p>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{
+              marginTop: 8,
+              padding: "4px 12px",
+              background: "transparent",
+              border: `1px solid ${this.props.theme.red}`,
+              color: this.props.theme.red,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: 11,
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ---- Component ----
+
+export function RichView({ sessionName, isActive, theme, font }: Props) {
+  const [messages, setMessages] = useState<RenderedMessage[]>([]);
+  const [inputValue, setInputValue] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
+  const [error, setError] = useState<string | null>(null);
+  const [collapsedTools, setCollapsedTools] = useState<Set<string>>(new Set());
+  const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Streaming text: ref is source of truth, reducer tick triggers re-renders
+  const streamingTextRef = useRef("");
+  const streamingFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [, bumpStreamingTick] = useReducer((n: number) => n + 1, 0);
+
+  const msgIdCounter = useRef(0);
+  const userScrolledUpRef = useRef(false);
+  const isStreamingRef = useRef(false);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  isStreamingRef.current = isStreaming;
+
+  const scrollToBottom = useCallback(() => {
+    if (userScrolledUpRef.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    // Double-rAF ensures DOM has painted before reading scrollHeight
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    });
+  }, []);
+
+  const jumpToBottom = useCallback(() => {
+    userScrolledUpRef.current = false;
+    setShowJumpToBottom(false);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    });
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (atBottom) {
+      userScrolledUpRef.current = false;
+      setShowJumpToBottom(false);
+    } else {
+      userScrolledUpRef.current = true;
+      setShowJumpToBottom(true);
+    }
+  }, []);
+
+  // Passive scroll listener
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [handleScroll]);
+
+  const nextId = () => `msg-${++msgIdCounter.current}`;
+
+  // --- Result map: tool_use_id → tool_result ---
+  const resultMap = useMemo(() => {
+    const map = new Map<string, ContentBlockToolResult>();
+    for (const msg of messages) {
+      if (msg.role !== "user") continue;
+      for (const block of msg.blocks) {
+        if (block.type === "tool_result") map.set(block.tool_use_id, block);
+      }
+    }
+    return map;
+  }, [messages]);
+
+  // --- Render plan: transform messages into grouped render items ---
+  const renderPlan = useMemo((): RenderPlanEntry[] => {
+    return messages.map((msg) => {
+      if (msg.role === "result" || msg.role === "system") {
+        return { msg, items: null };
+      }
+
+      if (msg.role === "assistant") {
+        const items = buildRenderItems(msg.blocks, resultMap);
+        return { msg, items };
+      }
+
+      // user messages: keep text blocks, skip pure tool_result messages
+      if (msg.role === "user") {
+        const textBlocks = msg.blocks.filter((b): b is ContentBlockText => b.type === "text");
+        if (textBlocks.length === 0) {
+          return { msg, items: [] }; // pure tool_result — skip
+        }
+        return { msg, items: textBlocks.map((b) => ({ kind: "text" as const, block: b })) };
+      }
+
+      return { msg, items: null };
+    });
+  }, [messages, resultMap]);
+
+  // --- Auto-collapse large tool groups ---
+  useEffect(() => {
+    const newCollapsed = new Set(collapsedTools);
+    let changed = false;
+    for (const entry of renderPlan) {
+      if (!entry.items) continue;
+      for (const item of entry.items) {
+        if (item.kind === "tool_group" && item.pairs.length > 3) {
+          const groupKey = `group-${item.pairs[0].toolUse.id}`;
+          if (!newCollapsed.has(groupKey)) {
+            newCollapsed.add(groupKey);
+            changed = true;
+          }
+        }
+      }
+    }
+    if (changed) setCollapsedTools(newCollapsed);
+  }, [renderPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Answered questions: derive from message history ---
+  const answeredQuestionIds = useMemo(() => {
+    const answered = new Set<string>();
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role !== "assistant") continue;
+      const askBlocks = msg.blocks.filter(
+        (b): b is ContentBlockToolUse => b.type === "tool_use" && b.name === "AskUserQuestion",
+      );
+      if (askBlocks.length === 0) continue;
+      for (let j = i + 1; j < messages.length; j++) {
+        if (messages[j].role === "user" && messages[j].blocks.some((b) => b.type === "text")) {
+          for (const block of askBlocks) answered.add(block.id);
+          break;
+        }
+      }
+    }
+    return answered;
+  }, [messages]);
+
+  // WebSocket connection with auto-reconnect
+  useEffect(() => {
+    let cancelled = false;
+    let ws: WebSocket | null = null;
+
+    function connect() {
+      if (cancelled) return;
+      setConnectionState(reconnectAttemptRef.current > 0 ? "reconnecting" : "connecting");
+
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      ws = new WebSocket(
+        `${proto}//${location.host}/ws/rich/${encodeURIComponent(sessionName)}`
+      );
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (cancelled) { ws!.close(); return; }
+        const isReconnect = reconnectAttemptRef.current > 0;
+        reconnectAttemptRef.current = 0;
+        setConnectionState("connected");
+        setError(null);
+        if (isReconnect) {
+          // Clear state — server replays all events on reconnect
+          setMessages([]);
+          streamingTextRef.current = "";
+          bumpStreamingTick();
+        }
+      };
+
+      ws.onmessage = (e) => {
+        if (cancelled) return;
+        let msg: any;
+        try {
+          msg = JSON.parse(e.data);
+        } catch {
+          return;
+        }
+
+        if (msg.type === "event") {
+          handleEvent(msg.event);
+        } else if (msg.type === "turn_complete") {
+          setIsStreaming(false);
+        } else if (msg.type === "session_state") {
+          if (msg.streaming) setIsStreaming(true);
+        } else if (msg.type === "error") {
+          setError(msg.message);
+          setIsStreaming(false);
+        }
+      };
+
+      ws.onclose = () => {
+        if (cancelled) return;
+        setConnectionState("disconnected");
+        scheduleReconnect();
+      };
+
+      ws.onerror = () => {
+        // onerror is always followed by onclose
+      };
+    }
+
+    function scheduleReconnect() {
+      if (cancelled) return;
+      const attempt = reconnectAttemptRef.current++;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 15000);
+      setConnectionState("reconnecting");
+      reconnectTimerRef.current = setTimeout(connect, delay);
+    }
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (ws) {
+        ws.onerror = null;
+        ws.onclose = null;
+        ws.close();
+      }
+      wsRef.current = null;
+      if (streamingFlushRef.current) {
+        clearTimeout(streamingFlushRef.current);
+        streamingFlushRef.current = null;
+      }
+    };
+  }, [sessionName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleEvent(event: ClaudeEvent) {
+    // Skip subagent internal events
+    const parentId = (event as any).parent_tool_use_id;
+    if (parentId != null) return;
+
+    if (event.type === "stream_event") {
+      const inner = (event as any).event;
+      if (!inner) return;
+
+      if (inner.type === "content_block_delta" && inner.delta?.type === "text_delta") {
+        streamingTextRef.current += inner.delta.text;
+        // Throttle React updates — batch deltas into ~100ms intervals
+        if (!streamingFlushRef.current) {
+          streamingFlushRef.current = setTimeout(() => {
+            streamingFlushRef.current = null;
+            bumpStreamingTick();
+            scrollToBottom();
+          }, 100);
+        }
+      }
+      return;
+    }
+
+    if (event.type === "assistant") {
+      // Complete assistant message — flush streaming and use final content
+      if (streamingFlushRef.current) {
+        clearTimeout(streamingFlushRef.current);
+        streamingFlushRef.current = null;
+      }
+      streamingTextRef.current = "";
+      bumpStreamingTick();
+      const msg = event as MessageEvent;
+      const blocks = msg.message.content;
+      const isToolOnly = blocks.length > 0 && blocks.every((b) => b.type === "tool_use");
+
+      setMessages((prev) => {
+        if (isToolOnly) {
+          let mergeIdx = -1;
+          for (let i = prev.length - 1; i >= 0; i--) {
+            const m = prev[i];
+            if (m.role === "assistant" && m.blocks.every((b) => b.type === "tool_use")) {
+              mergeIdx = i;
+              break;
+            }
+            if (m.role === "user" && m.blocks.every((b) => b.type === "tool_result")) continue;
+            break;
+          }
+
+          if (mergeIdx >= 0) {
+            const target = prev[mergeIdx];
+            const existingIds = new Set(
+              target.blocks
+                .filter((b): b is ContentBlockToolUse => b.type === "tool_use")
+                .map((b) => b.id)
+            );
+            const newBlocks = blocks.filter(
+              (b) => b.type === "tool_use" && !existingIds.has((b as ContentBlockToolUse).id)
+            );
+            if (newBlocks.length > 0) {
+              const updated = [...prev];
+              updated[mergeIdx] = { ...target, blocks: [...target.blocks, ...newBlocks] };
+              return updated;
+            }
+            return prev;
+          }
+        }
+
+        return [
+          ...prev,
+          { id: nextId(), role: "assistant" as const, blocks, timestamp: Date.now() },
+        ];
+      });
+      scrollToBottom();
+    } else if (event.type === "user") {
+      streamingTextRef.current = "";
+      bumpStreamingTick();
+      const msg = event as MessageEvent;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: "user",
+          blocks: msg.message.content,
+          timestamp: Date.now(),
+        },
+      ]);
+      scrollToBottom();
+    } else if (event.type === "result") {
+      streamingTextRef.current = "";
+      bumpStreamingTick();
+      const result = event as ResultEvent;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: "result",
+          blocks: [],
+          result,
+          timestamp: Date.now(),
+        },
+      ]);
+      scrollToBottom();
+    } else if (event.type === "system") {
+      const sys = event as SystemEvent;
+      if (sys.subtype === "init") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: "system",
+            blocks: [{ type: "text", text: `Session initialized` }],
+            timestamp: Date.now(),
+          },
+        ]);
+      }
+    }
+  }
+
+  function sendPrompt(text: string) {
+    if (!text.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: nextId(),
+        role: "user",
+        blocks: [{ type: "text", text }],
+        timestamp: Date.now(),
+      },
+    ]);
+
+    setIsStreaming(true);
+    setError(null);
+    userScrolledUpRef.current = false;
+    setShowJumpToBottom(false);
+
+    wsRef.current.send(JSON.stringify({ type: "prompt", text }));
+    setInputValue("");
+
+    // Reset textarea height
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.style.height = "auto";
+      }
+    });
+
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    });
+  }
+
+  function sendInterrupt() {
+    wsRef.current?.send(JSON.stringify({ type: "interrupt" }));
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendPrompt(inputValue);
+    }
+    if (e.key === "Escape" && isStreaming) {
+      e.preventDefault();
+      sendInterrupt();
+    }
+  }
+
+  function autoResize(el: HTMLTextAreaElement) {
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  }
+
+  function toggleTool(id: string) {
+    setCollapsedTools((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleResultExpanded(id: string) {
+    setExpandedResults((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Auto-focus input when active
+  useEffect(() => {
+    if (isActive && !isStreaming) {
+      inputRef.current?.focus();
+    }
+  }, [isActive, isStreaming]);
+
+  const connected = connectionState === "connected";
+  const streamingText = streamingTextRef.current;
+
+  return (
+    <div
+      className={styles.root}
+      style={{
+        background: theme.background,
+        color: theme.foreground,
+        fontFamily: font.fontFamily,
+      }}
+    >
+      {/* Status bar */}
+      <div className={styles.statusBar}>
+        <div className={styles.statusLeft}>
+          <div className={`${styles.statusDot} ${
+            connectionState === "connected" ? styles.statusConnected :
+            connectionState === "reconnecting" ? styles.statusReconnecting : ""
+          }`} />
+          <span className={styles.statusText}>
+            {connectionState === "connected" ? sessionName :
+             connectionState === "reconnecting" ? "reconnecting\u2026" :
+             connectionState === "connecting" ? "connecting\u2026" :
+             "disconnected"}
+          </span>
+        </div>
+        {error && <span className={styles.statusError}>{error}</span>}
+      </div>
+
+      {/* Messages */}
+      <div className={styles.messagesWrap}>
+        <div className={styles.messages} ref={scrollRef}>
+          <MessageErrorBoundary theme={theme}>
+            {messages.length === 0 && !isStreaming && (
+              <div className={styles.welcome}>
+                <div className={styles.welcomeIcon}>
+                  <div className={styles.welcomeMark} style={{ background: theme.cursor }} />
+                </div>
+                <div className={styles.welcomeText}>
+                  <p className={styles.welcomeTitle} style={{ color: theme.foreground }}>Rich Mode</p>
+                  <p className={styles.welcomeHint}>
+                    Type a prompt below to start a conversation.
+                    <br />
+                    Responses render as styled markdown with collapsible tool calls.
+                  </p>
+                </div>
+                <div className={styles.welcomeShortcuts}>
+                  <span><kbd className={styles.kbd} style={{ background: `${theme.foreground}08`, borderColor: `${theme.foreground}15` }}>Enter</kbd> send</span>
+                  <span><kbd className={styles.kbd} style={{ background: `${theme.foreground}08`, borderColor: `${theme.foreground}15` }}>Shift+Enter</kbd> newline</span>
+                  <span><kbd className={styles.kbd} style={{ background: `${theme.foreground}08`, borderColor: `${theme.foreground}15` }}>Esc</kbd> interrupt</span>
+                </div>
+              </div>
+            )}
+
+            {renderPlan.map(({ msg, items }) => {
+              // Skip pure tool_result user messages
+              if (items !== null && items.length === 0) return null;
+
+              // System/result: render as before
+              if (items === null) {
+                if (msg.role === "result" && msg.result) {
+                  return (
+                    <div key={msg.id} className={`${styles.message} ${styles.role_result} ${styles.messageEnter}`}>
+                      <ResultBlock result={msg.result} theme={theme} />
+                    </div>
+                  );
+                }
+                if (msg.role === "system") {
+                  return (
+                    <div key={msg.id} className={`${styles.message} ${styles.role_system} ${styles.messageEnter}`}>
+                      {msg.blocks.map((block, i) =>
+                        block.type === "text" ? (
+                          <TextBlock key={`${msg.id}-${i}`} text={block.text} theme={theme} />
+                        ) : null
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              }
+
+              // User text messages
+              if (msg.role === "user") {
+                return (
+                  <div
+                    key={msg.id}
+                    className={`${styles.message} ${styles.role_user} ${styles.messageEnter}`}
+                    style={{ borderLeft: `2px solid ${theme.foreground}20` }}
+                  >
+                    <div className={styles.userLabel} style={{ color: `${theme.foreground}40` }}>you</div>
+                    {items.map((item, i) =>
+                      item.kind === "text" ? (
+                        <TextBlock key={`${msg.id}-${i}`} text={item.block.text} theme={theme} />
+                      ) : null
+                    )}
+                  </div>
+                );
+              }
+
+              // Assistant messages with render items
+              return (
+                <div
+                  key={msg.id}
+                  className={`${styles.message} ${styles.role_assistant} ${styles.messageEnter}`}
+                  style={{ borderLeft: `2px solid ${theme.cursor}33` }}
+                >
+                  {items.map((item, i) => {
+                    const key = `${msg.id}-${i}`;
+                    switch (item.kind) {
+                      case "text":
+                        return <TextBlock key={key} text={item.block.text} theme={theme} />;
+                      case "tool_pair":
+                        return (
+                          <ToolPairBlock
+                            key={key}
+                            toolUse={item.toolUse}
+                            toolResult={item.toolResult}
+                            theme={theme}
+                            collapsed={collapsedTools.has(item.toolUse.id)}
+                            onToggle={() => toggleTool(item.toolUse.id)}
+                            resultExpanded={expandedResults.has(item.toolUse.id)}
+                            onToggleResult={() => toggleResultExpanded(item.toolUse.id)}
+                          />
+                        );
+                      case "tool_group":
+                        return (
+                          <ToolGroupBlock
+                            key={key}
+                            name={item.name}
+                            pairs={item.pairs}
+                            theme={theme}
+                            collapsedTools={collapsedTools}
+                            onToggle={toggleTool}
+                            expandedResults={expandedResults}
+                            onToggleResult={toggleResultExpanded}
+                          />
+                        );
+                      case "subagent":
+                        return (
+                          <SubagentBlock
+                            key={key}
+                            toolUse={item.toolUse}
+                            toolResult={item.toolResult}
+                            theme={theme}
+                            collapsed={collapsedTools.has(item.toolUse.id)}
+                            onToggle={() => toggleTool(item.toolUse.id)}
+                            resultExpanded={expandedResults.has(item.toolUse.id)}
+                            onToggleResult={() => toggleResultExpanded(item.toolUse.id)}
+                          />
+                        );
+                      case "question":
+                        return (
+                          <QuestionBlock
+                            key={key}
+                            toolUse={item.toolUse}
+                            toolResult={item.toolResult}
+                            theme={theme}
+                            answered={answeredQuestionIds.has(item.toolUse.id)}
+                            onAnswer={sendPrompt}
+                          />
+                        );
+                      default:
+                        return null;
+                    }
+                  })}
+                </div>
+              );
+            })}
+
+            {isStreaming && (
+              streamingText ? (
+                <div
+                  className={`${styles.message} ${styles.role_assistant}`}
+                  style={{ borderLeft: `2px solid ${theme.cursor}33` }}
+                >
+                  <StreamingMarkdown text={streamingText} theme={theme} />
+                </div>
+              ) : (
+                <div className={styles.streaming}>
+                  <span className={styles.streamingDot} style={{ background: theme.cursor }} />
+                  <span>thinking\u2026</span>
+                </div>
+              )
+            )}
+          </MessageErrorBoundary>
+        </div>
+
+        {showJumpToBottom && (
+          <button
+            className={styles.jumpToBottom}
+            onClick={jumpToBottom}
+            style={{
+              background: theme.background,
+              color: theme.foreground,
+              borderColor: `${theme.foreground}30`,
+            }}
+          >
+            \u2193 Jump to bottom
+          </button>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className={styles.inputArea} style={{ borderColor: `${theme.cursor}40` }}>
+        <textarea
+          ref={inputRef}
+          className={styles.input}
+          value={inputValue}
+          onChange={(e) => {
+            setInputValue(e.target.value);
+            autoResize(e.target);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={isStreaming ? "Press Escape to interrupt\u2026" : "Type a message\u2026 (Enter to send, Shift+Enter for newline)"}
+          disabled={!connected}
+          rows={1}
+          style={{
+            fontFamily: font.fontFamily,
+            color: theme.foreground,
+          }}
+        />
+        {isStreaming ? (
+          <button
+            className={styles.stopBtn}
+            onClick={sendInterrupt}
+            style={{
+              background: theme.red,
+              color: theme.background,
+            }}
+            title="Stop (Esc)"
+          >
+            \u25A0
+          </button>
+        ) : (
+          <button
+            className={styles.sendBtn}
+            onClick={() => sendPrompt(inputValue)}
+            disabled={!connected || !inputValue.trim()}
+            style={{
+              background: inputValue.trim() ? theme.cursor : "transparent",
+              color: inputValue.trim() ? theme.background : theme.foreground,
+            }}
+          >
+            \u21B5
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- Sub-components ----
+
+function StreamingMarkdown({ text, theme }: { text: string; theme: TerminalTheme }) {
+  const [renderedText, setRenderedText] = useState(text);
+  const lastRenderTime = useRef(0);
+  const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Safety valve: fall back to raw text for very long streaming content
+    if (text.length > 50000) {
+      setRenderedText(text);
+      return;
+    }
+
+    const now = Date.now();
+    const elapsed = now - lastRenderTime.current;
+
+    if (elapsed >= 200) {
+      setRenderedText(text);
+      lastRenderTime.current = now;
+      if (pendingRef.current) {
+        clearTimeout(pendingRef.current);
+        pendingRef.current = null;
+      }
+    } else if (!pendingRef.current) {
+      pendingRef.current = setTimeout(() => {
+        pendingRef.current = null;
+        setRenderedText(text);
+        lastRenderTime.current = Date.now();
+      }, 200 - elapsed);
+    }
+
+    return () => {
+      if (pendingRef.current) {
+        clearTimeout(pendingRef.current);
+        pendingRef.current = null;
+      }
+    };
+  }, [text]);
+
+  if (text.length > 50000) {
+    return (
+      <div className={styles.textBlock}>
+        <pre className={styles.streamingPre}>{text}</pre>
+        <span className={styles.streamingCursor} style={{ background: theme.cursor }} />
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.textBlock}>
+      {renderMarkdown(renderedText, theme)}
+      <span className={styles.streamingCursor} style={{ background: theme.cursor }} />
+    </div>
+  );
+}
+
+function TextBlock({ text, theme }: { text: string; theme: TerminalTheme }) {
+  const isLong = text.length > 3000 || text.split("\n").length > 40;
+  const [expanded, setExpanded] = useState(!isLong);
+  const displayText = expanded
+    ? text
+    : text.slice(0, 1500).replace(/\n[^\n]*$/, "") + "\n\u2026";
+
+  return (
+    <div className={styles.textBlock}>
+      <MemoizedMarkdown text={displayText} theme={theme} />
+      {isLong && (
+        <button
+          className={styles.expandBtn}
+          onClick={() => setExpanded(!expanded)}
+          style={{ color: theme.cyan }}
+        >
+          {expanded ? "show less" : "show all"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ToolPairBlock({
+  toolUse,
+  toolResult,
+  theme,
+  collapsed,
+  onToggle,
+  compact,
+  resultExpanded,
+  onToggleResult,
+}: {
+  toolUse: ContentBlockToolUse;
+  toolResult: ContentBlockToolResult | null;
+  theme: TerminalTheme;
+  collapsed: boolean;
+  onToggle: () => void;
+  compact?: boolean;
+  resultExpanded?: boolean;
+  onToggleResult?: () => void;
+}) {
+  const toolColor = getToolColor(toolUse.name, theme);
+  const isEditTool = toolUse.name === "Edit" && toolUse.input.old_string != null;
+
+  const resultContent = toolResult
+    ? typeof toolResult.content === "string"
+      ? toolResult.content
+      : toolResult.content.map((c) => c.text || "").join("\n")
+    : null;
+
+  const resultLines = resultContent ? resultContent.split("\n") : [];
+  const isResultLong = resultLines.length > 20;
+  const isExpanded = resultExpanded || !isResultLong;
+  const displayResult = resultContent
+    ? isExpanded
+      ? resultContent
+      : resultLines.slice(0, 12).join("\n") + "\n\u2026"
+    : null;
+
+  // Done hint for collapsed state
+  const doneHint = collapsed && toolResult
+    ? toolResult.is_error
+      ? "error"
+      : resultLines.length > 1
+        ? `${resultLines.length} lines`
+        : "\u2713"
+    : null;
+
+  return (
+    <div
+      className={`${styles.toolPair} ${compact ? styles.toolPairCompact : ""}`}
+      style={{ borderColor: `${toolColor}30` }}
+    >
+      <button className={styles.toolHeader} onClick={onToggle} style={{ color: toolColor }}>
+        <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
+        <span className={styles.toolIcon}>{getToolIcon(toolUse.name)}</span>
+        <span className={styles.toolName}>{toolUse.name}</span>
+        <span className={styles.toolSummary} style={{ color: `${theme.foreground}80` }}>
+          {getToolSummary(toolUse.name, toolUse.input)}
+        </span>
+        {collapsed && toolResult === null && (
+          <span className={styles.toolPending}>
+            <span className={styles.toolPendingDot} style={{ background: toolColor }} />
+          </span>
+        )}
+        {doneHint && (
+          <span className={styles.toolDoneHint} style={{ color: `${theme.foreground}50` }}>
+            {doneHint}
+          </span>
+        )}
+      </button>
+
+      {!collapsed && (
+        <>
+          {isEditTool ? (
+            <DiffView
+              filePath={toolUse.input.file_path as string}
+              oldStr={toolUse.input.old_string as string}
+              newStr={(toolUse.input.new_string as string) || ""}
+              theme={theme}
+            />
+          ) : (
+            <pre
+              className={styles.toolInput}
+              style={{ background: `${toolColor}08`, color: `${theme.foreground}cc` }}
+            >
+              {formatToolInput(toolUse.name, toolUse.input)}
+            </pre>
+          )}
+
+          {/* Inline result */}
+          {toolResult === null ? (
+            <div className={styles.toolPairRunning} style={{ color: toolColor }}>
+              <span className={styles.toolPendingDot} style={{ background: toolColor }} />
+              <span>running\u2026</span>
+            </div>
+          ) : resultContent && resultContent.trim() ? (
+            <div className={styles.toolPairResult}>
+              <pre
+                className={`${styles.toolResultContent} ${toolResult.is_error ? styles.toolResultError : ""}`}
+                style={{
+                  background: toolResult.is_error ? `${theme.red}10` : `${theme.foreground}05`,
+                  color: toolResult.is_error ? theme.red : `${theme.foreground}90`,
+                  borderColor: toolResult.is_error ? `${theme.red}25` : `${theme.foreground}10`,
+                }}
+              >
+                {displayResult}
+              </pre>
+              {isResultLong && onToggleResult && (
+                <button
+                  className={styles.expandBtn}
+                  onClick={onToggleResult}
+                  style={{ color: theme.cyan }}
+                >
+                  {isExpanded ? "show less" : `show all (${resultLines.length} lines)`}
+                </button>
+              )}
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function DiffView({
+  filePath,
+  oldStr,
+  newStr,
+  theme,
+}: {
+  filePath: string;
+  oldStr: string;
+  newStr: string;
+  theme: TerminalTheme;
+}) {
+  const oldLines = oldStr.split("\n");
+  const newLines = newStr.split("\n");
+
+  // Find common prefix and suffix
+  let prefixLen = 0;
+  while (prefixLen < oldLines.length && prefixLen < newLines.length
+         && oldLines[prefixLen] === newLines[prefixLen]) {
+    prefixLen++;
+  }
+
+  let suffixLen = 0;
+  while (suffixLen < oldLines.length - prefixLen
+         && suffixLen < newLines.length - prefixLen
+         && oldLines[oldLines.length - 1 - suffixLen] === newLines[newLines.length - 1 - suffixLen]) {
+    suffixLen++;
+  }
+
+  const removedLines = oldLines.slice(prefixLen, oldLines.length - suffixLen);
+  const addedLines = newLines.slice(prefixLen, newLines.length - suffixLen);
+  const contextBefore = oldLines.slice(Math.max(0, prefixLen - 2), prefixLen);
+  const contextAfter = oldLines.slice(
+    oldLines.length - suffixLen,
+    Math.min(oldLines.length, oldLines.length - suffixLen + 2)
+  );
+
+  return (
+    <div className={styles.diffView}>
+      <div className={styles.diffFilePath} style={{ color: `${theme.foreground}60` }}>
+        {filePath}
+      </div>
+      <pre className={styles.diffContent}>
+        {contextBefore.map((line, i) => (
+          <div key={`ctx-b-${i}`} className={styles.diffContext} style={{ color: `${theme.foreground}50` }}>
+            {`  ${line}`}
+          </div>
+        ))}
+        {removedLines.map((line, i) => (
+          <div key={`rem-${i}`} className={styles.diffRemoved} style={{ background: `${theme.red}15`, color: theme.red }}>
+            {`- ${line}`}
+          </div>
+        ))}
+        {addedLines.map((line, i) => (
+          <div key={`add-${i}`} className={styles.diffAdded} style={{ background: `${theme.green}15`, color: theme.green }}>
+            {`+ ${line}`}
+          </div>
+        ))}
+        {contextAfter.map((line, i) => (
+          <div key={`ctx-a-${i}`} className={styles.diffContext} style={{ color: `${theme.foreground}50` }}>
+            {`  ${line}`}
+          </div>
+        ))}
+      </pre>
+    </div>
+  );
+}
+
+function ToolGroupBlock({
+  name,
+  pairs,
+  theme,
+  collapsedTools,
+  onToggle,
+  expandedResults,
+  onToggleResult,
+}: {
+  name: string;
+  pairs: Array<{ toolUse: ContentBlockToolUse; toolResult: ContentBlockToolResult | null }>;
+  theme: TerminalTheme;
+  collapsedTools: Set<string>;
+  onToggle: (id: string) => void;
+  expandedResults: Set<string>;
+  onToggleResult: (id: string) => void;
+}) {
+  const toolColor = getToolColor(name, theme);
+  const groupKey = `group-${pairs[0].toolUse.id}`;
+  const doneCount = pairs.filter((p) => p.toolResult !== null).length;
+  const allDone = doneCount === pairs.length;
+  const isCollapsed = collapsedTools.has(groupKey);
+
+  return (
+    <div className={styles.toolGroup} style={{ borderColor: `${toolColor}30` }}>
+      <button
+        className={styles.toolGroupHeader}
+        onClick={() => onToggle(groupKey)}
+        style={{ color: toolColor }}
+      >
+        <span className={styles.toolChevron}>{isCollapsed ? "\u25B8" : "\u25BE"}</span>
+        <span className={styles.toolIcon}>{getToolIcon(name)}</span>
+        <span className={styles.toolName}>{name}</span>
+        <span className={styles.toolGroupCount} style={{ color: `${theme.foreground}60` }}>
+          {allDone ? `(${pairs.length})` : `(${doneCount}/${pairs.length})`}
+        </span>
+        {!allDone && (
+          <span className={styles.toolPending}>
+            <span className={styles.toolPendingDot} style={{ background: toolColor }} />
+          </span>
+        )}
+      </button>
+
+      {!isCollapsed && (
+        <div className={styles.toolGroupItems}>
+          {pairs.map((pair) => (
+            <ToolPairBlock
+              key={pair.toolUse.id}
+              toolUse={pair.toolUse}
+              toolResult={pair.toolResult}
+              theme={theme}
+              collapsed={collapsedTools.has(pair.toolUse.id)}
+              onToggle={() => onToggle(pair.toolUse.id)}
+              resultExpanded={expandedResults.has(pair.toolUse.id)}
+              onToggleResult={() => onToggleResult(pair.toolUse.id)}
+              compact
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubagentBlock({
+  toolUse,
+  toolResult,
+  theme,
+  collapsed,
+  onToggle,
+  resultExpanded,
+  onToggleResult,
+}: {
+  toolUse: ContentBlockToolUse;
+  toolResult: ContentBlockToolResult | null;
+  theme: TerminalTheme;
+  collapsed: boolean;
+  onToggle: () => void;
+  resultExpanded?: boolean;
+  onToggleResult?: () => void;
+}) {
+  const agentColor = theme.brightMagenta;
+  const subagentType = toolUse.input.subagent_type as string | undefined;
+  const description = toolUse.input.description as string | undefined;
+
+  const resultContent = toolResult
+    ? typeof toolResult.content === "string"
+      ? toolResult.content
+      : toolResult.content.map((c) => c.text || "").join("\n")
+    : null;
+
+  const resultLines = resultContent ? resultContent.split("\n") : [];
+  const isResultLong = resultLines.length > 20;
+  const isExpanded = resultExpanded || !isResultLong;
+  const displayResult = resultContent
+    ? isExpanded
+      ? resultContent
+      : resultLines.slice(0, 12).join("\n") + "\n\u2026"
+    : null;
+
+  return (
+    <div
+      className={styles.subagent}
+      style={{
+        borderColor: agentColor,
+        background: `${agentColor}0d`,
+      }}
+    >
+      <button className={styles.subagentHeader} onClick={onToggle} style={{ color: agentColor }}>
+        <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
+        <span className={styles.toolIcon}>\u229E</span>
+        <span className={styles.toolName}>Task</span>
+        {subagentType && (
+          <span className={styles.subagentBadge} style={{ background: `${agentColor}25`, color: agentColor }}>
+            {subagentType}
+          </span>
+        )}
+        {collapsed && toolResult === null && (
+          <span className={styles.subagentWorking}>
+            <span className={styles.subagentDots} style={{ color: agentColor }}>
+              <span>.</span><span>.</span><span>.</span>
+            </span>
+          </span>
+        )}
+        {collapsed && toolResult !== null && (
+          <span className={styles.toolDoneHint} style={{ color: `${theme.foreground}50` }}>\u2713</span>
+        )}
+      </button>
+
+      {!collapsed && (
+        <div className={styles.subagentBody}>
+          {description && (
+            <div className={styles.subagentDescription}>
+              <MemoizedMarkdown text={description} theme={theme} />
+            </div>
+          )}
+
+          {toolResult === null ? (
+            <div className={styles.subagentWorkingInline} style={{ color: agentColor }}>
+              <span className={styles.subagentDots}>
+                <span>.</span><span>.</span><span>.</span>
+              </span>
+              <span>agent working</span>
+            </div>
+          ) : resultContent && resultContent.trim() ? (
+            <div className={styles.toolPairResult}>
+              <pre
+                className={`${styles.toolResultContent} ${toolResult.is_error ? styles.toolResultError : ""}`}
+                style={{
+                  background: toolResult.is_error ? `${theme.red}10` : `${theme.foreground}05`,
+                  color: toolResult.is_error ? theme.red : `${theme.foreground}90`,
+                  borderColor: toolResult.is_error ? `${theme.red}25` : `${theme.foreground}10`,
+                }}
+              >
+                {displayResult}
+              </pre>
+              {isResultLong && onToggleResult && (
+                <button
+                  className={styles.expandBtn}
+                  onClick={onToggleResult}
+                  style={{ color: theme.cyan }}
+                >
+                  {isExpanded ? "show less" : `show all (${resultLines.length} lines)`}
+                </button>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuestionBlock({
+  toolUse,
+  toolResult,
+  theme,
+  answered,
+  onAnswer,
+}: {
+  toolUse: ContentBlockToolUse;
+  toolResult: ContentBlockToolResult | null;
+  theme: TerminalTheme;
+  answered: boolean;
+  onAnswer: (text: string) => void;
+}) {
+  const questions: Array<{
+    question: string;
+    header: string;
+    options: Array<{ label: string; description?: string }>;
+    multiSelect: boolean;
+  }> = toolUse.input.questions || [];
+
+  const [selections, setSelections] = useState<Map<number, Set<number>>>(new Map());
+
+  // Interactive if the tool was auto-denied and user hasn't answered yet
+  const isInteractive = !answered && !!toolResult?.is_error;
+
+  const toggleOption = (qIdx: number, oIdx: number, multiSelect: boolean) => {
+    if (!isInteractive) return;
+    setSelections((prev) => {
+      const next = new Map(prev);
+      if (multiSelect) {
+        const current = new Set(next.get(qIdx) || []);
+        if (current.has(oIdx)) current.delete(oIdx);
+        else current.add(oIdx);
+        next.set(qIdx, current);
+      } else {
+        next.set(qIdx, new Set([oIdx]));
+      }
+      return next;
+    });
+  };
+
+  const allAnswered = questions.every((_, i) => {
+    const sel = selections.get(i);
+    return sel && sel.size > 0;
+  });
+
+  const handleSubmit = () => {
+    const lines: string[] = [];
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      const sel = selections.get(i) || new Set();
+      const selected = [...sel].map((idx) => q.options[idx]?.label).filter(Boolean);
+      lines.push(`- ${q.header}: ${selected.join(", ")}`);
+    }
+    onAnswer(`Here are my answers:\n${lines.join("\n")}`);
+  };
+
+  return (
+    <div className={styles.questionBlock} style={{ borderColor: `${theme.green}40` }}>
+      {questions.map((q, qIdx) => (
+        <div key={qIdx} className={styles.questionItem}>
+          <div className={styles.questionHeader}>
+            <span
+              className={styles.questionBadge}
+              style={{ background: `${theme.green}20`, color: theme.green }}
+            >
+              {q.header}
+            </span>
+            <span style={{ color: theme.foreground }}>{q.question}</span>
+          </div>
+          <div className={styles.questionOptions}>
+            {q.options.map((opt, oIdx) => {
+              const selected = selections.get(qIdx)?.has(oIdx) || false;
+              return (
+                <button
+                  key={oIdx}
+                  className={`${styles.questionOption} ${selected ? styles.questionOptionSelected : ""}`}
+                  onClick={() => toggleOption(qIdx, oIdx, q.multiSelect)}
+                  disabled={!isInteractive}
+                  style={{
+                    borderColor: selected ? theme.green : `${theme.foreground}20`,
+                    background: selected ? `${theme.green}15` : "transparent",
+                    color: theme.foreground,
+                  }}
+                >
+                  <span className={styles.questionOptionLabel}>{opt.label}</span>
+                  {opt.description && (
+                    <span
+                      className={styles.questionOptionDesc}
+                      style={{ color: `${theme.foreground}60` }}
+                    >
+                      {opt.description}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {isInteractive && (
+        <button
+          className={styles.questionSubmit}
+          onClick={handleSubmit}
+          disabled={!allAnswered}
+          style={{
+            background: allAnswered ? theme.green : "transparent",
+            color: allAnswered ? theme.background : `${theme.foreground}40`,
+            borderColor: allAnswered ? theme.green : `${theme.foreground}20`,
+          }}
+        >
+          Send answers
+        </button>
+      )}
+      {answered && (
+        <div className={styles.questionAnswered} style={{ color: `${theme.foreground}50` }}>
+          \u2713 answered
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultBlock({ result, theme }: { result: ResultEvent; theme: TerminalTheme }) {
+  return (
+    <div className={styles.resultBlock} style={{ borderColor: `${theme.foreground}15` }}>
+      {result.is_error && (
+        <div className={styles.resultError} style={{ color: theme.red }}>
+          {result.result}
+        </div>
+      )}
+      <div className={styles.resultMeta}>
+        {result.total_cost_usd != null && (
+          <div className={styles.resultMetaItem}>
+            <span className={styles.resultMetaLabel} style={{ color: `${theme.foreground}40` }}>cost</span>
+            <span style={{ color: theme.yellow }}>${result.total_cost_usd.toFixed(4)}</span>
+          </div>
+        )}
+        {result.duration_ms != null && (
+          <div className={styles.resultMetaItem}>
+            <span className={styles.resultMetaLabel} style={{ color: `${theme.foreground}40` }}>time</span>
+            <span style={{ color: `${theme.foreground}70` }}>{formatDuration(result.duration_ms)}</span>
+          </div>
+        )}
+        {result.num_turns != null && (
+          <div className={styles.resultMetaItem}>
+            <span className={styles.resultMetaLabel} style={{ color: `${theme.foreground}40` }}>turns</span>
+            <span style={{ color: `${theme.foreground}70` }}>{result.num_turns}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- Helpers ----
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${m}m ${s}s`;
+}
+
+function getToolColor(name: string, theme: TerminalTheme): string {
+  const map: Record<string, keyof TerminalTheme> = {
+    Read: "blue",
+    Edit: "yellow",
+    Write: "green",
+    Bash: "red",
+    Glob: "cyan",
+    Grep: "magenta",
+    Task: "brightMagenta",
+    WebFetch: "brightCyan",
+    WebSearch: "brightCyan",
+  };
+  const key = map[name];
+  return key ? (theme[key] as string) : theme.cyan;
+}
+
+function getToolIcon(name: string): string {
+  const map: Record<string, string> = {
+    Read: "\u25C7",
+    Edit: "\u25B3",
+    Write: "\u25A1",
+    Bash: "$",
+    Glob: "\u22A1",
+    Grep: "/",
+    Task: "\u229E",
+    WebFetch: "\u21E3",
+    WebSearch: "?",
+  };
+  return map[name] || "\u25C6";
+}
+
+function truncateAtWord(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const truncated = s.slice(0, max);
+  const lastSpace = truncated.lastIndexOf(" ");
+  return (lastSpace > max * 0.5 ? truncated.slice(0, lastSpace) : truncated) + "\u2026";
+}
+
+function getToolSummary(name: string, input: Record<string, any>): string {
+  if (name === "Task" && input.description) {
+    return truncateAtWord(input.description as string, 80);
+  }
+  if (name === "Read" && input.file_path) return input.file_path;
+  if (name === "Edit" && input.file_path) return input.file_path;
+  if (name === "Write" && input.file_path) return input.file_path;
+  if (name === "Bash" && input.command) {
+    return truncateAtWord(input.command as string, 60);
+  }
+  if (name === "Glob" && input.pattern) return input.pattern;
+  if (name === "Grep" && input.pattern) return input.pattern;
+  if (name === "WebSearch" && input.query) return input.query;
+  if (name === "WebFetch" && input.url) return input.url;
+  return "";
+}
+
+function formatToolInput(name: string, input: Record<string, any>): string {
+  if (name === "Edit") {
+    // Diff view handled by DiffView component — fallback for non-standard Edit calls
+    const parts: string[] = [];
+    if (input.file_path) parts.push(`file: ${input.file_path}`);
+    if (input.old_string != null) {
+      parts.push(`--- old\n${input.old_string}`);
+      parts.push(`+++ new\n${input.new_string || ""}`);
+    }
+    return parts.join("\n\n");
+  }
+
+  if (name === "Bash") {
+    return input.command || JSON.stringify(input, null, 2);
+  }
+
+  if (name === "Write") {
+    const parts: string[] = [];
+    if (input.file_path) parts.push(`file: ${input.file_path}`);
+    if (input.content) {
+      const content = input.content as string;
+      const lines = content.split("\n");
+      if (lines.length > 30) {
+        parts.push(lines.slice(0, 25).join("\n") + `\n\u2026 (${lines.length} lines total)`);
+      } else {
+        parts.push(content);
+      }
+    }
+    return parts.join("\n\n");
+  }
+
+  if (name === "Task") {
+    const parts: string[] = [];
+    if (input.subagent_type) parts.push(`type: ${input.subagent_type}`);
+    if (input.prompt) {
+      const prompt = input.prompt as string;
+      const lines = prompt.split("\n");
+      if (lines.length > 20) {
+        parts.push(lines.slice(0, 15).join("\n") + `\n\u2026 (${lines.length} lines total)`);
+      } else {
+        parts.push(prompt);
+      }
+    }
+    return parts.join("\n\n");
+  }
+
+  return JSON.stringify(input, null, 2);
+}

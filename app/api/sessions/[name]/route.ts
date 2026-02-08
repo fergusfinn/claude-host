@@ -6,6 +6,7 @@ export async function DELETE(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  getSessionManager().delete(name);
+  // delete() already handles rich vs terminal cleanup internally
+  await getSessionManager().delete(name);
   return new NextResponse(null, { status: 204 });
 }

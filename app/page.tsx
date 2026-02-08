@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Dashboard, SettingsForm } from "@/components/dashboard";
 import { PaneLayout } from "@/components/pane-layout";
 import { TabBar } from "@/components/tab-bar";
-import { getThemeById, DEFAULT_DARK_THEME, type TerminalTheme, getFontById, DEFAULT_FONT_ID, type TerminalFont, ensureFontLoaded, getDefaultThemeForMode } from "@/lib/themes";
+import { getThemeById, DEFAULT_DARK_THEME, type TerminalTheme, getFontById, DEFAULT_FONT_ID, type TerminalFont, ensureFontLoaded, getDefaultThemeForMode, themeToChromeVars } from "@/lib/themes";
 import { generateName } from "@/lib/names";
 import { loadShortcuts, type ShortcutMap } from "@/lib/shortcuts";
 import {
@@ -22,6 +22,8 @@ import {
 interface Session {
   name: string;
   alive: boolean;
+  mode?: "terminal" | "rich";
+  executor: string;
 }
 
 export interface TabState {
@@ -58,6 +60,7 @@ export default function Home() {
   }, []);
   const [refreshKey, setRefreshKey] = useState(0);
   const [liveSessions, setLiveSessions] = useState<Session[] | null>(null);
+  const [sessionModes, setSessionModes] = useState<Record<string, "terminal" | "rich">>({});
   const closedTabsRef = useRef<Set<string>>(new Set());
   const [theme, setTheme] = useState<TerminalTheme>(() => getThemeById(DEFAULT_DARK_THEME));
   const [font, setFont] = useState<TerminalFont>(() => getFontById(DEFAULT_FONT_ID));
@@ -72,6 +75,7 @@ export default function Home() {
   const controlTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showHints, setShowHints] = useState(true);
   const configRef = useRef<Record<string, string>>({});
+  const openCreateRef = useRef<(() => void) | null>(null);
   const shortcutsRef = useRef<ShortcutMap>(loadShortcuts(undefined));
 
   // Derived: active tab object, all session names across all tabs
@@ -130,6 +134,15 @@ export default function Home() {
     saveConfig({ font: fontId });
   }
 
+  // Apply theme-derived chrome colors to the document root
+  useEffect(() => {
+    const vars = themeToChromeVars(theme);
+    const el = document.documentElement;
+    for (const [key, value] of Object.entries(vars)) {
+      el.style.setProperty(key, value);
+    }
+  }, [theme]);
+
   function handleModeChange(m: "dark" | "light") {
     setMode(m);
     document.documentElement.setAttribute("data-mode", m);
@@ -147,6 +160,11 @@ export default function Home() {
       const res = await fetch("/api/sessions");
       const data: Session[] = await res.json();
       setLiveSessions(data.filter((s) => s.alive));
+      const modes: Record<string, "terminal" | "rich"> = {};
+      for (const s of data) {
+        if (s.mode) modes[s.name] = s.mode;
+      }
+      setSessionModes(modes);
     } catch {}
   }, []);
 
@@ -234,7 +252,11 @@ export default function Home() {
     }
   }, [activeTab]);
 
-  function connectSession(name: string) {
+  function connectSession(name: string, mode?: "terminal" | "rich") {
+    // Eagerly update sessionModes so the pane renders the right view immediately
+    if (mode) {
+      setSessionModes((prev) => ({ ...prev, [name]: mode }));
+    }
     closedTabsRef.current.delete(name);
     // Check if session already in a tab
     const existing = tabs.find((t) =>
@@ -303,7 +325,9 @@ export default function Home() {
 
     try {
       let res: Response;
-      if (fork && sourceSession) {
+      // Don't fork from rich sessions — always create fresh terminal
+      const sourceIsRich = sourceSession ? sessionModes[sourceSession] === "rich" : false;
+      if (fork && sourceSession && !sourceIsRich) {
         // Fork from the focused pane's session
         res = await fetch("/api/sessions/fork", {
           method: "POST",
@@ -411,19 +435,10 @@ export default function Home() {
     loadSessions();
   }
 
-  async function quickCreate() {
-    const name = generateName();
-    const command = configRef.current.defaultCommand || "claude";
-    try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description: "", command }),
-      });
-      if (!res.ok) return;
-      await loadSessions();
-      connectSession(name);
-    } catch {}
+  function quickCreate() {
+    setActiveTabId(null);
+    // Small delay so Dashboard mounts before we trigger the ref
+    setTimeout(() => openCreateRef.current?.(), 0);
   }
 
   async function forkNewTab() {
@@ -576,6 +591,7 @@ export default function Home() {
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
+        sessionExecutors={Object.fromEntries((liveSessions ?? []).map(s => [s.name, s.executor]))}
         currentTheme={theme}
         currentFont={font}
         keyMode={keyMode}
@@ -596,7 +612,7 @@ export default function Home() {
           display: activeTabId === null ? "flex" : "none",
           flexDirection: "column",
         }}>
-          <Dashboard onConnect={connectSession} config={configRef.current} />
+          <Dashboard onConnect={connectSession} config={configRef.current} openCreateRef={openCreateRef} />
         </div>
         {tabs.map((tab) => (
           <div
@@ -614,6 +630,7 @@ export default function Home() {
               theme={theme}
               font={font}
               refreshKey={refreshKey}
+              sessionModes={sessionModes}
               onFocusPane={handlePaneFocus}
               onResize={handlePaneResize}
               onCloseSession={(name) => {

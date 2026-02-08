@@ -3,6 +3,7 @@
 import { memo } from "react";
 import type { LayoutNode } from "@/lib/layout";
 import { TerminalView } from "./terminal-view";
+import { RichView } from "./rich-view";
 import { ResizeHandle } from "./resize-handle";
 import type { TerminalTheme, TerminalFont } from "@/lib/themes";
 
@@ -13,6 +14,7 @@ interface Props {
   theme: TerminalTheme;
   font: TerminalFont;
   refreshKey: number;
+  sessionModes?: Record<string, "terminal" | "rich">;
   onFocusPane: (paneId: string) => void;
   onResize: (splitId: string, ratio: number) => void;
   onCloseSession: (sessionName: string) => void;
@@ -71,6 +73,7 @@ const PaneTerminal = memo(function PaneTerminal({
   theme,
   font,
   refreshKey,
+  sessionModes,
   onFocusPane,
   onCloseSession,
   onSwitchSession,
@@ -79,6 +82,7 @@ const PaneTerminal = memo(function PaneTerminal({
 }: { leaf: Extract<LayoutNode, { type: "leaf" }> } & Omit<NodeProps, "node">) {
   const isFocused = leaf.id === focusedPaneId;
   const showBorder = !isSinglePane;
+  const isRich = sessionModes?.[leaf.sessionName] === "rich";
 
   return (
     <div
@@ -94,15 +98,25 @@ const PaneTerminal = memo(function PaneTerminal({
         transition: "border-color 0.1s",
       }}
     >
-      <TerminalView
-        key={`${leaf.sessionName}-${refreshKey}`}
-        sessionName={leaf.sessionName}
-        isActive={isTabActive && isFocused}
-        theme={theme}
-        font={font}
-        onClose={() => onCloseSession(leaf.sessionName)}
-        onSwitch={onSwitchSession}
-      />
+      {isRich ? (
+        <RichView
+          key={`${leaf.sessionName}-${refreshKey}`}
+          sessionName={leaf.sessionName}
+          isActive={isTabActive && isFocused}
+          theme={theme}
+          font={font}
+        />
+      ) : (
+        <TerminalView
+          key={`${leaf.sessionName}-${refreshKey}`}
+          sessionName={leaf.sessionName}
+          isActive={isTabActive && isFocused}
+          theme={theme}
+          font={font}
+          onClose={() => onCloseSession(leaf.sessionName)}
+          onSwitch={onSwitchSession}
+        />
+      )}
     </div>
   );
 });

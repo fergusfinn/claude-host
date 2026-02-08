@@ -9,6 +9,7 @@ import styles from "./tab-bar.module.css";
 interface Props {
   tabs: TabState[];
   activeTabId: string | null;
+  sessionExecutors?: Record<string, string>;
   currentTheme: TerminalTheme;
   currentFont: TerminalFont;
   keyMode: "insert" | "control";
@@ -30,7 +31,14 @@ function tabLabel(tab: TabState): string {
   return `${leaves[0].sessionName} +${leaves.length - 1}`;
 }
 
-export function TabBar({ tabs, activeTabId, currentTheme, currentFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onNew, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
+function tabExecutor(tab: TabState, sessionExecutors?: Record<string, string>): string | null {
+  if (!sessionExecutors) return null;
+  const leaves = getAllLeaves(tab.layout);
+  const exec = sessionExecutors[leaves[0]?.sessionName];
+  return exec && exec !== "local" ? exec : null;
+}
+
+export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onNew, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const themePickerRef = useRef<HTMLDivElement>(null);
@@ -64,7 +72,9 @@ export function TabBar({ tabs, activeTabId, currentTheme, currentFont, keyMode, 
           <kbd className={styles.kbd}>^A 0</kbd>
         </button>
 
-        {tabs.map((tab, i) => (
+        {tabs.map((tab, i) => {
+          const exec = tabExecutor(tab, sessionExecutors);
+          return (
           <div
             key={tab.id}
             className={`${styles.tab} ${activeTabId === tab.id ? styles.active : ""}`}
@@ -72,10 +82,11 @@ export function TabBar({ tabs, activeTabId, currentTheme, currentFont, keyMode, 
             tabIndex={0}
             onClick={() => onSelectTab(tab.id)}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectTab(tab.id); } }}
-            title={`${tabLabel(tab)} (^A ${i + 1})`}
+            title={`${tabLabel(tab)}${exec ? ` (${exec})` : ""} (^A ${i + 1})`}
           >
             <div className={styles.dot} />
             <span className={styles.tabName}>{tabLabel(tab)}</span>
+            {exec && <span className={styles.executorBadge}>{exec}</span>}
             {i < 9 && <kbd className={styles.kbd}>^A {i + 1}</kbd>}
             <button
               className={styles.closeBtn}
@@ -88,7 +99,8 @@ export function TabBar({ tabs, activeTabId, currentTheme, currentFont, keyMode, 
               ×
             </button>
           </div>
-        ))}
+          );
+        })}
 
         <button
           className={styles.newBtn}

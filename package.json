@@ -6,6 +6,7 @@
     "build": "next build",
     "start": "NODE_ENV=production tsx server.ts",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true",
+    "executor": "tsx executor/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

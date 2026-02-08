@@ -6,6 +6,10 @@ REMOTE_DIR="/home/fergus/claude-host"
 SERVICE_NAME="claude-host"
 NODE_VERSION="23"
 
+echo "==> Backing up server directory"
+BACKUP_DIR="${REMOTE_DIR}.backup-$(date +%Y%m%d-%H%M%S)"
+ssh "$REMOTE_HOST" "rsync -a --exclude node_modules --exclude .next $REMOTE_DIR/ $BACKUP_DIR/ && echo '  -> Backup: $BACKUP_DIR'"
+
 echo "==> Syncing files to $REMOTE_HOST:$REMOTE_DIR"
 rsync -avz --delete \
   --exclude node_modules \
@@ -50,6 +54,7 @@ ExecStart=${NVM_NODE_DIR}/npx tsx server.ts
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
+Environment=EXECUTOR_TOKEN=$(cat /home/fergus/.claude-host-executor-token 2>/dev/null)
 Environment=PATH=${NVM_NODE_DIR}:/home/fergus/.local/bin:/usr/local/bin:/usr/bin:/bin
 
 [Install]

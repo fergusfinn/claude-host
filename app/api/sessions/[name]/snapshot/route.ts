@@ -6,6 +6,6 @@ export async function GET(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  const text = getSessionManager().snapshot(name);
+  const text = await getSessionManager().snapshot(name);
   return NextResponse.json({ text });
 }

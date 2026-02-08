@@ -94,6 +94,16 @@
   text-overflow: ellipsis;
 }
 
+.executorBadge {
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .dot {
   width: 6px; height: 6px;
   border-radius: 50%;
@@ -338,4 +348,127 @@
 .checkboxLabel input[type="checkbox"] {
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+/* Job badge */
+
+.jobBadge {
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Textarea (for job prompt) */
+
+.textarea {
+  display: block;
+  width: 100%;
+  padding: 9px 11px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-0);
+  font-family: var(--mono);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.1s;
+  resize: vertical;
+  min-height: 80px;
+}
+.textarea:focus { border-color: var(--accent); }
+.textarea::placeholder { color: var(--text-3); }
+
+/* Mode toggle */
+
+.modeToggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.modeOption {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.1s;
+  border: none;
+  border-right: 1px solid var(--border);
+}
+
+.modeOption:last-child {
+  border-right: none;
+}
+
+.modeOption:hover {
+  background: var(--bg-1);
+  color: var(--text-0);
+}
+
+.modeActive {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.modeActive:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.modeIcon {
+  font-size: 11px;
+}
+
+/* Mode badge (session row) */
+
+.modeBadge {
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Needs-input badge */
+
+.inputBadge {
+  font-size: 10px;
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  animation: inputPulse 2s ease-in-out infinite;
+}
+
+@keyframes inputPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* List header */
+
+.listHeader {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 20px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
 }

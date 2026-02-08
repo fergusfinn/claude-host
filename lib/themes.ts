@@ -718,88 +718,88 @@ export const fonts: TerminalFont[] = [
   {
     id: "ibm-plex-mono",
     name: "IBM Plex Mono",
-    fontFamily: "'IBM Plex Mono', monospace",
+    fontFamily: "'IBM Plex Mono', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap",
   },
   {
     id: "jetbrains-mono",
     name: "JetBrains Mono",
-    fontFamily: "'JetBrains Mono', monospace",
+    fontFamily: "'JetBrains Mono', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap",
   },
   {
     id: "fira-code",
     name: "Fira Code",
-    fontFamily: "'Fira Code', monospace",
+    fontFamily: "'Fira Code', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap",
   },
   {
     id: "source-code-pro",
     name: "Source Code Pro",
-    fontFamily: "'Source Code Pro', monospace",
+    fontFamily: "'Source Code Pro', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600&display=swap",
   },
   {
     id: "inconsolata",
     name: "Inconsolata",
-    fontFamily: "'Inconsolata', monospace",
+    fontFamily: "'Inconsolata', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;500;600&display=swap",
   },
   {
     id: "sf-mono",
     name: "SF Mono",
-    fontFamily: "'SF Mono', monospace",
+    fontFamily: "'SF Mono', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
   },
   {
     id: "menlo",
     name: "Menlo",
-    fontFamily: "Menlo, monospace",
+    fontFamily: "Menlo, 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
   },
   {
     id: "monaco",
     name: "Monaco",
-    fontFamily: "Monaco, monospace",
+    fontFamily: "Monaco, 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
   },
   {
     id: "cascadia-code",
     name: "Cascadia Code",
-    fontFamily: "'Cascadia Code', monospace",
+    fontFamily: "'Cascadia Code', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=Cascadia+Code:wght@400;500;600&display=swap",
   },
   {
     id: "roboto-mono",
     name: "Roboto Mono",
-    fontFamily: "'Roboto Mono', monospace",
+    fontFamily: "'Roboto Mono', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&display=swap",
   },
   {
     id: "ubuntu-mono",
     name: "Ubuntu Mono",
-    fontFamily: "'Ubuntu Mono', monospace",
+    fontFamily: "'Ubuntu Mono', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap",
   },
   {
     id: "space-mono",
     name: "Space Mono",
-    fontFamily: "'Space Mono', monospace",
+    fontFamily: "'Space Mono', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap",
   },
   {
     id: "geist-mono",
     name: "Geist Mono",
-    fontFamily: "'Geist Mono', monospace",
+    fontFamily: "'Geist Mono', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap",
   },
   {
     id: "commit-mono",
     name: "Commit Mono",
-    fontFamily: "'Commit Mono', monospace",
+    fontFamily: "'Commit Mono', 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
     googleFontsUrl: "https://fonts.googleapis.com/css2?family=Commit+Mono:wght@400;700&display=swap",
   },
   {
     id: "hack",
     name: "Hack",
-    fontFamily: "Hack, monospace",
+    fontFamily: "Hack, 'Symbols Nerd Font Mono', 'Noto Sans Mono', monospace",
   },
 ];
 
@@ -840,4 +840,116 @@ export function themesForMode(mode: "dark" | "light"): TerminalTheme[] {
 export function toXtermTheme(theme: TerminalTheme) {
   const { id, name, mode, swatch, ...xtermFields } = theme;
   return xtermFields;
+}
+
+/* ---- Chrome color derivation ---- */
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const c = (v: number) =>
+    Math.round(Math.max(0, Math.min(255, v)))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+/** Blend `color` toward `target` by `amount` (0 = color, 1 = target) */
+function mix(color: string, target: string, amount: number): string {
+  const [r1, g1, b1] = hexToRgb(color);
+  const [r2, g2, b2] = hexToRgb(target);
+  return rgbToHex(
+    r1 + (r2 - r1) * amount,
+    g1 + (g2 - g1) * amount,
+    b1 + (b2 - b1) * amount,
+  );
+}
+
+/**
+ * Derive all UI chrome CSS custom properties from a terminal theme.
+ * This makes the tab bar, backgrounds, borders, text, and accent colors
+ * match the selected terminal color scheme.
+ */
+export function themeToChromeVars(theme: TerminalTheme): Record<string, string> {
+  const bg = theme.background;
+  const fg = theme.foreground;
+  const accent = theme.swatch;
+  const isDark = theme.mode === "dark";
+
+  // Mix toward the theme's own white/black to preserve color temperature
+  // (pure #fff/#000 strips warmth from Gruvbox, coolness from Nord, etc.)
+  const step = isDark ? theme.white : theme.black;
+
+  // Background levels — step toward the theme's own light/dark tone
+  const bg0 = bg;
+  const bg1 = mix(bg, step, 0.06);
+  const bg2 = mix(bg, step, 0.12);
+  const bg3 = mix(bg, step, 0.18);
+  const bg4 = mix(bg, step, 0.24);
+
+  // Borders — anchor on brightBlack (the theme's "comment" gray)
+  const border = mix(bg, theme.brightBlack, 0.40);
+  const borderHover = mix(bg, theme.brightBlack, 0.65);
+
+  // Text levels — use the theme's palette for natural hierarchy:
+  //   text-0: foreground (primary)
+  //   text-1: slightly muted toward the theme's gray
+  //   text-2: the theme's brightBlack ("comment" color)
+  //   text-3: brightBlack faded toward background
+  const text0 = fg;
+  const text1 = mix(fg, theme.brightBlack, 0.20);
+  const text2 = theme.brightBlack;
+  const text3 = mix(theme.brightBlack, bg, 0.40);
+
+  // Accent from theme swatch
+  const accentDim = `${accent}26`;
+  const accentHover = isDark
+    ? mix(accent, theme.brightWhite, 0.25)
+    : mix(accent, theme.black, 0.20);
+
+  // Danger
+  const danger = isDark ? "#ef4444" : "#dc2626";
+  const dangerDim = isDark ? "rgba(239,68,68,0.1)" : "rgba(220,38,38,0.1)";
+
+  // Terminal preview areas
+  const termBg = isDark ? mix(bg, "#000000", 0.30) : theme.black;
+  const termText = mix(fg, bg, 0.35);
+  const termBorder = mix(bg, theme.brightBlack, 0.30);
+
+  // Shadows & backdrop
+  const shadowDropdown = isDark ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.1)";
+  const shadowDialog = isDark ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.15)";
+  const backdrop = isDark ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.2)";
+
+  return {
+    "--bg-0": bg0,
+    "--bg-1": bg1,
+    "--bg-2": bg2,
+    "--bg-3": bg3,
+    "--bg-4": bg4,
+    "--border": border,
+    "--border-hover": borderHover,
+    "--text-0": text0,
+    "--text-1": text1,
+    "--text-2": text2,
+    "--text-3": text3,
+    "--accent": accent,
+    "--accent-dim": accentDim,
+    "--accent-hover": accentHover,
+    "--danger": danger,
+    "--danger-dim": dangerDim,
+    "--term-bg": termBg,
+    "--term-text": termText,
+    "--term-border": termBorder,
+    "--shadow-dropdown": shadowDropdown,
+    "--shadow-dialog": shadowDialog,
+    "--backdrop": backdrop,
+  };
 }

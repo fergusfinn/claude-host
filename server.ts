@@ -3,9 +3,12 @@ import { parse } from "url";
 import next from "next";
 import { WebSocketServer } from "ws";
 import { execFileSync, spawnSync } from "child_process";
-import { bridgeSession } from "./lib/pty-bridge.js";
+import { getSessionManager } from "./lib/sessions";
+import { ExecutorRegistry } from "./lib/executor-registry";
+import { bridgeRichSession } from "./lib/claude-bridge";
 
 const dev = process.env.NODE_ENV !== "production";
+const EXECUTOR_TOKEN = process.env.EXECUTOR_TOKEN || "";
 
 // Support --port <n> CLI flag, falling back to PORT env, then 3000
 function resolvePort(): number {
@@ -29,6 +32,16 @@ try {
   process.exit(1);
 }
 
+function validateExecutorToken(url: string): boolean {
+  if (!EXECUTOR_TOKEN) return true;
+  try {
+    const parsed = new URL(url, "http://localhost");
+    return parsed.searchParams.get("token") === EXECUTOR_TOKEN;
+  } catch {
+    return false;
+  }
+}
+
 const app = next({ dev, dir: process.cwd() });
 const handle = app.getRequestHandler();
 
@@ -38,25 +51,80 @@ app.prepare().then(() => {
     handle(req, res, parsedUrl);
   });
 
+  // Wire up executor registry to session manager
+  const sessionManager = getSessionManager();
+  const registry = new ExecutorRegistry((id, status) => {
+    sessionManager.upsertExecutor({ id, name: id, labels: [], status });
+  });
+  sessionManager.setRegistry(registry);
+
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req, socket, head) => {
     const { pathname } = parse(req.url!);
-    const terminalMatch = pathname?.match(/^\/ws\/sessions\/([^/]+)$/);
 
+    // --- Browser terminal sessions: /ws/sessions/<name> ---
+    const terminalMatch = pathname?.match(/^\/ws\/sessions\/([^/]+)$/);
     if (terminalMatch) {
       const sessionName = decodeURIComponent(terminalMatch[1]);
       wss.handleUpgrade(req, socket, head, (ws) => {
-        bridgeSession(ws, sessionName);
+        sessionManager.attachSession(sessionName, ws);
       });
-    } else {
-      // Let Next.js handle HMR upgrades in dev mode
-      if (!dev) socket.destroy();
+      return;
     }
+
+    // --- Rich-mode sessions: /ws/rich/<name> ---
+    const richMatch = pathname?.match(/^\/ws\/rich\/([^/]+)$/);
+    if (richMatch) {
+      const sessionName = decodeURIComponent(richMatch[1]);
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        bridgeRichSession(ws, sessionName);
+      });
+      return;
+    }
+
+    // --- Executor control channel: /ws/executor/control ---
+    if (pathname === "/ws/executor/control") {
+      if (!validateExecutorToken(req.url!)) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        registry.handleControlConnection(ws, EXECUTOR_TOKEN);
+      });
+      return;
+    }
+
+    // --- Executor terminal channel: /ws/executor/terminal/<channelId> ---
+    const termChannelMatch = pathname?.match(/^\/ws\/executor\/terminal\/([^/]+)$/);
+    if (termChannelMatch) {
+      if (!validateExecutorToken(req.url!)) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      const channelId = decodeURIComponent(termChannelMatch[1]);
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        const resolved = registry.resolveTerminalChannel(channelId, ws);
+        if (!resolved) {
+          ws.close(1008, "Unknown channel ID");
+        }
+      });
+      return;
+    }
+
+    // Let Next.js handle HMR upgrades in dev mode
+    if (!dev) socket.destroy();
   });
 
   server.listen(port, () => {
     console.log(`Using ${tmuxVersion}`);
     console.log(`Claude Host running at http://localhost:${port}`);
+    if (EXECUTOR_TOKEN) {
+      console.log(`Executor connections enabled (token configured)`);
+    }
   });
 });

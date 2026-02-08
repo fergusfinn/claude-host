@@ -8,7 +8,7 @@ export function bridgeSession(ws: WebSocket, sessionName: string): void {
       name: "xterm-256color",
       cols: 80,
       rows: 24,
-      env: { ...process.env } as Record<string, string>,
+      env: { ...process.env, LANG: process.env.LANG || "en_US.UTF-8", LC_CTYPE: process.env.LC_CTYPE || "en_US.UTF-8" } as Record<string, string>,
     });
   } catch (e: any) {
     ws.send(`\r\n[error: failed to attach: ${e.message}]\r\n`);

@@ -1,29 +1,19 @@
 import Database from "better-sqlite3";
-import { execFileSync, spawnSync, execSync } from "child_process";
+import { mkdirSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 import { randomUUID } from "crypto";
-import { existsSync, mkdirSync } from "fs";
-import { dirname, join, resolve } from "path";
+import type { Session, ExecutorInfo } from "../shared/types";
+import { LocalExecutor } from "./executor-interface";
+import { cleanupRichSession, richSessionExists } from "./claude-bridge";
 
-export interface Session {
-  name: string;
-  created_at: string;
-  description: string;
-  command: string;
-  parent: string | null;
-  last_activity: number; // unix timestamp (seconds)
-  alive: boolean;
-}
+export type { Session };
 
-const TMUX = (() => {
-  try {
-    return execFileSync("which", ["tmux"], { encoding: "utf-8" }).trim();
-  } catch {
-    return "tmux";
-  }
-})();
+const LOCAL_EXECUTOR_ENABLED = process.env.DISABLE_LOCAL_EXECUTOR !== "1";
 
 class SessionManager {
   private db: Database.Database;
+  private localExecutor = LOCAL_EXECUTOR_ENABLED ? new LocalExecutor() : null;
+  private _registry: import("./executor-registry").ExecutorRegistry | null = null;
 
   constructor(dbPath: string) {
     mkdirSync(dirname(dbPath), { recursive: true });
@@ -43,6 +33,15 @@ class SessionManager {
         value TEXT NOT NULL
       )
     `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS executors (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        labels TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'offline',
+        last_seen INTEGER DEFAULT 0
+      )
+    `);
     // Migration: add mode column if missing
     try {
       this.db.exec(`ALTER TABLE sessions ADD COLUMN mode TEXT DEFAULT 'terminal'`);
@@ -55,23 +54,32 @@ class SessionManager {
     } catch {
       // Column already exists
     }
-  }
-
-  private tmuxExists(name: string): boolean {
-    return spawnSync(TMUX, ["has-session", "-t", name], { stdio: "pipe" }).status === 0;
-  }
-
-  private getPaneActivity(name: string): number {
+    // Migration: add executor column
     try {
-      const r = spawnSync(TMUX, ["display-message", "-t", name, "-p", "#{pane_last_activity}"], {
-        encoding: "utf-8",
-        timeout: 2000,
-      });
-      const ts = parseInt(r.stdout?.trim() || "0", 10);
-      return ts || Math.floor(Date.now() / 1000);
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN executor TEXT DEFAULT 'local'`);
     } catch {
-      return Math.floor(Date.now() / 1000);
+      // Column already exists
     }
+    // Migration: add job columns
+    try {
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN job_prompt TEXT DEFAULT NULL`);
+    } catch {
+      // Column already exists
+    }
+    try {
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN job_max_iterations INTEGER DEFAULT NULL`);
+    } catch {
+      // Column already exists
+    }
+  }
+
+  /** Set the executor registry (called by server.ts after startup) */
+  setRegistry(registry: import("./executor-registry").ExecutorRegistry): void {
+    this._registry = registry;
+  }
+
+  get registry() {
+    return this._registry;
   }
 
   list(): Session[] {
@@ -81,15 +89,91 @@ class SessionManager {
     const alive: Session[] = [];
     const deadNames: string[] = [];
     for (const row of rows) {
-      if (this.tmuxExists(row.name)) {
-        alive.push({
-          ...row,
-          parent: row.parent || null,
-          last_activity: this.getPaneActivity(row.name),
-          alive: true,
-        });
+      const executor = row.executor || "local";
+      const mode = row.mode || "terminal";
+      if (executor === "local") {
+        // Rich sessions have no tmux — always alive
+        if (mode === "rich") {
+          alive.push({
+            ...row,
+            mode,
+            parent: row.parent || null,
+            executor: "local",
+            last_activity: Math.floor(Date.now() / 1000),
+            alive: true,
+            job_prompt: row.job_prompt || null,
+            job_max_iterations: row.job_max_iterations || null,
+            needs_input: false,
+          });
+          continue;
+        }
+        if (!this.localExecutor) { deadNames.push(row.name); continue; }
+        // Direct tmux check (existing behavior)
+        if (this.localExecutor.tmuxExists(row.name)) {
+          alive.push({
+            ...row,
+            mode,
+            parent: row.parent || null,
+            executor: "local",
+            last_activity: this.localExecutor.getPaneActivity(row.name),
+            alive: true,
+            job_prompt: row.job_prompt || null,
+            job_max_iterations: row.job_max_iterations || null,
+            needs_input: false,
+          });
+        } else {
+          deadNames.push(row.name);
+        }
       } else {
-        deadNames.push(row.name);
+        // Remote executor: use heartbeat-cached liveness data
+        const liveness = this._registry?.getSessionLiveness(executor, row.name);
+        if (liveness) {
+          alive.push({
+            ...row,
+            parent: row.parent || null,
+            executor,
+            last_activity: liveness.last_activity,
+            alive: liveness.alive,
+            job_prompt: row.job_prompt || null,
+            job_max_iterations: row.job_max_iterations || null,
+            needs_input: false,
+          });
+        } else {
+          // Executor offline or session not reported — show as offline
+          const executorOnline = this._registry?.isExecutorOnline(executor) ?? false;
+          if (!executorOnline) {
+            alive.push({
+              ...row,
+              parent: row.parent || null,
+              executor,
+              last_activity: 0,
+              alive: false,
+              job_prompt: row.job_prompt || null,
+              job_max_iterations: row.job_max_iterations || null,
+              needs_input: false,
+            });
+          } else {
+            // Executor online but session not in heartbeat yet.
+            // Grace period: keep recently-created sessions (heartbeat may
+            // not have reported them yet).
+            const createdAt = new Date(row.created_at).getTime();
+            const ageMs = Date.now() - createdAt;
+            if (ageMs > 60_000) {
+              deadNames.push(row.name);
+            } else {
+              alive.push({
+                ...row,
+                parent: row.parent || null,
+                executor,
+                last_activity: Math.floor(createdAt / 1000),
+                alive: true,
+                job_prompt: row.job_prompt || null,
+                job_max_iterations: row.job_max_iterations || null,
+                needs_input: false,
+              });
+            }
+          }
+        }
       }
     }
     // Auto-cleanup dead sessions from DB
@@ -100,68 +184,145 @@ class SessionManager {
     return alive;
   }
 
-  create(name: string, description = "", command = "claude"): Session {
+  async create(name: string, description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal"): Promise<Session> {
+    if (mode === "rich") {
+      // Rich sessions don't need tmux — just insert the DB row
+      this.db
+        .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode) VALUES (?, ?, ?, ?, ?)")
+        .run(name, description, command, executor, "rich");
+
+      return {
+        name,
+        description,
+        command,
+        mode: "rich",
+        parent: null,
+        executor,
+        last_activity: Math.floor(Date.now() / 1000),
+        created_at: new Date().toISOString(),
+        alive: true,
+        job_prompt: null,
+        job_max_iterations: null,
+        needs_input: false,
+      };
+    }
+
+    const exec = this.getExecutor(executor);
+    // Only pass defaultCwd for local executor — remote executors use their own default
+    const defaultCwd = executor === "local" ? (this.getConfig("defaultCwd") || undefined) : undefined;
+
+    const result = await exec.createSession({ name, description, command, defaultCwd });
+
+    this.db
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor) VALUES (?, ?, ?, ?)")
+      .run(name, description, result.command, executor);
+
+    return {
+      name,
+      description,
+      command: result.command,
+      mode: "terminal",
+      parent: null,
+      executor,
+      last_activity: Math.floor(Date.now() / 1000),
+      created_at: new Date().toISOString(),
+      alive: true,
+      job_prompt: null,
+      job_max_iterations: null,
+      needs_input: false,
+    };
+  }
+
+  async createJob(name: string, prompt: string, maxIterations = 50, executor = "local"): Promise<Session> {
+    const { spawnSync } = await import("child_process");
+    const defaultCwd = this.getConfig("defaultCwd") || join(process.env.HOME || "/tmp", "workspace");
+    mkdirSync(defaultCwd, { recursive: true });
+
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
       throw new Error("Name must be alphanumeric, hyphens, underscores only");
     }
 
-    if (this.tmuxExists(name)) {
+    if (!this.localExecutor) throw new Error("Local executor is disabled (DISABLE_LOCAL_EXECUTOR=1)");
+
+    if (this.localExecutor.tmuxExists(name)) {
       throw new Error(`Session "${name}" already exists`);
     }
 
-    const tmuxArgs = ["new-session", "-d", "-s", name, "-x", "200", "-y", "50"];
-    const defaultCwd = this.getConfig("defaultCwd") || join(process.env.HOME || "/tmp", "workspace");
-    mkdirSync(defaultCwd, { recursive: true });
-    tmuxArgs.push("-c", defaultCwd);
-    const r = spawnSync(TMUX, tmuxArgs, {
-      stdio: "pipe",
-    });
+    // Create tmux session (same setup as regular sessions)
+    const r = spawnSync("tmux", ["new-session", "-d", "-s", name, "-x", "200", "-y", "50", "-c", defaultCwd], { stdio: "pipe" });
     if (r.status !== 0) {
       throw new Error(`Failed to create tmux session: ${r.stderr?.toString()}`);
     }
+    // Configure: status off, mouse on, scrollback
+    spawnSync("tmux", ["set-option", "-t", name, "status", "off"], { stdio: "pipe" });
+    spawnSync("tmux", ["set-option", "-t", name, "mouse", "on"], { stdio: "pipe" });
+    spawnSync("tmux", ["set-option", "-t", name, "history-limit", "50000"], { stdio: "pipe" });
 
-    // Hide status bar — the web UI is the chrome
-    spawnSync(TMUX, ["set-option", "-t", name, "status", "off"], { stdio: "pipe" });
+    const cwd = this.localExecutor.getPaneCwd(name) || defaultCwd;
 
-    // Enable mouse so tmux receives scroll-wheel events and enters
-    // copy-mode for scrollback browsing.  The default WheelUpPane
-    // binding enters copy-mode at a shell prompt, and forwards mouse
-    // events to apps that have mouse tracking enabled (e.g. claude CLI).
-    spawnSync(TMUX, ["set-option", "-t", name, "mouse", "on"], { stdio: "pipe" });
+    // Write ralph-loop state file
+    const claudeDir = join(cwd, ".claude");
+    mkdirSync(claudeDir, { recursive: true });
+    const stateContent = [
+      "---",
+      `max_iterations: ${maxIterations}`,
+      `promise: DONE`,
+      "---",
+      "",
+      prompt,
+      "",
+    ].join("\n");
+    writeFileSync(join(claudeDir, "ralph-loop.local.md"), stateContent);
 
-    // Large scrollback buffer
-    spawnSync(TMUX, ["set-option", "-t", name, "history-limit", "50000"], { stdio: "pipe" });
+    // Write prompt to temp file (avoids shell escaping)
+    const sessionId = randomUUID();
+    const promptFile = `/tmp/claude-job-${sessionId}-prompt.txt`;
+    writeFileSync(promptFile, prompt);
 
-    // Exit copy-mode automatically when scrolling back to the bottom
-    spawnSync(TMUX, ["set-option", "-t", name, "copy-mode-exit-on-bottom", "on"], { stdio: "pipe" });
+    // Write launcher script
+    const launcherScript = `/tmp/claude-job-${sessionId}.sh`;
+    writeFileSync(launcherScript, [
+      "#!/bin/bash",
+      `PROMPT=$(cat ${JSON.stringify(promptFile)})`,
+      `exec claude --session-id ${sessionId} "$PROMPT"`,
+      "",
+    ].join("\n"));
 
-    // Emit OSC 52 on copy so the browser client can write to the clipboard
-    spawnSync(TMUX, ["set-option", "-s", "set-clipboard", "on"], { stdio: "pipe" });
+    // Store session ID in tmux environment
+    spawnSync("tmux", ["set-environment", "-t", name, "CLAUDE_SESSION_ID", sessionId], { stdio: "pipe" });
 
-    // For claude commands, generate a session ID so fork hooks can find the conversation
-    let launchCommand = command;
-    const baseCommand = command.split(/\s+/)[0];
-    if (baseCommand === "claude") {
-      const sessionId = randomUUID();
-      launchCommand = `${command} --session-id ${sessionId}`;
-      spawnSync(TMUX, ["set-environment", "-t", name, "CLAUDE_SESSION_ID", sessionId], {
-        stdio: "pipe",
-      });
-    }
+    // Launch via tmux send-keys
+    spawnSync("tmux", ["send-keys", "-t", name, `bash ${launcherScript}`, "Enter"], { stdio: "pipe" });
 
-    // Launch command
-    spawnSync(TMUX, ["send-keys", "-t", name, launchCommand, "Enter"], { stdio: "pipe" });
-
+    // Insert into DB with job fields
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command) VALUES (?, ?, ?)")
-      .run(name, description, command);
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, job_prompt, job_max_iterations) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(name, prompt.slice(0, 200), "claude", "local", prompt, maxIterations);
 
-    return { name, description, command, parent: null, last_activity: Math.floor(Date.now() / 1000), created_at: new Date().toISOString(), alive: true };
+    return {
+      name,
+      description: prompt.slice(0, 200),
+      command: "claude",
+      mode: "terminal" as const,
+      parent: null,
+      executor: "local",
+      last_activity: Math.floor(Date.now() / 1000),
+      created_at: new Date().toISOString(),
+      alive: true,
+      job_prompt: prompt,
+      job_max_iterations: maxIterations,
+      needs_input: false,
+    };
   }
 
-  delete(name: string): void {
-    if (this.tmuxExists(name)) {
-      spawnSync(TMUX, ["kill-session", "-t", name], { stdio: "pipe" });
+  async delete(name: string): Promise<void> {
+    const mode = this.getMode(name);
+    if (mode === "rich") {
+      cleanupRichSession(name);
+    } else {
+      const executor = this.getSessionExecutorId(name);
+      const exec = this.getExecutor(executor);
+      await exec.deleteSession(name);
     }
     this.db.prepare("DELETE FROM sessions WHERE name = ?").run(name);
   }
@@ -187,105 +348,20 @@ class SessionManager {
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   }
 
-  snapshot(name: string): string {
-    if (!this.tmuxExists(name)) return "[session not running]";
-    try {
-      const r = spawnSync(TMUX, ["capture-pane", "-t", name, "-p", "-S", "-50"], {
-        encoding: "utf-8",
-        timeout: 2000,
-      });
-      return r.stdout || "[empty]";
-    } catch {
-      return "[capture failed]";
-    }
+  async snapshot(name: string): Promise<string> {
+    const executor = this.getSessionExecutorId(name);
+    const exec = this.getExecutor(executor);
+    return exec.snapshotSession(name);
   }
 
-  /** Summarize a session using claude -p and store the result as its description */
   async summarize(name: string): Promise<string> {
-    if (!this.tmuxExists(name)) return "";
-
-    let snapshot: string;
-    try {
-      const r = spawnSync(TMUX, ["capture-pane", "-t", name, "-p", "-S", "-200"], {
-        encoding: "utf-8",
-        timeout: 2000,
-      });
-      snapshot = r.stdout || "";
-    } catch {
-      return "";
+    const executor = this.getSessionExecutorId(name);
+    const exec = this.getExecutor(executor);
+    const description = await exec.summarizeSession(name);
+    if (description) {
+      this.db.prepare("UPDATE sessions SET description = ? WHERE name = ?").run(description, name);
     }
-
-    if (!snapshot.trim()) return "";
-
-    const { execFile } = await import("child_process");
-    return new Promise((resolve) => {
-      const child = execFile("claude", [
-        "-p",
-        "You are looking at terminal output from a coding session. " +
-          "Summarize what this session is working on in one brief sentence (max 80 chars). " +
-          "Output ONLY the summary sentence, nothing else.",
-      ], { timeout: 60000 }, (err, stdout) => {
-        if (err || !stdout) { resolve(""); return; }
-        const description = stdout.trim();
-        this.db.prepare("UPDATE sessions SET description = ? WHERE name = ?").run(description, name);
-        resolve(description);
-      });
-      child.stdin?.write(snapshot);
-      child.stdin?.end();
-    });
-  }
-
-  /**
-   * Snapshot existing JSONL files, then spawn a background shell script that
-   * polls for a new file and sets CLAUDE_SESSION_ID on the tmux session.
-   */
-  private discoverNewSessionId(sessionName: string, cwd: string): void {
-    const encodedCwd = cwd.replace(/\//g, "-");
-    const projectDir = join(process.env.HOME || "/tmp", ".claude", "projects", encodedCwd);
-    if (!existsSync(projectDir)) return;
-
-    // Snapshot existing files
-    const before = new Set<string>();
-    try {
-      const r = spawnSync("ls", [projectDir], { encoding: "utf-8", timeout: 2000 });
-      for (const f of (r.stdout || "").split("\n")) {
-        if (f.endsWith(".jsonl")) before.add(f);
-      }
-    } catch { return; }
-
-    const beforeList = [...before].join("\n");
-
-    // Spawn a background process that polls for the new file
-    const { spawn: spawnAsync } = require("child_process");
-    const child = spawnAsync("bash", ["-c", `
-      for i in $(seq 1 20); do
-        sleep 0.5
-        for f in "${projectDir}"/*.jsonl; do
-          [ -f "$f" ] || continue
-          name=$(basename "$f")
-          if ! echo "${beforeList}" | grep -qF "$name"; then
-            sid="\${name%.jsonl}"
-            ${TMUX} set-environment -t "${sessionName}" CLAUDE_SESSION_ID "$sid" 2>/dev/null
-            exit 0
-          fi
-        done
-      done
-    `], { stdio: "ignore", detached: true });
-    child.unref();
-  }
-
-  /** Get the current working directory of a tmux session's active pane */
-  private getPaneCwd(name: string): string | null {
-    if (!this.tmuxExists(name)) return null;
-    try {
-      const r = spawnSync(TMUX, ["display-message", "-t", name, "-p", "#{pane_current_path}"], {
-        encoding: "utf-8",
-        timeout: 2000,
-      });
-      return r.stdout?.trim() || null;
-    } catch {
-      return null;
-    }
+    return description;
   }
 
   /** Get configured fork hooks: command prefix -> hook script path */
@@ -306,105 +382,106 @@ class SessionManager {
     this.setConfig("forkHooks", JSON.stringify(hooks));
   }
 
-  /**
-   * Fork a session: create a new session by running a fork hook (if configured)
-   * or falling back to the same command in the same CWD.
-   */
-  fork(sourceName: string, newName: string): Session {
-    if (!/^[a-zA-Z0-9_-]+$/.test(newName)) {
-      throw new Error("Name must be alphanumeric, hyphens, underscores only");
-    }
-    if (this.tmuxExists(newName)) {
-      throw new Error(`Session "${newName}" already exists`);
-    }
-
-    // Get source session info
+  async fork(sourceName: string, newName: string): Promise<Session> {
+    // Get source session info from DB
     const sourceRow = this.db
-      .prepare("SELECT command FROM sessions WHERE name = ?")
-      .get(sourceName) as { command: string } | undefined;
+      .prepare("SELECT command, executor FROM sessions WHERE name = ?")
+      .get(sourceName) as { command: string; executor: string } | undefined;
     const sourceCommand = sourceRow?.command || "claude";
-    const sourceCwd = this.getPaneCwd(sourceName);
+    const sourceExecutor = sourceRow?.executor || "local";
 
-    // Resolve fork hook
+    // Fork targets the same executor as the source
+    const exec = this.getExecutor(sourceExecutor);
+
+    // Get source CWD (for local executor, direct tmux query)
+    let sourceCwd: string | null = null;
+    if (sourceExecutor === "local" && this.localExecutor) {
+      sourceCwd = this.localExecutor.getPaneCwd(sourceName);
+    }
+
     const hooks = this.getForkHooks();
-    let forkCommand = sourceCommand;
-
-    // Find matching hook: check if the source command starts with any hook key
-    const hookKey = Object.keys(hooks).find((key) =>
-      sourceCommand.split(/\s+/)[0] === key
-    );
-
-    if (hookKey) {
-      const hookPath = hooks[hookKey];
-      // Resolve relative paths from the app's root
-      const resolvedHook = hookPath.startsWith("/")
-        ? hookPath
-        : resolve(process.cwd(), hookPath);
-
-      if (existsSync(resolvedHook)) {
-        try {
-          const result = execSync(`bash "${resolvedHook}"`, {
-            encoding: "utf-8",
-            timeout: 5000,
-            env: {
-              ...process.env,
-              SOURCE_SESSION: sourceName,
-              SOURCE_CWD: sourceCwd || process.cwd(),
-              SOURCE_COMMAND: sourceCommand,
-            },
-          });
-          const cmd = result.trim();
-          if (cmd) forkCommand = cmd;
-        } catch {
-          // Hook failed — fall back to source command
-        }
-      }
-    }
-
-    // Create tmux session, optionally in the source CWD
-    const tmuxArgs = ["new-session", "-d", "-s", newName, "-x", "200", "-y", "50"];
-    if (sourceCwd) {
-      tmuxArgs.push("-c", sourceCwd);
-    }
-    const r = spawnSync(TMUX, tmuxArgs, { stdio: "pipe" });
-    if (r.status !== 0) {
-      throw new Error(`Failed to create tmux session: ${r.stderr?.toString()}`);
-    }
-
-    spawnSync(TMUX, ["set-option", "-t", newName, "status", "off"], { stdio: "pipe" });
-    spawnSync(TMUX, ["set-option", "-t", newName, "mouse", "on"], { stdio: "pipe" });
-    spawnSync(TMUX, ["set-option", "-t", newName, "history-limit", "50000"], { stdio: "pipe" });
-    spawnSync(TMUX, ["set-option", "-t", newName, "copy-mode-exit-on-bottom", "on"], { stdio: "pipe" });
-    spawnSync(TMUX, ["set-option", "-s", "set-clipboard", "on"], { stdio: "pipe" });
-
-    spawnSync(TMUX, ["send-keys", "-t", newName, forkCommand, "Enter"], { stdio: "pipe" });
-
-    // For forked claude sessions, discover the new session ID after launch.
-    // --fork-session generates a new ID internally; we poll for the newest
-    // JSONL file to appear in the project directory and store it.
-    const forkBaseCommand = forkCommand.split(/\s+/)[0];
-    if (forkBaseCommand === "claude" && sourceCwd) {
-      this.discoverNewSessionId(newName, sourceCwd);
-    }
+    const result = await exec.forkSession({
+      sourceName,
+      newName,
+      sourceCommand,
+      sourceCwd,
+      forkHooks: hooks,
+    });
 
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent) VALUES (?, ?, ?, ?)")
-      .run(newName, `forked from ${sourceName}`, forkCommand, sourceName);
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(newName, `forked from ${sourceName}`, result.command, sourceName, sourceExecutor, "terminal");
 
     return {
       name: newName,
       description: `forked from ${sourceName}`,
-      command: forkCommand,
+      command: result.command,
+      mode: "terminal" as const,
       parent: sourceName,
+      executor: sourceExecutor,
       last_activity: Math.floor(Date.now() / 1000),
       created_at: new Date().toISOString(),
       alive: true,
+      job_prompt: null,
+      job_max_iterations: null,
+      needs_input: false,
     };
+  }
+
+  /** Attach a user's WebSocket to a session's terminal */
+  attachSession(name: string, userWs: import("ws").WebSocket): void {
+    const executor = this.getSessionExecutorId(name);
+    const exec = this.getExecutor(executor);
+    exec.attachSession(name, userWs);
+  }
+
+  /** List registered executors */
+  listExecutors(): ExecutorInfo[] {
+    const executors: ExecutorInfo[] = [];
+    if (this.localExecutor) {
+      executors.push({ id: "local", name: "local", labels: [], status: "online", last_seen: Math.floor(Date.now() / 1000) });
+    }
+    if (this._registry) {
+      executors.push(...this._registry.listExecutors());
+    }
+    return executors;
+  }
+
+  /** Update executor info in DB (called by registry on register/heartbeat) */
+  upsertExecutor(info: { id: string; name: string; labels: string[]; status: string }): void {
+    this.db
+      .prepare("INSERT OR REPLACE INTO executors (id, name, labels, status, last_seen) VALUES (?, ?, ?, ?, ?)")
+      .run(info.id, info.name, JSON.stringify(info.labels), info.status, Math.floor(Date.now() / 1000));
+  }
+
+  getMode(name: string): "terminal" | "rich" {
+    const row = this.db.prepare("SELECT mode FROM sessions WHERE name = ?").get(name) as
+      | { mode: string }
+      | undefined;
+    return (row?.mode as "terminal" | "rich") || "terminal";
+  }
+
+  // --- Private helpers ---
+
+  private getSessionExecutorId(name: string): string {
+    const row = this.db.prepare("SELECT executor FROM sessions WHERE name = ?").get(name) as
+      | { executor: string }
+      | undefined;
+    return row?.executor || "local";
+  }
+
+  private getExecutor(id: string): import("../shared/types").ExecutorInterface {
+    if (id === "local") {
+      if (!this.localExecutor) throw new Error("Local executor is disabled (DISABLE_LOCAL_EXECUTOR=1)");
+      return this.localExecutor;
+    }
+    if (!this._registry) throw new Error(`No executor registry available`);
+    return this._registry.getRemoteExecutor(id);
   }
 }
 
 // Singleton — survives Next.js hot reloads in dev
-const SCHEMA_VERSION = 5; // bump to force re-creation after class changes
+const SCHEMA_VERSION = 7; // bump to force re-creation after class changes
 const globalForSessions = globalThis as unknown as {
   __sessions?: SessionManager;
   __sessionsVersion?: number;
