@@ -126,7 +126,7 @@ describe("claude-bridge (tmux-backed)", () => {
 
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const sessionState = calls.find((c: any) => c.type === "session_state");
-      expect(sessionState).toEqual({ type: "session_state", streaming: false });
+      expect(sessionState).toEqual({ type: "session_state", streaming: false, process_alive: false });
     });
 
     it("supports multiple simultaneous clients", () => {

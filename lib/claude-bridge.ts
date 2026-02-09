@@ -23,7 +23,7 @@ import { dirname, join } from "path";
  *   Server -> Client:  { type: "event", event: object }
  *   Server -> Client:  { type: "turn_complete" }
  *   Server -> Client:  { type: "error", message: string }
- *   Server -> Client:  { type: "session_state", streaming: boolean }
+ *   Server -> Client:  { type: "session_state", streaming: boolean, process_alive: boolean }
  */
 
 const TMUX = (() => {
@@ -54,6 +54,9 @@ interface RichState {
   pollTimer: ReturnType<typeof setInterval> | null;
   lineBuffer: string; // partial line from last read
   lastPromptText: string | null; // dedup user events echoed by claude
+  // Health check
+  healthCheckTimer: ReturnType<typeof setInterval> | null;
+  lastProcessAlive: boolean;
 }
 
 // --- SQLite persistence ---
@@ -141,6 +144,8 @@ function getOrCreate(name: string, command = "claude"): RichState {
       pollTimer: null,
       lineBuffer: "",
       lastPromptText: null,
+      healthCheckTimer: null,
+      lastProcessAlive: false,
     };
 
     // Migrate old SQLite-stored events to file if needed
@@ -287,6 +292,14 @@ function processEventChunk(name: string, state: RichState, chunk: string): void 
         }
       }
 
+      // Handle restart marker from wrapper
+      if (event.type === "system" && event.subtype === "restart") {
+        state.initReceived = false;
+        state.turning = false;
+        broadcast(state, { type: "event", event });
+        continue;
+      }
+
       // Skip duplicate init events
       if (event.type === "system" && event.subtype === "init") {
         if (state.initReceived) continue;
@@ -389,6 +402,28 @@ function stopTailing(state: RichState): void {
   }
 }
 
+// --- Process health check ---
+
+function startHealthCheck(name: string, state: RichState): void {
+  stopHealthCheck(state);
+  state.lastProcessAlive = tmuxExists(name);
+
+  state.healthCheckTimer = setInterval(() => {
+    const alive = tmuxExists(name);
+    if (alive !== state.lastProcessAlive) {
+      state.lastProcessAlive = alive;
+      broadcast(state, { type: "session_state", streaming: state.turning, process_alive: alive });
+    }
+  }, 5000);
+}
+
+function stopHealthCheck(state: RichState): void {
+  if (state.healthCheckTimer) {
+    clearInterval(state.healthCheckTimer);
+    state.healthCheckTimer = null;
+  }
+}
+
 // --- FIFO prompt writing ---
 
 function sendPromptViaFifo(name: string, state: RichState, promptJson: string): boolean {
@@ -444,10 +479,12 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
     }
     state.initReceived = false;
     startTailing(sessionName, state);
+    startHealthCheck(sessionName, state);
   }
 
   // Tell this client whether a turn is currently in progress
-  send(ws, { type: "session_state", streaming: state.turning });
+  const processAlive = tmuxExists(sessionName);
+  send(ws, { type: "session_state", streaming: state.turning, process_alive: processAlive });
 
   console.log(`[rich:${sessionName}] WS client connected (clients=${state.clients.size}, tmux=${tmuxExists(sessionName)}, turning=${state.turning})`);
 
@@ -527,9 +564,10 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
     state.clients.delete(ws);
     console.log(`[rich:${sessionName}] WS client disconnected (reason=${reason ?? "unknown"}, remaining=${state.clients.size})`);
     if (state.clients.size === 0) {
-      // Stop tailing when no clients are connected (saves resources).
+      // Stop tailing and health checks when no clients are connected (saves resources).
       // Events are still captured by the wrapper in the file.
       stopTailing(state);
+      stopHealthCheck(state);
       // Persist current offset
       saveState(sessionName, state.sessionId, state.byteOffset);
     }
@@ -544,6 +582,7 @@ export function cleanupRichSession(name: string): void {
   const state = sessions.get(name);
   if (state) {
     stopTailing(state);
+    stopHealthCheck(state);
     for (const ws of state.clients) {
       if (ws.readyState === WebSocket.OPEN) ws.close();
     }

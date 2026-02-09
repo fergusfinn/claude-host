@@ -49,6 +49,9 @@ while true; do
   SESSION_ID=$(grep -o '"session_id":"[^"]*"' "$EVENTS_FILE" 2>/dev/null \
     | tail -1 | cut -d'"' -f4)
 
+  # Write restart marker so clients know claude is restarting
+  echo '{"type":"system","subtype":"restart","message":"Claude process restarted"}' >> "$EVENTS_FILE"
+
   # Brief pause before restarting
   sleep 1
 done
