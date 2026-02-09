@@ -407,6 +407,26 @@ function renderBlock(
 }
 
 // ---------------------------------------------------------------------------
+// Clipboard fallback for insecure contexts (plain HTTP)
+// ---------------------------------------------------------------------------
+
+function fallbackCopy(text: string): boolean {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(ta);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CodeBlock component (with copy button)
 // ---------------------------------------------------------------------------
 
@@ -414,10 +434,18 @@ function CodeBlock({ lang, content, theme }: { lang: string; content: string; th
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(content).then(() => {
+    const onSuccess = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+    };
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(content).then(onSuccess).catch(() => {
+        fallbackCopy(content) && onSuccess();
+      });
+    } else {
+      fallbackCopy(content) && onSuccess();
+    }
   };
 
   return (

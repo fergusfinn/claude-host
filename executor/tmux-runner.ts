@@ -242,8 +242,6 @@ export class TmuxRunner {
       claudeArgs.push("--settings", settingsMatch[1]);
     }
 
-    console.log(`[rich:${name}] Creating tmux session ${tName} (repoRoot=${REPO_ROOT})`);
-
     const r = spawnSync(TMUX, [
       "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
       "-c", REPO_ROOT,
