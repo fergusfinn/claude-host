@@ -7,6 +7,7 @@
  */
 
 import { execSync } from "child_process";
+import path from "path";
 import { ExecutorClient } from "./client";
 
 let VERSION: string;
