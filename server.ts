@@ -53,9 +53,14 @@ app.prepare().then(() => {
 
   // Wire up executor registry to session manager
   const sessionManager = getSessionManager();
-  const registry = new ExecutorRegistry((id, status) => {
-    sessionManager.upsertExecutor({ id, name: id, labels: [], status });
-  });
+  const registry = new ExecutorRegistry(
+    (id, status) => {
+      sessionManager.upsertExecutor({ id, name: id, labels: [], status });
+    },
+    (executorId, sessions) => {
+      sessionManager.adoptOrphanedSessions(executorId, sessions);
+    },
+  );
   sessionManager.setRegistry(registry);
 
   const wss = new WebSocketServer({ noServer: true });

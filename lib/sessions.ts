@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "fs";
 import { dirname, join } from "path";
 import { execFileSync } from "child_process";
-import type { Session, ExecutorInfo } from "../shared/types";
+import type { Session, ExecutorInfo, SessionLiveness } from "../shared/types";
 import { LocalExecutor } from "./executor-interface";
 import { cleanupRichSession } from "./claude-bridge";
 
@@ -492,6 +492,16 @@ class SessionManager {
     this.db
       .prepare("INSERT OR REPLACE INTO executors (id, name, labels, status, last_seen) VALUES (?, ?, ?, ?, ?)")
       .run(info.id, info.name, JSON.stringify(info.labels), info.status, Math.floor(Date.now() / 1000));
+  }
+
+  /** Adopt sessions reported by a remote executor that don't exist in the DB */
+  adoptOrphanedSessions(executorId: string, sessions: SessionLiveness[]): void {
+    const insert = this.db.prepare(
+      "INSERT OR IGNORE INTO sessions (name, description, command, executor) VALUES (?, ?, ?, ?)"
+    );
+    for (const s of sessions) {
+      insert.run(s.name, "", "claude", executorId);
+    }
   }
 
   getMode(name: string): "terminal" | "rich" {

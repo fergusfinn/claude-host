@@ -49,7 +49,10 @@ export class ExecutorRegistry {
   private healthCheckInterval: ReturnType<typeof setInterval>;
   private logs: ExecutorLogEntry[] = [];
 
-  constructor(private onExecutorChange?: (id: string, status: "online" | "offline") => void) {
+  constructor(
+    private onExecutorChange?: (id: string, status: "online" | "offline") => void,
+    private onHeartbeat?: (executorId: string, sessions: SessionLiveness[]) => void,
+  ) {
     // Periodically check for stale executors
     this.healthCheckInterval = setInterval(() => this.checkHealth(), 15000);
   }
@@ -243,6 +246,7 @@ export class ExecutorRegistry {
     executor.info.last_seen = Math.floor(Date.now() / 1000);
     executor.info.status = "online";
     executor.sessions = msg.sessions;
+    this.onHeartbeat?.(executorId, msg.sessions);
   }
 
   private handleResponse(msg: ResponseMessage): void {
