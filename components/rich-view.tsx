@@ -155,7 +155,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [processAlive, setProcessAlive] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [collapsedTools, setCollapsedTools] = useState<Set<string>>(new Set());
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
   // Subagent child messages keyed by parent tool_use_id
   const [subagentMessages, setSubagentMessages] = useState<Map<string, RenderedMessage[]>>(new Map());
@@ -286,36 +286,6 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
     });
   }, [messages]);
 
-  // --- Auto-collapse all tool calls that have completed ---
-  // Auto-collapse non-Edit tools immediately on appearance
-  useEffect(() => {
-    const newCollapsed = new Set(collapsedTools);
-    let changed = false;
-    for (const entry of renderPlan) {
-      if (!entry.items) continue;
-      for (const item of entry.items) {
-        if (item.kind === "tool_pair" || item.kind === "subagent") {
-          if (!newCollapsed.has(item.toolUse.id) && item.toolUse.name !== "Edit") {
-            newCollapsed.add(item.toolUse.id);
-            changed = true;
-          }
-        } else if (item.kind === "tool_group") {
-          const groupKey = `group-${item.pairs[0].toolUse.id}`;
-          if (!newCollapsed.has(groupKey)) {
-            newCollapsed.add(groupKey);
-            changed = true;
-          }
-          for (const pair of item.pairs) {
-            if (!newCollapsed.has(pair.toolUse.id) && pair.toolUse.name !== "Edit") {
-              newCollapsed.add(pair.toolUse.id);
-              changed = true;
-            }
-          }
-        }
-      }
-    }
-    if (changed) setCollapsedTools(newCollapsed);
-  }, [renderPlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Answered questions: derive from message history ---
   const answeredQuestionIds = useMemo(() => {
@@ -658,7 +628,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
   }
 
   const toggleTool = useCallback((id: string) => {
-    setCollapsedTools((prev) => {
+    setExpandedTools((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -844,7 +814,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
                             toolUse={item.toolUse}
                             toolResult={item.toolResult}
                             theme={theme}
-                            collapsed={collapsedTools.has(item.toolUse.id)}
+                            collapsed={!expandedTools.has(item.toolUse.id)}
                             onToggle={toggleTool}
                             resultExpanded={expandedResults.has(item.toolUse.id)}
                             onToggleResult={toggleResultExpanded}
@@ -858,7 +828,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
                             name={item.name}
                             pairs={item.pairs}
                             theme={theme}
-                            collapsedTools={collapsedTools}
+                            expandedTools={expandedTools}
                             onToggle={toggleTool}
                             expandedResults={expandedResults}
                             onToggleResult={toggleResultExpanded}
@@ -872,7 +842,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
                             toolUse={item.toolUse}
                             toolResult={item.toolResult}
                             theme={theme}
-                            collapsed={collapsedTools.has(item.toolUse.id)}
+                            collapsed={!expandedTools.has(item.toolUse.id)}
                             onToggle={toggleTool}
                             resultExpanded={expandedResults.has(item.toolUse.id)}
                             onToggleResult={toggleResultExpanded}
@@ -1268,7 +1238,7 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
   name,
   pairs,
   theme,
-  collapsedTools,
+  expandedTools,
   onToggle,
   expandedResults,
   onToggleResult,
@@ -1277,7 +1247,7 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
   name: string;
   pairs: Array<{ toolUse: ContentBlockToolUse; toolResult: ContentBlockToolResult | null }>;
   theme: TerminalTheme;
-  collapsedTools: Set<string>;
+  expandedTools: Set<string>;
   onToggle: (id: string) => void;
   expandedResults: Set<string>;
   onToggleResult: (id: string) => void;
@@ -1287,7 +1257,7 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
   const groupKey = `group-${pairs[0].toolUse.id}`;
   const doneCount = pairs.filter((p) => p.toolResult !== null).length;
   const allDone = doneCount === pairs.length;
-  const isCollapsed = collapsedTools.has(groupKey);
+  const isCollapsed = !expandedTools.has(groupKey);
 
   return (
     <div className={styles.toolGroup} style={{ background: `${toolColor}08` }}>
@@ -1318,7 +1288,7 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
               toolUse={pair.toolUse}
               toolResult={pair.toolResult}
               theme={theme}
-              collapsed={collapsedTools.has(pair.toolUse.id)}
+              collapsed={!expandedTools.has(pair.toolUse.id)}
               onToggle={onToggle}
               resultExpanded={expandedResults.has(pair.toolUse.id)}
               onToggleResult={onToggleResult}
@@ -1381,41 +1351,11 @@ const SubagentBlock = React.memo(function SubagentBlock({
       }));
   }, [childMessages, childResultMap]);
 
-  // All tool calls in nested view are collapsed by default
-  const [nestedCollapsed, setNestedCollapsed] = useState<Set<string>>(new Set());
+  const [nestedExpanded, setNestedExpanded] = useState<Set<string>>(new Set());
   const [nestedExpandedResults, setNestedExpandedResults] = useState<Set<string>>(new Set());
 
-  // Auto-collapse nested tool calls
-  useEffect(() => {
-    const newCollapsed = new Set(nestedCollapsed);
-    let changed = false;
-    for (const { items } of childRenderItems) {
-      for (const item of items) {
-        if (item.kind === "tool_pair" || item.kind === "subagent") {
-          if (!newCollapsed.has(item.toolUse.id)) {
-            newCollapsed.add(item.toolUse.id);
-            changed = true;
-          }
-        } else if (item.kind === "tool_group") {
-          const groupKey = `group-${item.pairs[0].toolUse.id}`;
-          if (!newCollapsed.has(groupKey)) {
-            newCollapsed.add(groupKey);
-            changed = true;
-          }
-          for (const pair of item.pairs) {
-            if (!newCollapsed.has(pair.toolUse.id)) {
-              newCollapsed.add(pair.toolUse.id);
-              changed = true;
-            }
-          }
-        }
-      }
-    }
-    if (changed) setNestedCollapsed(newCollapsed);
-  }, [childRenderItems]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const toggleNestedTool = useCallback((id: string) => {
-    setNestedCollapsed((prev) => {
+    setNestedExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -1493,7 +1433,7 @@ const SubagentBlock = React.memo(function SubagentBlock({
                               toolUse={item.toolUse}
                               toolResult={item.toolResult}
                               theme={theme}
-                              collapsed={nestedCollapsed.has(item.toolUse.id)}
+                              collapsed={!nestedExpanded.has(item.toolUse.id)}
                               onToggle={toggleNestedTool}
                               resultExpanded={nestedExpandedResults.has(item.toolUse.id)}
                               onToggleResult={toggleNestedResult}
@@ -1508,7 +1448,7 @@ const SubagentBlock = React.memo(function SubagentBlock({
                               name={item.name}
                               pairs={item.pairs}
                               theme={theme}
-                              collapsedTools={nestedCollapsed}
+                              expandedTools={nestedExpanded}
                               onToggle={toggleNestedTool}
                               expandedResults={nestedExpandedResults}
                               onToggleResult={toggleNestedResult}

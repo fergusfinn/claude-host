@@ -5,6 +5,7 @@
   background: var(--bg-1);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  gap: 2px;
 }
 
 .bar {
@@ -14,7 +15,8 @@
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  gap: 0;
+  gap: 2px;
+  padding: 0 2px;
 }
 
 .bar::-webkit-scrollbar { display: none; }
@@ -23,13 +25,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 12px;
+  padding: 0 10px;
+  margin: 4px 0;
   font-size: 12px;
   font-family: var(--mono);
   color: var(--text-2);
   background: transparent;
   border: none;
-  border-right: 1px solid var(--border);
+  border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;
   position: relative;
@@ -61,18 +64,19 @@
 .active::after {
   content: '';
   position: absolute;
-  bottom: -1px;
-  left: 0;
-  right: 0;
+  bottom: 0;
+  left: 4px;
+  right: 4px;
   height: 2px;
   background: var(--accent);
+  border-radius: 1px;
 }
 
 .logoMark {
   width: 6px;
   height: 6px;
   background: var(--accent);
-  border-radius: 2px;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
@@ -96,7 +100,7 @@
   color: var(--accent);
   background: var(--accent-dim);
   padding: 0 4px;
-  border-radius: 2px;
+  border-radius: 4px;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -120,7 +124,7 @@
   opacity: 0;
   transition: opacity 0.1s;
   font-family: var(--mono);
-  border-radius: 0;
+  border-radius: 4px;
 }
 .closeBtn:hover { color: var(--text-0); background: var(--bg-4); }
 
@@ -128,14 +132,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
+  width: 28px;
+  margin: 4px 0;
   flex-shrink: 0;
-  font-size: 16px;
-  font-family: var(--mono);
   color: var(--text-3);
   background: transparent;
   border: none;
-  border-right: 1px solid var(--border);
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.1s;
 }
@@ -148,7 +151,6 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  border-left: 1px solid var(--border);
 }
 
 .modeIndicator {
@@ -157,12 +159,13 @@
   justify-content: center;
   width: 70px;
   padding: 0 10px;
-  height: 100%;
+  margin: 4px 2px;
   font-size: 10px;
   font-weight: 600;
   color: var(--text-3);
   background: transparent;
   border: none;
+  border-radius: 6px;
   font-family: var(--mono);
   letter-spacing: 0.5px;
   cursor: pointer;
@@ -182,7 +185,7 @@
   z-index: 100;
   background: var(--bg-1);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 6px;
   min-width: 170px;
   box-shadow: 0 8px 24px var(--shadow-dropdown);
@@ -204,7 +207,7 @@
   color: var(--text-0);
   background: var(--bg-3);
   padding: 1px 5px;
-  border-radius: 0;
+  border-radius: 3px;
   min-width: 22px;
   text-align: center;
 }
@@ -236,13 +239,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  width: 28px;
+  margin: 4px 0;
   flex-shrink: 0;
-  font-size: 14px;
   color: var(--text-2);
   background: transparent;
   border: none;
-  border-left: 1px solid var(--border);
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.1s;
 }
@@ -255,12 +258,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  width: 28px;
+  margin: 4px 0;
   flex-shrink: 0;
   color: var(--text-2);
   background: transparent;
   border: none;
-  border-left: 1px solid var(--border);
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.1s;
 }
@@ -273,20 +277,20 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  border-left: 1px solid var(--border);
 }
 
 .themeBtn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 12px;
-  height: 100%;
+  padding: 0 10px;
+  margin: 4px 0;
   font-size: 11px;
   font-family: var(--mono);
   color: var(--text-2);
   background: transparent;
   border: none;
+  border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.1s;
@@ -314,7 +318,7 @@
   z-index: 100;
   background: var(--bg-1);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 4px;
   min-width: 200px;
   box-shadow: 0 8px 24px var(--shadow-dropdown);
@@ -331,7 +335,7 @@
   color: var(--text-1);
   background: transparent;
   border: none;
-  border-radius: 0;
+  border-radius: 4px;
   cursor: pointer;
   text-align: left;
   transition: background 0.1s;
@@ -348,7 +352,7 @@
   display: flex;
   gap: 2px;
   padding: 2px 4px;
-  border-radius: 0;
+  border-radius: 4px;
   font-size: 10px;
   font-family: var(--mono);
   font-weight: 600;
@@ -399,8 +403,7 @@
   }
 
   .newBtn {
-    width: 28px;
-    font-size: 14px;
+    width: 24px;
   }
 
   .modeIndicator {
@@ -419,12 +422,11 @@
   }
 
   .refreshBtn {
-    width: 32px;
-    font-size: 12px;
+    width: 28px;
   }
 
   .modeBtn {
-    width: 32px;
+    width: 28px;
   }
 
   .controlDropdown {
