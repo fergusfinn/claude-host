@@ -85,6 +85,23 @@
   white-space: nowrap;
 }
 
+.restartBtn {
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-family: var(--mono);
+  cursor: pointer;
+  line-height: 16px;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.restartBtn:hover {
+  opacity: 1;
+}
+
 .statusError {
   color: var(--danger);
   font-size: 11px;
@@ -823,6 +840,7 @@
   background: transparent;
   border: none;
   outline: none;
+  font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
   resize: none;

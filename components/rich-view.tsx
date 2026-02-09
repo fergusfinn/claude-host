@@ -611,6 +611,10 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
     wsRef.current?.send(JSON.stringify({ type: "interrupt" }));
   }
 
+  function sendRestart() {
+    wsRef.current?.send(JSON.stringify({ type: "restart" }));
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -704,6 +708,15 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
                     ? "Reconnecting\u2026"
                     : "Disconnected"}
             </span>
+            {connectionState === "connected" && processAlive === false && (
+              <button
+                className={styles.restartBtn}
+                onClick={sendRestart}
+                style={{ color: theme.cursor }}
+              >
+                Restart
+              </button>
+            )}
           </div>
           {error && <span className={styles.statusError}>{error}</span>}
         </div>
@@ -897,14 +910,14 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
             autoResize(e.target);
           }}
           onKeyDown={handleKeyDown}
-          placeholder={isStreaming ? "Esc to interrupt\u2026" : "Type a message\u2026"}
+          placeholder="Type a message\u2026"
           disabled={!connected}
           rows={1}
           style={{
             color: theme.foreground,
           }}
         />
-        {isStreaming ? (
+        {isStreaming && (
           <button
             className={styles.stopBtn}
             onClick={sendInterrupt}
@@ -916,19 +929,18 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
           >
             {"\u25A0"}
           </button>
-        ) : (
-          <button
-            className={styles.sendBtn}
-            onClick={() => sendPrompt(inputValue)}
-            disabled={!connected || !inputValue.trim()}
-            style={{
-              background: inputValue.trim() ? theme.cursor : "transparent",
-              color: inputValue.trim() ? theme.background : theme.foreground,
-            }}
-          >
-            {"\u21B5"}
-          </button>
         )}
+        <button
+          className={styles.sendBtn}
+          onClick={() => sendPrompt(inputValue)}
+          disabled={!connected || !inputValue.trim()}
+          style={{
+            background: inputValue.trim() ? theme.cursor : "transparent",
+            color: inputValue.trim() ? theme.background : theme.foreground,
+          }}
+        >
+          {"\u21B5"}
+        </button>
         </div>
       </div>
     </div>

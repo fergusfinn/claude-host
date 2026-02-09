@@ -14,6 +14,7 @@ interface Props {
   isTabActive: boolean;
   theme: TerminalTheme;
   font: TerminalFont;
+  richFont?: string;
   refreshKey: number;
   sessionModes?: Record<string, "terminal" | "rich">;
   onFocusPane: (paneId: string) => void;
@@ -75,6 +76,7 @@ const PaneTerminal = memo(function PaneTerminal({
   focusedPaneId,
   theme,
   font,
+  richFont,
   refreshKey,
   sessionModes,
   onFocusPane,
@@ -118,6 +120,7 @@ const PaneTerminal = memo(function PaneTerminal({
           isActive={isTabActive && isFocused}
           theme={theme}
           font={font}
+          richFont={richFont}
           onOpenFile={onOpenFile ? (fp: string) => onOpenFile(leaf.id, fp) : undefined}
         />
       ) : (

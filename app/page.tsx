@@ -72,6 +72,7 @@ export default function Home() {
   const closedTabsRef = useRef<Set<string>>(new Set());
   const [theme, setTheme] = useState<TerminalTheme>(() => getThemeById(DEFAULT_DARK_THEME));
   const [font, setFont] = useState<TerminalFont>(() => getFontById(DEFAULT_FONT_ID));
+  const [richFont, setRichFont] = useState("system");
   const [mode, setMode] = useState<"dark" | "light">("dark");
   const [configLoaded, setConfigLoaded] = useState(false);
   const [keyMode, _setKeyMode] = useState<"insert" | "control">("insert");
@@ -115,6 +116,7 @@ export default function Home() {
           ensureFontLoaded(f);
           setFont(f);
         }
+        if (config.richFont) setRichFont(config.richFont);
       })
       .catch(() => {})
       .finally(() => setConfigLoaded(true));
@@ -741,6 +743,7 @@ export default function Home() {
               isTabActive={activeTabId === tab.id}
               theme={theme}
               font={font}
+              richFont={richFont}
               refreshKey={refreshKey}
               sessionModes={sessionModes}
               onFocusPane={handlePaneFocus}
@@ -774,6 +777,7 @@ export default function Home() {
               const newConfig = await res.json();
               configRef.current = newConfig;
               if ("showHints" in updated) setShowHints(updated.showHints !== "false");
+              if ("richFont" in updated) setRichFont(updated.richFont);
               setSettingsOpen(false);
             }}
             onCancel={() => setSettingsOpen(false)}

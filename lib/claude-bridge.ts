@@ -509,12 +509,26 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
       return;
     }
 
-    if (parsed.type === "prompt" && parsed.text) {
-      if (state.turning) {
-        send(ws, { type: "error", message: "A turn is already in progress" });
+    if (parsed.type === "restart") {
+      if (tmuxExists(sessionName)) {
+        send(ws, { type: "session_state", streaming: state.turning, process_alive: true });
         return;
       }
+      try {
+        ensureTmuxSession(sessionName, state);
+        if (!state.pollTimer) {
+          startTailing(sessionName, state);
+        }
+        startHealthCheck(sessionName, state);
+        broadcast(state, { type: "session_state", streaming: false, process_alive: true });
+        console.log(`[rich:${sessionName}] Restarted tmux session`);
+      } catch (e: any) {
+        send(ws, { type: "error", message: `Failed to restart: ${e.message}` });
+      }
+      return;
+    }
 
+    if (parsed.type === "prompt" && parsed.text) {
       // Ensure tmux session is running
       try {
         ensureTmuxSession(sessionName, state);
