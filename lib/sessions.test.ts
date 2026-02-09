@@ -162,9 +162,18 @@ describe("SessionManager", () => {
       );
     });
 
-    it("defaults command to claude", async () => {
+    it("defaults command to claude with theme settings", async () => {
       const s = await mgr().create("default-cmd", "");
-      expect(s.command).toBe("claude");
+      expect(s.command).toContain("claude");
+      expect(s.command).toContain("--settings");
+      expect(s.command).toContain("dark-ansi");
+    });
+
+    it("uses light-ansi theme when mode is light", async () => {
+      const m = mgr();
+      m.setConfig("mode", "light");
+      const s = await m.create("light-cmd", "");
+      expect(s.command).toContain("light-ansi");
     });
   });
 
@@ -304,7 +313,8 @@ describe("SessionManager", () => {
       expect(session.name).toBe("test-job");
       expect(session.job_prompt).toBe("do something");
       expect(session.job_max_iterations).toBe(10);
-      expect(session.command).toBe("claude --dangerously-skip-permissions");
+      expect(session.command).toContain("claude --dangerously-skip-permissions");
+      expect(session.command).toContain("--settings");
       expect(session.alive).toBe(true);
     });
 
@@ -514,8 +524,10 @@ describe("SessionManager", () => {
         (c) => c[1] && (c[1] as string[]).includes("send-keys"),
       );
       expect(sendKeysCall).toBeDefined();
-      // fork sends just "claude", not "claude --session-id <uuid>"
-      expect((sendKeysCall![1] as string[])[3]).toBe("claude");
+      // fork sends the stored command (with --settings), not "claude --session-id <uuid>"
+      const sentCommand = (sendKeysCall![1] as string[])[3];
+      expect(sentCommand).toContain("claude");
+      expect(sentCommand).not.toContain("--session-id");
     });
 
     it("does not generate session ID for non-claude forked commands", async () => {
@@ -588,8 +600,9 @@ describe("SessionManager", () => {
 
       const session = await m.fork("source", "forked");
 
-      // Should fall back to the source command
-      expect(session.command).toBe("claude");
+      // Should fall back to the source command (which includes --settings from create)
+      expect(session.command).toContain("claude");
+      expect(session.command).toContain("--settings");
     });
 
     it("does not run hook when hook file does not exist", async () => {

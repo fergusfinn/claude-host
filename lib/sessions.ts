@@ -193,11 +193,17 @@ class SessionManager {
   }
 
   async create(name: string, description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal"): Promise<Session> {
+    // Inject theme settings for claude commands
+    let finalCommand = command;
+    if (command.split(/\s+/)[0] === "claude") {
+      finalCommand = `${command} ${this.getClaudeThemeArg()}`;
+    }
+
     if (mode === "rich") {
       // Rich sessions use tmux via the wrapper — insert DB row and create runtime dir
       this.db
         .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode) VALUES (?, ?, ?, ?, ?)")
-        .run(name, description, command, executor, "rich");
+        .run(name, description, finalCommand, executor, "rich");
 
       // Create runtime directory for events file and FIFO
       mkdirSync(join(process.cwd(), "data", "rich", name), { recursive: true });
@@ -205,7 +211,7 @@ class SessionManager {
       return {
         name,
         description,
-        command,
+        command: finalCommand,
         mode: "rich",
         parent: null,
         executor,
@@ -220,7 +226,7 @@ class SessionManager {
 
     const exec = this.getExecutor(executor);
 
-    const result = await exec.createSession({ name, description, command });
+    const result = await exec.createSession({ name, description, command: finalCommand });
 
     this.db
       .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor) VALUES (?, ?, ?, ?)")
@@ -247,7 +253,8 @@ class SessionManager {
       throw new Error("Name must be alphanumeric, hyphens, underscores only");
     }
 
-    const command = skipPermissions ? "claude --dangerously-skip-permissions" : "claude";
+    let command = skipPermissions ? "claude --dangerously-skip-permissions" : "claude";
+    command = `${command} ${this.getClaudeThemeArg()}`;
     const exec = this.getExecutor(executor);
 
     await exec.createJob({ name, prompt, maxIterations, command });
@@ -453,6 +460,13 @@ class SessionManager {
   }
 
   // --- Private helpers ---
+
+  /** Build --settings flag to set Claude Code's theme based on dark/light mode */
+  private getClaudeThemeArg(): string {
+    const mode = this.getConfig("mode");
+    const theme = mode === "light" ? "light-ansi" : "dark-ansi";
+    return `--settings '{"theme":"${theme}"}'`;
+  }
 
   private getSessionExecutorId(name: string): string {
     const row = this.db.prepare("SELECT executor FROM sessions WHERE name = ?").get(name) as

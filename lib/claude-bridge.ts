@@ -204,6 +204,12 @@ function ensureTmuxSession(name: string, state: RichState): void {
     claudeArgs.push("--dangerously-skip-permissions");
   }
 
+  // Extract --settings from command if present
+  const settingsMatch = state.command.match(/--settings\s+'([^']+)'/);
+  if (settingsMatch) {
+    claudeArgs.push("--settings", settingsMatch[1]);
+  }
+
   // Create tmux session running the wrapper script
   const r = spawnSync(TMUX, [
     "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
