@@ -224,18 +224,32 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
     });
   }, [messages, resultMap]);
 
-  // --- Auto-collapse large tool groups ---
+  // --- Auto-collapse all tool calls that have completed ---
   useEffect(() => {
     const newCollapsed = new Set(collapsedTools);
     let changed = false;
     for (const entry of renderPlan) {
       if (!entry.items) continue;
       for (const item of entry.items) {
-        if (item.kind === "tool_group" && item.pairs.length > 3) {
+        if (item.kind === "tool_pair" || item.kind === "subagent") {
+          // Collapse once a result arrives
+          if (item.toolResult !== null && !newCollapsed.has(item.toolUse.id)) {
+            newCollapsed.add(item.toolUse.id);
+            changed = true;
+          }
+        } else if (item.kind === "tool_group") {
           const groupKey = `group-${item.pairs[0].toolUse.id}`;
-          if (!newCollapsed.has(groupKey)) {
+          const allDone = item.pairs.every((p) => p.toolResult !== null);
+          if (allDone && !newCollapsed.has(groupKey)) {
             newCollapsed.add(groupKey);
             changed = true;
+          }
+          // Also collapse individual tools within the group
+          for (const pair of item.pairs) {
+            if (pair.toolResult !== null && !newCollapsed.has(pair.toolUse.id)) {
+              newCollapsed.add(pair.toolUse.id);
+              changed = true;
+            }
           }
         }
       }
