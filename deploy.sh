@@ -55,8 +55,14 @@ deploy() {
   echo "  -> npm install"
   npm install --omit=dev
 
-  echo "  -> next build"
-  npx next build
+  echo "  -> next build (to staging dir)"
+  NEXT_DIST_DIR=".next-staging" npx next build
+
+  # Atomic swap: stop service, swap build dirs, then start
+  echo "  -> Swapping build output"
+  systemctl --user stop claude-host 2>/dev/null || true
+  rm -rf "$REMOTE_DIR/.next"
+  mv "$REMOTE_DIR/.next-staging" "$REMOTE_DIR/.next"
 
   # Set up systemd user service
   mkdir -p ~/.config/systemd/user
