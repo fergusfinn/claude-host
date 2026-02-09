@@ -566,10 +566,16 @@ export default function Home() {
           mode: "rich",
         }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error("Failed to create rich session:", body);
+        return;
+      }
       await loadSessions();
       connectSession(name, "rich");
-    } catch {}
+    } catch (err) {
+      console.error("Failed to create rich session:", err);
+    }
   }
 
   const [modeSwitchSession, setModeSwitchSession] = useState<string | null>(null);
@@ -875,7 +881,7 @@ export default function Home() {
             display: "flex", alignItems: "center", justifyContent: "center",
             background: "var(--backdrop)", backdropFilter: "blur(2px)",
           }}
-          onClick={() => setExecutorPickerOptions(null)}
+          onPointerDown={() => setExecutorPickerOptions(null)}
         >
           <div
             style={{
@@ -884,7 +890,7 @@ export default function Home() {
               boxShadow: "0 16px 64px var(--shadow-dialog)",
               fontFamily: "var(--mono)",
             }}
-            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
           >
             <div style={{ padding: "12px 12px 8px", fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>
               Select executor
@@ -893,13 +899,12 @@ export default function Home() {
               <button
                 key={ex.id}
                 style={{
-                  display: "block", width: "100%", padding: "10px 12px",
+                  display: "block", width: "100%", padding: "12px",
                   background: "transparent", border: "none", borderRadius: 8,
-                  fontFamily: "var(--mono)", fontSize: 13, color: "var(--text-1)",
+                  fontFamily: "var(--mono)", fontSize: 14, color: "var(--text-1)",
                   textAlign: "left", cursor: "pointer",
+                  minHeight: 44,
                 }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "var(--bg-3)")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
                 onClick={() => {
                   setExecutorPickerOptions(null);
                   doCreateRich(ex.id);
