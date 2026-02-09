@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { themesForMode, fonts, type TerminalTheme, type TerminalFont, ensureFontLoaded } from "@/lib/themes";
+import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "@/components/rich-view";
 import { getAllLeaves } from "@/lib/layout";
 import type { TabState } from "@/app/page";
 import { Plus, RotateCw, Sun, Moon, X } from "lucide-react";
@@ -13,6 +14,7 @@ interface Props {
   sessionExecutors?: Record<string, string>;
   currentTheme: TerminalTheme;
   currentFont: TerminalFont;
+  richFont: string;
   keyMode: "insert" | "control";
   showHints: boolean;
   onKeyModeChange: (mode: "insert" | "control") => void;
@@ -22,6 +24,7 @@ interface Props {
   onReorderTab: (fromIndex: number, toIndex: number) => void;
   onThemeChange: (themeId: string) => void;
   onFontChange: (fontId: string) => void;
+  onRichFontChange: (fontId: string) => void;
   onRefresh: () => void;
   mode: "dark" | "light";
   onModeChange: (mode: "dark" | "light") => void;
@@ -40,17 +43,19 @@ function tabExecutor(tab: TabState, sessionExecutors?: Record<string, string>): 
   return exec && exec !== "local" ? exec : null;
 }
 
-export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onNew, onReorderTab, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
+export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, richFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onNew, onReorderTab, onThemeChange, onFontChange, onRichFontChange, onRefresh, mode, onModeChange }: Props) {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
+  const [richFontPickerOpen, setRichFontPickerOpen] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const themePickerRef = useRef<HTMLDivElement>(null);
   const fontPickerRef = useRef<HTMLDivElement>(null);
+  const richFontPickerRef = useRef<HTMLDivElement>(null);
 
   // Close pickers on outside click
   useEffect(() => {
-    if (!themePickerOpen && !fontPickerOpen) return;
+    if (!themePickerOpen && !fontPickerOpen && !richFontPickerOpen) return;
     const handler = (e: MouseEvent) => {
       if (themePickerOpen && themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
         setThemePickerOpen(false);
@@ -58,10 +63,13 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
       if (fontPickerOpen && fontPickerRef.current && !fontPickerRef.current.contains(e.target as Node)) {
         setFontPickerOpen(false);
       }
+      if (richFontPickerOpen && richFontPickerRef.current && !richFontPickerRef.current.contains(e.target as Node)) {
+        setRichFontPickerOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [themePickerOpen, fontPickerOpen]);
+  }, [themePickerOpen, fontPickerOpen, richFontPickerOpen]);
 
   return (
     <div className={styles.wrapper}>
@@ -168,12 +176,45 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
         {mode === "dark" ? <Sun size={14} /> : <Moon size={14} />}
       </button>
 
+      <div className={styles.themePicker} ref={richFontPickerRef}>
+        <button
+          className={styles.themeBtn}
+          onClick={() => {
+            if (!richFontPickerOpen) Object.keys(RICH_FONT_OPTIONS).forEach(ensureRichFontLoaded);
+            setRichFontPickerOpen(!richFontPickerOpen);
+            setFontPickerOpen(false);
+            setThemePickerOpen(false);
+          }}
+          title={`UI Font: ${RICH_FONT_OPTIONS[richFont]?.label ?? "System"}`}
+        >
+          <span className={styles.fontIcon} style={{ fontStyle: "italic" }}>A</span>
+          <span className={styles.themeName}>{RICH_FONT_OPTIONS[richFont]?.label ?? "System"}</span>
+        </button>
+        {richFontPickerOpen && (
+          <div className={styles.themeDropdown}>
+            {Object.entries(RICH_FONT_OPTIONS).map(([id, opt]) => (
+              <button
+                key={id}
+                className={`${styles.themeOption} ${id === richFont ? styles.themeOptionActive : ""}`}
+                onClick={() => {
+                  onRichFontChange(id);
+                  setRichFontPickerOpen(false);
+                }}
+              >
+                <span className={styles.fontPreviewLabel} style={{ fontFamily: opt.fontFamily }}>{opt.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className={styles.themePicker} ref={fontPickerRef}>
         <button
           className={styles.themeBtn}
           onClick={() => {
             if (!fontPickerOpen) fonts.forEach(ensureFontLoaded);
             setFontPickerOpen(!fontPickerOpen);
+            setRichFontPickerOpen(false);
             setThemePickerOpen(false);
           }}
           title={`Font: ${currentFont.name}`}
@@ -203,7 +244,7 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
       <div className={styles.themePicker} ref={themePickerRef}>
         <button
           className={styles.themeBtn}
-          onClick={() => { setThemePickerOpen(!themePickerOpen); setFontPickerOpen(false); }}
+          onClick={() => { setThemePickerOpen(!themePickerOpen); setFontPickerOpen(false); setRichFontPickerOpen(false); }}
           title={`Theme: ${currentTheme.name}`}
         >
           <span

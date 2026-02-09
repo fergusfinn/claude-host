@@ -8,6 +8,7 @@ import {
   type TerminalFont,
   ensureFontLoaded,
 } from "@/lib/themes";
+import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "@/components/rich-view";
 import { getAllLeaves } from "@/lib/layout";
 import type { TabState } from "@/app/page";
 import { Plus, RotateCw, Sun, Moon, X, EllipsisVertical, Server, Settings, RefreshCw } from "lucide-react";
@@ -18,6 +19,7 @@ interface Props {
   activeTabId: string | null;
   currentTheme: TerminalTheme;
   currentFont: TerminalFont;
+  richFont?: string;
   keyMode: "insert" | "control";
   onKeyModeChange: (mode: "insert" | "control") => void;
   onSelectTab: (tabId: string | null) => void;
@@ -25,6 +27,7 @@ interface Props {
   onNew: () => void;
   onThemeChange: (themeId: string) => void;
   onFontChange: (fontId: string) => void;
+  onRichFontChange?: (fontId: string) => void;
   onRefresh: () => void;
   mode: "dark" | "light";
   onModeChange: (mode: "dark" | "light") => void;
@@ -43,6 +46,7 @@ export function MobileTabBar({
   activeTabId,
   currentTheme,
   currentFont,
+  richFont = "system",
   keyMode,
   onKeyModeChange,
   onSelectTab,
@@ -50,6 +54,7 @@ export function MobileTabBar({
   onNew,
   onThemeChange,
   onFontChange,
+  onRichFontChange,
   onRefresh,
   mode,
   onModeChange,
@@ -57,7 +62,7 @@ export function MobileTabBar({
   onOpenSettings,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [subMenu, setSubMenu] = useState<"none" | "fonts" | "themes">("none");
+  const [subMenu, setSubMenu] = useState<"none" | "fonts" | "richFonts" | "themes">("none");
   const [confirmCloseId, setConfirmCloseId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const tabStripRef = useRef<HTMLDivElement>(null);
@@ -168,6 +173,19 @@ export function MobileTabBar({
                       {mode === "dark" ? "Light mode" : "Dark mode"}
                     </span>
                   </button>
+                  {onRichFontChange && (
+                    <button
+                      className={styles.menuItem}
+                      onClick={() => {
+                        Object.keys(RICH_FONT_OPTIONS).forEach(ensureRichFontLoaded);
+                        setSubMenu("richFonts");
+                      }}
+                    >
+                      <span className={styles.menuIcon} style={{ fontWeight: 600, fontSize: 13, fontStyle: "italic" }}>A</span>
+                      <span className={styles.menuLabel}>UI Font</span>
+                      <span className={styles.menuValue}>{RICH_FONT_OPTIONS[richFont]?.label ?? "System"}</span>
+                    </button>
+                  )}
                   <button
                     className={styles.menuItem}
                     onClick={() => {
@@ -225,6 +243,30 @@ export function MobileTabBar({
                     <span className={styles.menuIcon}><RefreshCw size={14} /></span>
                     <span className={styles.menuLabel}>Reload page</span>
                   </button>
+                </>
+              )}
+
+              {subMenu === "richFonts" && onRichFontChange && (
+                <>
+                  <button
+                    className={`${styles.menuItem} ${styles.menuBack}`}
+                    onClick={() => setSubMenu("none")}
+                  >
+                    &#8592; UI Font
+                  </button>
+                  {Object.entries(RICH_FONT_OPTIONS).map(([id, opt]) => (
+                    <button
+                      key={id}
+                      className={`${styles.menuItem} ${id === richFont ? styles.menuItemActive : ""}`}
+                      onClick={() => {
+                        onRichFontChange(id);
+                        setSubMenu("none");
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <span style={{ fontFamily: opt.fontFamily }}>{opt.label}</span>
+                    </button>
+                  ))}
                 </>
               )}
 

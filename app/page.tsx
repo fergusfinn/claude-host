@@ -7,6 +7,7 @@ import { PaneLayout } from "@/components/pane-layout";
 import { TabBar } from "@/components/tab-bar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ModeSwitchModal } from "@/components/mode-switch-modal";
+import { ensureRichFontLoaded } from "@/components/rich-view";
 import { getThemeById, DEFAULT_DARK_THEME, type TerminalTheme, getFontById, DEFAULT_FONT_ID, type TerminalFont, ensureFontLoaded, getDefaultThemeForMode, themeToChromeVars } from "@/lib/themes";
 import { loadShortcuts, type ShortcutMap } from "@/lib/shortcuts";
 import {
@@ -142,6 +143,12 @@ export default function Home() {
     ensureFontLoaded(f);
     setFont(f);
     saveConfig({ font: fontId });
+  }
+
+  function handleRichFontChange(fontId: string) {
+    ensureRichFontLoaded(fontId);
+    setRichFont(fontId);
+    saveConfig({ richFont: fontId });
   }
 
   // Apply theme-derived chrome colors to the document root
@@ -748,6 +755,7 @@ export default function Home() {
         sessionExecutors={Object.fromEntries((liveSessions ?? []).map(s => [s.name, s.executor]))}
         currentTheme={theme}
         currentFont={font}
+        richFont={richFont}
         keyMode={keyMode}
         showHints={showHints}
         onKeyModeChange={setKeyMode}
@@ -771,6 +779,7 @@ export default function Home() {
         }}
         onThemeChange={handleThemeChange}
         onFontChange={handleFontChange}
+        onRichFontChange={handleRichFontChange}
         onRefresh={() => setRefreshKey((k) => k + 1)}
         mode={mode}
         onModeChange={handleModeChange}
@@ -780,12 +789,14 @@ export default function Home() {
         activeTabId={activeTabId}
         currentTheme={theme}
         currentFont={font}
+        richFont={richFont}
         keyMode={keyMode}
         onKeyModeChange={setKeyMode}
         onSelectTab={setActiveTabId}
         onNew={quickCreateRich}
         onThemeChange={handleThemeChange}
         onFontChange={handleFontChange}
+        onRichFontChange={handleRichFontChange}
         onRefresh={() => setRefreshKey((k) => k + 1)}
         mode={mode}
         onModeChange={handleModeChange}
