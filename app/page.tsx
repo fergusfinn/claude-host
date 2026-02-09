@@ -419,6 +419,25 @@ export default function Home() {
     );
   }
 
+  function detachTab(tabId: string) {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    // Remove tab from this window without killing sessions
+    const leaves = getAllLeaves(tab.layout);
+    for (const leaf of leaves) {
+      closedTabsRef.current.add(leaf.sessionName);
+    }
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.id !== tabId);
+      if (activeTabId === tabId) {
+        const idx = prev.findIndex((t) => t.id === tabId);
+        const newActive = next[Math.min(idx, next.length - 1)]?.id ?? null;
+        setActiveTabId(newActive);
+      }
+      return next;
+    });
+  }
+
   function closeTabById(tabId: string) {
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
@@ -605,6 +624,7 @@ export default function Home() {
         onKeyModeChange={setKeyMode}
         onSelectTab={setActiveTabId}
         onCloseTab={closeTabById}
+        onDetachTab={detachTab}
         onNew={quickCreate}
         onThemeChange={handleThemeChange}
         onFontChange={handleFontChange}

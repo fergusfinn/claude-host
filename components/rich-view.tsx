@@ -727,7 +727,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
               ) : (
                 <div className={styles.streaming}>
                   <span className={styles.streamingDot} style={{ background: theme.cursor }} />
-                  <span>thinking\u2026</span>
+                  <span>{"thinking\u2026"}</span>
                 </div>
               )
             )}
@@ -745,7 +745,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
               borderColor: `${theme.foreground}30`,
             }}
           >
-            \u2193 Jump to bottom
+            {"\u2193"} Jump to bottom
           </button>
         )}
       </div>
@@ -780,7 +780,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
             }}
             title="Stop (Esc)"
           >
-            \u25A0
+            {"\u25A0"}
           </button>
         ) : (
           <button
@@ -792,7 +792,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
               color: inputValue.trim() ? theme.background : theme.foreground,
             }}
           >
-            \u21B5
+            {"\u21B5"}
           </button>
         )}
         </div>
@@ -973,7 +973,7 @@ function ToolPairBlock({
           {toolResult === null ? (
             <div className={styles.toolPairRunning} style={{ color: toolColor }}>
               <span className={styles.toolPendingDot} style={{ background: toolColor }} />
-              <span>running\u2026</span>
+              <span>{"running\u2026"}</span>
             </div>
           ) : resultContent && resultContent.trim() ? (
             <div className={styles.toolPairResult}>
@@ -1181,7 +1181,7 @@ function SubagentBlock({
     >
       <button className={styles.subagentHeader} onClick={onToggle} style={{ color: agentColor }}>
         <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
-        <span className={styles.toolIcon}>\u229E</span>
+        <span className={styles.toolIcon}>{"\u229E"}</span>
         <span className={styles.toolName}>Task</span>
         {subagentType && (
           <span className={styles.subagentBadge} style={{ background: `${agentColor}25`, color: agentColor }}>
@@ -1196,7 +1196,7 @@ function SubagentBlock({
           </span>
         )}
         {collapsed && toolResult !== null && (
-          <span className={styles.toolDoneHint} style={{ color: `${theme.foreground}50` }}>\u2713</span>
+          <span className={styles.toolDoneHint} style={{ color: `${theme.foreground}50` }}>{"\u2713"}</span>
         )}
       </button>
 
@@ -1360,7 +1360,7 @@ function QuestionBlock({
       )}
       {answered && (
         <div className={styles.questionAnswered} style={{ color: `${theme.foreground}50` }}>
-          \u2713 answered
+          {"\u2713"} answered
         </div>
       )}
     </div>

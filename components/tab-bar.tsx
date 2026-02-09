@@ -17,6 +17,7 @@ interface Props {
   onKeyModeChange: (mode: "insert" | "control") => void;
   onSelectTab: (tabId: string | null) => void;
   onCloseTab: (tabId: string) => void;
+  onDetachTab?: (tabId: string) => void;
   onNew: () => void;
   onThemeChange: (themeId: string) => void;
   onFontChange: (fontId: string) => void;
@@ -38,15 +39,17 @@ function tabExecutor(tab: TabState, sessionExecutors?: Record<string, string>): 
   return exec && exec !== "local" ? exec : null;
 }
 
-export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onNew, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
+export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onDetachTab, onNew, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
   const themePickerRef = useRef<HTMLDivElement>(null);
   const fontPickerRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close pickers on outside click
+  // Close pickers and context menu on outside click
   useEffect(() => {
-    if (!themePickerOpen && !fontPickerOpen) return;
+    if (!themePickerOpen && !fontPickerOpen && !contextMenu) return;
     const handler = (e: MouseEvent) => {
       if (themePickerOpen && themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
         setThemePickerOpen(false);
@@ -54,10 +57,13 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
       if (fontPickerOpen && fontPickerRef.current && !fontPickerRef.current.contains(e.target as Node)) {
         setFontPickerOpen(false);
       }
+      if (contextMenu && contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [themePickerOpen, fontPickerOpen]);
+  }, [themePickerOpen, fontPickerOpen, contextMenu]);
 
   return (
     <div className={styles.wrapper}>
@@ -82,6 +88,10 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
             tabIndex={0}
             onClick={() => onSelectTab(tab.id)}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectTab(tab.id); } }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });
+            }}
             title={`${tabLabel(tab)}${exec ? ` (${exec})` : ""} (^A ${i + 1})`}
           >
             <div className={styles.dot} />
@@ -248,6 +258,42 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
           </div>
         )}
       </div>
+
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className={styles.contextMenu}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            className={styles.contextMenuItem}
+            onClick={() => {
+              const tab = tabs.find((t) => t.id === contextMenu.tabId);
+              if (tab) {
+                const leaves = getAllLeaves(tab.layout);
+                const sessionName = leaves[0]?.sessionName;
+                if (sessionName) {
+                  window.open(`/${encodeURIComponent(sessionName)}`, "_blank");
+                  onDetachTab?.(contextMenu.tabId);
+                }
+              }
+              setContextMenu(null);
+            }}
+          >
+            Open in new window
+          </button>
+          <div className={styles.contextMenuSep} />
+          <button
+            className={styles.contextMenuItem}
+            onClick={() => {
+              onCloseTab(contextMenu.tabId);
+              setContextMenu(null);
+            }}
+          >
+            Close tab
+          </button>
+        </div>
+      )}
     </div>
   );
 }
