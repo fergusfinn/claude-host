@@ -741,8 +741,10 @@ export default function Home() {
             key={tab.id}
             style={{
               position: "absolute", inset: 0,
-              display: activeTabId === tab.id ? "flex" : "none",
+              display: "flex",
               flexDirection: "column",
+              visibility: activeTabId === tab.id ? "visible" : "hidden",
+              pointerEvents: activeTabId === tab.id ? "auto" : "none",
             }}
           >
             <PaneLayout

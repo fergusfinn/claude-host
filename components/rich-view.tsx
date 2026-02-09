@@ -214,27 +214,38 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
     return () => el.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
 
-  // Scroll to bottom when tab becomes active again
+  // Reset scroll-tracking state when tab becomes active again
   useEffect(() => {
     if (!isActive) return;
     const el = scrollRef.current;
     if (!el) return;
-    userScrolledUpRef.current = false;
-    setShowJumpToBottom(false);
-    el.scrollTop = el.scrollHeight;
+    // Scroll position is preserved via visibility:hidden (no display:none reset).
+    // Just sync the "scrolled up" state with the actual position.
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    userScrolledUpRef.current = !atBottom;
+    setShowJumpToBottom(!atBottom);
   }, [isActive]);
 
   // MutationObserver: auto-scroll when DOM content changes (catches rapid updates)
+  // Debounced via rAF to avoid layout thrashing during streaming
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    let rafId: number | null = null;
     const observer = new MutationObserver(() => {
-      if (!userScrolledUpRef.current) {
-        el.scrollTop = el.scrollHeight;
-      }
+      if (rafId !== null || userScrolledUpRef.current) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        if (!userScrolledUpRef.current) {
+          el.scrollTop = el.scrollHeight;
+        }
+      });
     });
     observer.observe(el, { childList: true, subtree: true, characterData: true });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, []);
 
   const nextId = () => `msg-${++msgIdCounter.current}`;
