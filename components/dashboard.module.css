@@ -434,6 +434,30 @@
   font-size: 11px;
 }
 
+/* Sub-toggle (smaller variant for nested toggles) */
+
+.subToggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.subToggle .modeOption {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+/* Type section (indented area below type selector) */
+
+.typeSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 8px;
+}
+
 /* Mode badge (session row) */
 
 .modeBadge {

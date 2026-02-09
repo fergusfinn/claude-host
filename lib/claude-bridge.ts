@@ -34,6 +34,7 @@ interface RichState {
   initReceived: boolean;
   spawning: boolean;
   dirty: boolean; // true when events need to be flushed to DB
+  command: string;
 }
 
 // --- SQLite persistence ---
@@ -124,7 +125,7 @@ function flushPersist(name: string, state: RichState): void {
   }
 }
 
-function getOrCreate(name: string): RichState {
+function getOrCreate(name: string, command = "claude"): RichState {
   let state = sessions.get(name);
   if (!state) {
     // Try to restore from DB first
@@ -138,6 +139,7 @@ function getOrCreate(name: string): RichState {
       initReceived: false,
       spawning: false,
       dirty: false,
+      command,
     };
     sessions.set(name, state);
   }
@@ -165,8 +167,11 @@ function ensureProcess(name: string, state: RichState): ChildProcess {
     "--output-format", "stream-json",
     "--input-format", "stream-json",
     "--verbose",
-    "--dangerously-skip-permissions",
   ];
+
+  if (state.command.includes("--dangerously-skip-permissions")) {
+    args.push("--dangerously-skip-permissions");
+  }
 
   // Resume previous conversation if process restarted
   if (state.sessionId) {
@@ -326,8 +331,8 @@ function ensureProcess(name: string, state: RichState): ChildProcess {
   return proc;
 }
 
-export function bridgeRichSession(ws: WebSocket, sessionName: string): void {
-  const state = getOrCreate(sessionName);
+export function bridgeRichSession(ws: WebSocket, sessionName: string, command = "claude"): void {
+  const state = getOrCreate(sessionName, command);
 
   // Disconnect previous client if any
   if (state.ws && state.ws !== ws && state.ws.readyState === WebSocket.OPEN) {

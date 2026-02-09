@@ -3,7 +3,7 @@ import { mkdirSync } from "fs";
 import { dirname, join } from "path";
 import type { Session, ExecutorInfo } from "../shared/types";
 import { LocalExecutor } from "./executor-interface";
-import { cleanupRichSession, richSessionExists } from "./claude-bridge";
+import { cleanupRichSession } from "./claude-bridge";
 
 export type { Session };
 
@@ -91,24 +91,19 @@ class SessionManager {
       const executor = row.executor || "local";
       const mode = row.mode || "terminal";
       if (executor === "local") {
-        // Rich sessions have no tmux — check if bridge process exists
+        // Rich sessions have no tmux — they're alive as long as the DB row exists
         if (mode === "rich") {
-          const isAlive = richSessionExists(row.name);
-          if (isAlive) {
-            alive.push({
-              ...row,
-              mode,
-              parent: row.parent || null,
-              executor: "local",
-              last_activity: row.last_activity || Math.floor(new Date(row.created_at).getTime() / 1000),
-              alive: true,
-              job_prompt: row.job_prompt || null,
-              job_max_iterations: row.job_max_iterations || null,
-              needs_input: false,
-            });
-          } else {
-            deadNames.push(row.name);
-          }
+          alive.push({
+            ...row,
+            mode,
+            parent: row.parent || null,
+            executor: "local",
+            last_activity: row.last_activity || Math.floor(new Date(row.created_at).getTime() / 1000),
+            alive: true,
+            job_prompt: row.job_prompt || null,
+            job_max_iterations: row.job_max_iterations || null,
+            needs_input: false,
+          });
           continue;
         }
         if (!this.localExecutor) { deadNames.push(row.name); continue; }
@@ -235,24 +230,25 @@ class SessionManager {
     };
   }
 
-  async createJob(name: string, prompt: string, maxIterations = 50, executor = "local"): Promise<Session> {
+  async createJob(name: string, prompt: string, maxIterations = 50, executor = "local", skipPermissions = true): Promise<Session> {
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
       throw new Error("Name must be alphanumeric, hyphens, underscores only");
     }
 
+    const command = skipPermissions ? "claude --dangerously-skip-permissions" : "claude";
     const exec = this.getExecutor(executor);
 
-    await exec.createJob({ name, prompt, maxIterations });
+    await exec.createJob({ name, prompt, maxIterations, command });
 
     // Insert into DB with job fields
     this.db
       .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, job_prompt, job_max_iterations) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(name, prompt.slice(0, 200), "claude", executor, prompt, maxIterations);
+      .run(name, prompt.slice(0, 200), command, executor, prompt, maxIterations);
 
     return {
       name,
       description: prompt.slice(0, 200),
-      command: "claude",
+      command,
       mode: "terminal" as const,
       parent: null,
       executor,
@@ -434,6 +430,13 @@ class SessionManager {
       | { mode: string }
       | undefined;
     return (row?.mode as "terminal" | "rich") || "terminal";
+  }
+
+  getCommand(name: string): string {
+    const row = this.db.prepare("SELECT command FROM sessions WHERE name = ?").get(name) as
+      | { command: string }
+      | undefined;
+    return row?.command || "claude";
   }
 
   // --- Private helpers ---

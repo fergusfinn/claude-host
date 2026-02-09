@@ -27,6 +27,7 @@ export interface CreateJobOpts {
   name: string;
   prompt: string;
   maxIterations: number;
+  command?: string;
 }
 
 export interface ForkSessionOpts {

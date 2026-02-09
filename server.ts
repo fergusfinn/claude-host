@@ -77,8 +77,9 @@ app.prepare().then(() => {
     const richMatch = pathname?.match(/^\/ws\/rich\/([^/]+)$/);
     if (richMatch) {
       const sessionName = decodeURIComponent(richMatch[1]);
+      const command = sessionManager.getCommand(sessionName);
       wss.handleUpgrade(req, socket, head, (ws) => {
-        bridgeRichSession(ws, sessionName);
+        bridgeRichSession(ws, sessionName, command);
       });
       return;
     }

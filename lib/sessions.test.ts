@@ -304,7 +304,7 @@ describe("SessionManager", () => {
       expect(session.name).toBe("test-job");
       expect(session.job_prompt).toBe("do something");
       expect(session.job_max_iterations).toBe(10);
-      expect(session.command).toBe("claude");
+      expect(session.command).toBe("claude --dangerously-skip-permissions");
       expect(session.alive).toBe(true);
     });
 

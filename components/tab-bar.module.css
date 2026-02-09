@@ -38,6 +38,19 @@
 }
 
 .tab:hover { color: var(--text-1); background: var(--bg-2); }
+.dragging { opacity: 0.4; }
+
+.dropIndicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: -1px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 10;
+}
 .tab:hover .closeBtn { opacity: 1; }
 .tab:hover .kbd { opacity: 1; }
 
@@ -363,41 +376,6 @@
   flex-shrink: 0;
 }
 
-/* ---- Context menu ---- */
-
-.contextMenu {
-  position: fixed;
-  z-index: 200;
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 4px;
-  min-width: 160px;
-  box-shadow: 0 8px 24px var(--shadow-dropdown);
-}
-
-.contextMenuItem {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-family: var(--mono);
-  color: var(--text-1);
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.1s;
-}
-.contextMenuItem:hover { background: var(--bg-3); color: var(--text-0); }
-
-.contextMenuSep {
-  height: 1px;
-  background: var(--border);
-  margin: 4px 0;
-}
 
 /* ---- Mobile responsive ---- */
 

@@ -1,0 +1,25 @@
+services:
+  server:
+    build: .
+    command: ["serve"]
+    ports:
+      - "3000:3000"
+    volumes:
+      - claude-data:/app/data
+    environment:
+      - EXECUTOR_TOKEN=${EXECUTOR_TOKEN:-}
+    restart: unless-stopped
+
+  executor:
+    build: .
+    command: ["executor", "--url", "ws://server:3000"]
+    environment:
+      - EXECUTOR_TOKEN=${EXECUTOR_TOKEN:-}
+    depends_on:
+      - server
+    restart: unless-stopped
+    profiles:
+      - with-executor
+
+volumes:
+  claude-data:

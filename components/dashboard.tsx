@@ -33,7 +33,7 @@ interface SessionGroup {
   maxActivity: number; // most recent activity across the group
 }
 
-export function Dashboard({ onConnect, config, openCreateRef }: { onConnect: (name: string, mode?: "terminal" | "rich") => void; config: Record<string, string>; openCreateRef?: MutableRefObject<(() => void) | null> }) {
+export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: string, mode?: "terminal" | "rich") => void; openCreateRef?: MutableRefObject<(() => void) | null> }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [executors, setExecutors] = useState<ExecutorInfo[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -128,11 +128,11 @@ export function Dashboard({ onConnect, config, openCreateRef }: { onConnect: (na
     load();
   }
 
-  async function handleCreateJob(name: string, prompt: string, maxIterations: number, executor: string) {
+  async function handleCreateJob(name: string, prompt: string, maxIterations: number, executor: string, skipPermissions: boolean) {
     const res = await fetch("/api/sessions/job", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, prompt, maxIterations, executor }),
+      body: JSON.stringify({ name, prompt, maxIterations, executor, skipPermissions }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -185,7 +185,6 @@ export function Dashboard({ onConnect, config, openCreateRef }: { onConnect: (na
       >
         {dialogOpen && (
           <CreateForm
-            defaultCommand={config.defaultCommand || "claude"}
             executors={executors}
             onSubmit={handleCreate}
             onCancel={() => setDialogOpen(false)}
@@ -378,7 +377,7 @@ function SessionRow({
             <span className={styles.executorBadge}>{s.executor}</span>
           )}
           <span className={styles.rowTime}>{activityAgo(s.last_activity)}</span>
-          {s.command && s.command !== "claude" && (
+          {s.command && !s.command.startsWith("claude") && (
             <span className={styles.rowCmd}>{s.command}</span>
           )}
         </div>
@@ -413,22 +412,21 @@ function SessionRow({
 }
 
 function CreateForm({
-  defaultCommand,
   executors,
   onSubmit,
   onCancel,
 }: {
-  defaultCommand: string;
   executors: ExecutorInfo[];
   onSubmit: (name: string, desc: string, cmd: string, executor: string, mode: "terminal" | "rich") => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(generateName);
   const [desc, setDesc] = useState("");
+  const [sessionType, setSessionType] = useState<"claude" | "custom">("claude");
+  const [mode, setMode] = useState<"terminal" | "rich">("terminal");
+  const [skipPermissions, setSkipPermissions] = useState(true);
   const [cmd, setCmd] = useState("");
   const [executor, setExecutor] = useState("local");
-  const [mode, setMode] = useState<"terminal" | "rich">("terminal");
-  const [showExtras, setShowExtras] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -444,10 +442,15 @@ function CreateForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
+    if (sessionType === "custom" && !cmd.trim()) return;
     setSubmitting(true);
     setError("");
     try {
-      await onSubmit(name.trim(), desc.trim(), cmd.trim() || defaultCommand, executor, mode);
+      const finalMode = sessionType === "custom" ? "terminal" : mode;
+      const finalCmd = sessionType === "claude"
+        ? (skipPermissions ? "claude --dangerously-skip-permissions" : "claude")
+        : cmd.trim();
+      await onSubmit(name.trim(), desc.trim(), finalCmd, executor, finalMode);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -484,67 +487,90 @@ function CreateForm({
         <div className={styles.modeToggle}>
           <button
             type="button"
-            className={`${styles.modeOption} ${mode === "terminal" ? styles.modeActive : ""}`}
-            onClick={() => setMode("terminal")}
+            className={`${styles.modeOption} ${sessionType === "claude" ? styles.modeActive : ""}`}
+            onClick={() => setSessionType("claude")}
           >
-            <span className={styles.modeIcon}>&#xF0C8;</span>
-            Terminal
+            Claude
           </button>
           <button
             type="button"
-            className={`${styles.modeOption} ${mode === "rich" ? styles.modeActive : ""}`}
-            onClick={() => setMode("rich")}
+            className={`${styles.modeOption} ${sessionType === "custom" ? styles.modeActive : ""}`}
+            onClick={() => setSessionType("custom")}
           >
-            <span className={styles.modeIcon}>&#x25C7;</span>
-            Rich
+            Custom
           </button>
         </div>
-        {showExtras && (
-          <>
+        {sessionType === "claude" && (
+          <div className={styles.typeSection}>
+            <div className={styles.subToggle}>
+              <button
+                type="button"
+                className={`${styles.modeOption} ${mode === "terminal" ? styles.modeActive : ""}`}
+                onClick={() => setMode("terminal")}
+              >
+                Terminal
+              </button>
+              <button
+                type="button"
+                className={`${styles.modeOption} ${mode === "rich" ? styles.modeActive : ""}`}
+                onClick={() => setMode("rich")}
+              >
+                Rich
+              </button>
+            </div>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={skipPermissions}
+                onChange={(e) => setSkipPermissions(e.target.checked)}
+              />
+              Dangerously skip permissions
+            </label>
+          </div>
+        )}
+        {sessionType === "custom" && (
+          <div className={styles.typeSection}>
             <input
               type="text"
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              placeholder="Description (optional)"
+              value={cmd}
+              onChange={(e) => setCmd(e.target.value)}
+              placeholder="Command (e.g. bash, python3)"
               autoComplete="off"
               spellCheck={false}
+              required
               className={styles.input}
             />
-            {mode === "terminal" && (
-              <input
-                type="text"
-                value={cmd}
-                onChange={(e) => setCmd(e.target.value)}
-                placeholder={`Command (default: ${defaultCommand})`}
-                autoComplete="off"
-                spellCheck={false}
-                className={styles.input}
-              />
-            )}
-            {onlineExecutors.length > 0 && (
-              <>
-                <label className={styles.label}>Executor</label>
-                <select
-                  value={executor}
-                  onChange={(e) => setExecutor(e.target.value)}
-                  className={styles.input}
-                >
-                  {onlineExecutors.map((ex) => (
-                    <option key={ex.id} value={ex.id}>
-                      {ex.name}{ex.name !== ex.id ? ` (${ex.id})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
+          </div>
+        )}
+        <input
+          type="text"
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          placeholder="Description (optional)"
+          autoComplete="off"
+          spellCheck={false}
+          className={styles.input}
+        />
+        {onlineExecutors.length > 1 && (
+          <>
+            <label className={styles.label}>Executor</label>
+            <select
+              value={executor}
+              onChange={(e) => setExecutor(e.target.value)}
+              className={styles.input}
+            >
+              {onlineExecutors.map((ex) => (
+                <option key={ex.id} value={ex.id}>
+                  {ex.name}{ex.name !== ex.id ? ` (${ex.id})` : ""}
+                </option>
+              ))}
+            </select>
           </>
         )}
         {error && <div className={styles.error}>{error}</div>}
       </div>
       <div className={styles.dialogFooter}>
-        <button type="button" className="btn-ghost" onClick={() => setShowExtras(!showExtras)}>
-          {showExtras ? "Less" : "Options"}
-        </button>
+        <div />
         <div className={styles.dialogFooterRight}>
           <button type="button" className="btn-ghost" onClick={onCancel}>
             Cancel
@@ -564,13 +590,14 @@ function CreateJobForm({
   onCancel,
 }: {
   executors: ExecutorInfo[];
-  onSubmit: (name: string, prompt: string, maxIterations: number, executor: string) => Promise<void>;
+  onSubmit: (name: string, prompt: string, maxIterations: number, executor: string, skipPermissions: boolean) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(generateName);
   const [prompt, setPrompt] = useState("");
   const [maxIterations, setMaxIterations] = useState("50");
   const [executor, setExecutor] = useState("local");
+  const [skipPermissions, setSkipPermissions] = useState(true);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -588,7 +615,7 @@ function CreateJobForm({
     setSubmitting(true);
     setError("");
     try {
-      await onSubmit(name.trim(), prompt.trim(), parseInt(maxIterations) || 50, executor);
+      await onSubmit(name.trim(), prompt.trim(), parseInt(maxIterations) || 50, executor, skipPermissions);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -646,7 +673,15 @@ function CreateJobForm({
             style={{ width: 80 }}
           />
         </div>
-        {onlineExecutors.length > 0 && (
+        <label className={styles.checkboxLabel}>
+          <input
+            type="checkbox"
+            checked={skipPermissions}
+            onChange={(e) => setSkipPermissions(e.target.checked)}
+          />
+          Dangerously skip permissions
+        </label>
+        {onlineExecutors.length > 1 && (
           <>
             <label className={styles.label}>Executor</label>
             <select
@@ -688,7 +723,6 @@ export function SettingsForm({
   onSave: (config: Record<string, string>) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [defaultCommand, setDefaultCommand] = useState(config.defaultCommand || "claude");
   const [prefixTimeout, setPrefixTimeout] = useState(config.prefixTimeout || "800");
   const [showHints, setShowHints] = useState(config.showHints !== "false");
   const [saving, setSaving] = useState(false);
@@ -725,7 +759,6 @@ export function SettingsForm({
         if (cmd && path) forkHooks[cmd] = path;
       }
       await onSave({
-        defaultCommand: defaultCommand.trim() || "claude",
         prefixTimeout: String(parseInt(prefixTimeout) || 800),
         forkHooks: JSON.stringify(forkHooks),
         showHints: String(showHints),
@@ -739,22 +772,7 @@ export function SettingsForm({
     <form onSubmit={handleSubmit}>
       <div className={styles.dialogHeader}>Settings</div>
       <div className={styles.dialogBody}>
-        <label className={styles.label}>Default command</label>
-        <input
-          type="text"
-          value={defaultCommand}
-          onChange={(e) => setDefaultCommand(e.target.value)}
-          placeholder="claude"
-          autoComplete="off"
-          spellCheck={false}
-          autoFocus
-          className={styles.input}
-        />
-        <div className={styles.hint}>
-          Command to run when creating new sessions
-        </div>
-
-        <label className={styles.label} style={{ marginTop: 12 }}>Prefix timeout (ms)</label>
+        <label className={styles.label}>Prefix timeout (ms)</label>
         <input
           type="number"
           value={prefixTimeout}
@@ -891,7 +909,9 @@ function buildGroups(sessions: Session[]): SessionGroup[] {
     groups.push({ root, children, maxActivity });
   }
 
-  // Sort groups by most recent activity (most active first)
-  groups.sort((a, b) => b.maxActivity - a.maxActivity);
+  // Sort groups by creation time (oldest first, stable order)
+  groups.sort((a, b) =>
+    new Date(a.root.created_at).getTime() - new Date(b.root.created_at).getTime()
+  );
   return groups;
 }

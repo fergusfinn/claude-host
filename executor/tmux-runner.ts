@@ -91,7 +91,7 @@ export class TmuxRunner {
   }
 
   createJob(opts: CreateJobOpts): { name: string; command: string } {
-    const { name, prompt, maxIterations } = opts;
+    const { name, prompt, maxIterations, command = "claude" } = opts;
 
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
       throw new Error("Name must be alphanumeric, hyphens, underscores only");
@@ -102,6 +102,7 @@ export class TmuxRunner {
     }
 
     const cwd = process.cwd();
+    const skipFlag = command.includes("--dangerously-skip-permissions") ? " --dangerously-skip-permissions" : "";
 
     // Create tmux session
     const r = spawnSync(TMUX, ["new-session", "-d", "-s", name, "-x", "200", "-y", "50", "-c", cwd], { stdio: "pipe" });
@@ -139,9 +140,9 @@ export class TmuxRunner {
       "  echo \"=== Job iteration $i / $MAX_ITER ===\"",
       "  echo \"\"",
       "  if [ $i -eq 1 ]; then",
-      "    claude -p --dangerously-skip-permissions --session-id \"$SID\" \"$PROMPT\" 2>&1 | tee \"$OUTPUT_FILE\"",
+      `    claude -p${skipFlag} --session-id "$SID" "$PROMPT" 2>&1 | tee "$OUTPUT_FILE"`,
       "  else",
-      "    claude -p --dangerously-skip-permissions --resume \"$SID\" \"Continue working on the task. Output <promise>DONE</promise> when complete.\" 2>&1 | tee \"$OUTPUT_FILE\"",
+      `    claude -p${skipFlag} --resume "$SID" "Continue working on the task. Output <promise>DONE</promise> when complete." 2>&1 | tee "$OUTPUT_FILE"`,
       "  fi",
       "  if grep -q '<promise>DONE</promise>' \"$OUTPUT_FILE\" 2>/dev/null; then",
       "    echo \"\"",
@@ -158,7 +159,7 @@ export class TmuxRunner {
     // Launch via tmux send-keys
     spawnSync(TMUX, ["send-keys", "-t", name, `bash ${launcherScript}`, "Enter"], { stdio: "pipe" });
 
-    return { name, command: "claude" };
+    return { name, command };
   }
 
   deleteSession(name: string): void {

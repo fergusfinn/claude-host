@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { themesForMode, fonts, type TerminalTheme, type TerminalFont, ensureFontLoaded } from "@/lib/themes";
-import { getAllLeaves, getLeafCount } from "@/lib/layout";
+import { getAllLeaves } from "@/lib/layout";
 import type { TabState } from "@/app/page";
 import styles from "./tab-bar.module.css";
 
@@ -17,8 +17,8 @@ interface Props {
   onKeyModeChange: (mode: "insert" | "control") => void;
   onSelectTab: (tabId: string | null) => void;
   onCloseTab: (tabId: string) => void;
-  onDetachTab?: (tabId: string) => void;
   onNew: () => void;
+  onReorderTab: (fromIndex: number, toIndex: number) => void;
   onThemeChange: (themeId: string) => void;
   onFontChange: (fontId: string) => void;
   onRefresh: () => void;
@@ -39,17 +39,17 @@ function tabExecutor(tab: TabState, sessionExecutors?: Record<string, string>): 
   return exec && exec !== "local" ? exec : null;
 }
 
-export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onDetachTab, onNew, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
+export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onNew, onReorderTab, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const themePickerRef = useRef<HTMLDivElement>(null);
   const fontPickerRef = useRef<HTMLDivElement>(null);
-  const contextMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close pickers and context menu on outside click
+  // Close pickers on outside click
   useEffect(() => {
-    if (!themePickerOpen && !fontPickerOpen && !contextMenu) return;
+    if (!themePickerOpen && !fontPickerOpen) return;
     const handler = (e: MouseEvent) => {
       if (themePickerOpen && themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
         setThemePickerOpen(false);
@@ -57,13 +57,10 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
       if (fontPickerOpen && fontPickerRef.current && !fontPickerRef.current.contains(e.target as Node)) {
         setFontPickerOpen(false);
       }
-      if (contextMenu && contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
-        setContextMenu(null);
-      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [themePickerOpen, fontPickerOpen, contextMenu]);
+  }, [themePickerOpen, fontPickerOpen]);
 
   return (
     <div className={styles.wrapper}>
@@ -83,17 +80,46 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
           return (
           <div
             key={tab.id}
-            className={`${styles.tab} ${activeTabId === tab.id ? styles.active : ""}`}
+            className={`${styles.tab} ${activeTabId === tab.id ? styles.active : ""} ${draggingIndex === i ? styles.dragging : ""}`}
             role="tab"
             tabIndex={0}
+            draggable
+            onDragStart={(e) => {
+              setDraggingIndex(i);
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", String(i));
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              const rect = e.currentTarget.getBoundingClientRect();
+              const midX = rect.left + rect.width / 2;
+              const dropIndex = e.clientX < midX ? i : i + 1;
+              setDragOverIndex(dropIndex);
+            }}
+            onDragLeave={() => setDragOverIndex(null)}
+            onDrop={(e) => {
+              e.preventDefault();
+              const fromIndex = parseInt(e.dataTransfer.getData("text/plain"), 10);
+              setDragOverIndex(null);
+              setDraggingIndex(null);
+              if (isNaN(fromIndex)) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const midX = rect.left + rect.width / 2;
+              let toIndex = e.clientX < midX ? i : i + 1;
+              // Adjust for the removal of the source element
+              if (fromIndex < toIndex) toIndex--;
+              if (fromIndex !== toIndex) onReorderTab(fromIndex, toIndex);
+            }}
+            onDragEnd={() => {
+              setDragOverIndex(null);
+              setDraggingIndex(null);
+            }}
             onClick={() => onSelectTab(tab.id)}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectTab(tab.id); } }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });
-            }}
             title={`${tabLabel(tab)}${exec ? ` (${exec})` : ""} (^A ${i + 1})`}
           >
+            {dragOverIndex === i && <div className={styles.dropIndicator} />}
             <div className={styles.dot} />
             <span className={styles.tabName}>{tabLabel(tab)}</span>
             {exec && <span className={styles.executorBadge}>{exec}</span>}
@@ -108,6 +134,7 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
             >
               ×
             </button>
+            {dragOverIndex === i + 1 && <div className={styles.dropIndicator} style={{ left: "auto", right: "-1px" }} />}
           </div>
           );
         })}
@@ -259,49 +286,6 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
         )}
       </div>
 
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          className={styles.contextMenu}
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          <button
-            className={styles.contextMenuItem}
-            onClick={() => {
-              const tab = tabs.find((t) => t.id === contextMenu.tabId);
-              if (tab) {
-                const leaves = getAllLeaves(tab.layout);
-                const sessionName = leaves[0]?.sessionName;
-                if (sessionName) {
-                  const w = Math.round(window.screen.availWidth * 0.6);
-                  const h = Math.round(window.screen.availHeight * 0.7);
-                  const left = Math.round((window.screen.availWidth - w) / 2);
-                  const top = Math.round((window.screen.availHeight - h) / 2);
-                  window.open(
-                    `/${encodeURIComponent(sessionName)}`,
-                    "_blank",
-                    `width=${w},height=${h},left=${left},top=${top}`,
-                  );
-                  onDetachTab?.(contextMenu.tabId);
-                }
-              }
-              setContextMenu(null);
-            }}
-          >
-            Open in new window
-          </button>
-          <div className={styles.contextMenuSep} />
-          <button
-            className={styles.contextMenuItem}
-            onClick={() => {
-              onCloseTab(contextMenu.tabId);
-              setContextMenu(null);
-            }}
-          >
-            Close tab
-          </button>
-        </div>
-      )}
     </div>
   );
 }
