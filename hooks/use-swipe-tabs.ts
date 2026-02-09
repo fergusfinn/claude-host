@@ -10,6 +10,15 @@ interface UseSwipeTabsOptions {
   setActiveTabId: (id: string | null) => void;
 }
 
+/**
+ * Adds edge-swipe tab switching on touch devices.
+ *
+ * Creates thin invisible strips (20px) at the left and right edges
+ * of the container with `touch-action: none`. This prevents the
+ * browser from initiating native scroll on those strips, giving
+ * our JS touch handlers full control. Works reliably even over
+ * scrollable children (xterm viewports, rich-view message lists).
+ */
 export function useSwipeTabs({
   containerRef,
   tabs,
@@ -26,27 +35,38 @@ export function useSwipeTabs({
     // Only enable on touch devices
     if (!("ontouchstart" in window)) return;
 
+    const EDGE_WIDTH = 20; // px
+    const SWIPE_THRESHOLD = 50;
+    const SWIPE_MAX_TIME = 500;
+
+    // Create edge strips
+    function makeStrip(side: "left" | "right"): HTMLDivElement {
+      const strip = document.createElement("div");
+      strip.style.cssText = `
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        ${side}: 0;
+        width: ${EDGE_WIDTH}px;
+        z-index: 50;
+        touch-action: none;
+      `;
+      return strip;
+    }
+
+    const leftStrip = makeStrip("left");
+    const rightStrip = makeStrip("right");
+    container.appendChild(leftStrip);
+    container.appendChild(rightStrip);
+
     let startX = 0;
     let startY = 0;
     let startTime = 0;
     let tracking = false;
 
-    // Edge swipe: only initiate from within 24px of screen edges.
-    // This avoids conflicting with xterm.js touch scrolling and
-    // rich-view interactions, since those happen in the middle of
-    // the screen.
-    const EDGE_ZONE = 24;
-    const SWIPE_THRESHOLD = 50;
-    const SWIPE_MAX_TIME = 500;
-
     function onTouchStart(e: TouchEvent) {
       if (e.touches.length !== 1) return;
       const touch = e.touches[0];
-      const screenWidth = window.innerWidth;
-
-      // Only track touches starting near screen edges
-      if (touch.clientX > EDGE_ZONE && touch.clientX < screenWidth - EDGE_ZONE) return;
-
       startX = touch.clientX;
       startY = touch.clientY;
       startTime = Date.now();
@@ -56,16 +76,16 @@ export function useSwipeTabs({
     function onTouchMove(e: TouchEvent) {
       if (!tracking || e.touches.length !== 1) return;
       const touch = e.touches[0];
-      const absDX = Math.abs(touch.clientX - startX);
       const absDY = Math.abs(touch.clientY - startY);
+      const absDX = Math.abs(touch.clientX - startX);
 
-      // If it's clearly a horizontal swipe from the edge, prevent
-      // default to stop the browser/xterm from also handling it
-      if (absDX > 10 && absDX > absDY * 1.5) {
-        e.preventDefault();
-      } else if (absDY > absDX) {
-        // Vertical gesture — stop tracking
+      if (absDY > absDX) {
         tracking = false;
+        return;
+      }
+      // Horizontal movement on edge strip — prevent any default
+      if (absDX > 5) {
+        e.preventDefault();
       }
     }
 
@@ -88,23 +108,22 @@ export function useSwipeTabs({
       const idx = allIds.indexOf(currentActive);
 
       if (deltaX < 0) {
-        // Swipe left -> next tab
         setActiveTabId(allIds[(idx + 1) % allIds.length]);
       } else {
-        // Swipe right -> previous tab
         setActiveTabId(allIds[(idx - 1 + allIds.length) % allIds.length]);
       }
     }
 
-    // Use capture phase to fire before xterm's listeners
-    container.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
-    container.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
-    container.addEventListener("touchend", onTouchEnd, { capture: true, passive: true });
+    // Attach listeners to both edge strips
+    for (const strip of [leftStrip, rightStrip]) {
+      strip.addEventListener("touchstart", onTouchStart, { passive: true });
+      strip.addEventListener("touchmove", onTouchMove, { passive: false });
+      strip.addEventListener("touchend", onTouchEnd, { passive: true });
+    }
 
     return () => {
-      container.removeEventListener("touchstart", onTouchStart, true);
-      container.removeEventListener("touchmove", onTouchMove, true);
-      container.removeEventListener("touchend", onTouchEnd, true);
+      leftStrip.remove();
+      rightStrip.remove();
     };
   }, [containerRef, setActiveTabId]);
 }
