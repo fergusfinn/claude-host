@@ -5,3 +5,4 @@ data/
 coverage/
 tsconfig.tsbuildinfo
 tui/claude-tui
+plans/
