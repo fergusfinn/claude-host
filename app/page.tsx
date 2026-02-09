@@ -6,7 +6,6 @@ import { ExecutorsPage } from "@/components/executors-page";
 import { PaneLayout } from "@/components/pane-layout";
 import { TabBar } from "@/components/tab-bar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
-import { useSwipeTabs } from "@/hooks/use-swipe-tabs";
 import { getThemeById, DEFAULT_DARK_THEME, type TerminalTheme, getFontById, DEFAULT_FONT_ID, type TerminalFont, ensureFontLoaded, getDefaultThemeForMode, themeToChromeVars } from "@/lib/themes";
 import { generateName } from "@/lib/names";
 import { loadShortcuts, type ShortcutMap } from "@/lib/shortcuts";
@@ -571,9 +570,6 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handler, true);
   }, [tabs, activeTabId, activeTab]);
 
-  const contentRef = useRef<HTMLDivElement>(null);
-  useSwipeTabs({ containerRef: contentRef, tabs, activeTabId, setActiveTabId });
-
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDialogElement>(null);
 
@@ -661,7 +657,7 @@ export default function Home() {
         onOpenExecutors={() => setActiveTabId(activeTabId === "executors" ? null : "executors")}
         onOpenSettings={() => setSettingsOpen(true)}
       />
-      <div ref={contentRef} style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div style={{
           position: "absolute", inset: 0,
           display: activeTabId === null ? "flex" : "none",
