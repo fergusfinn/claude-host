@@ -148,12 +148,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
     if (userScrolledUpRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
-    // Double-rAF ensures DOM has painted before reading scrollHeight
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (el) el.scrollTop = el.scrollHeight;
-      });
-    });
+    el.scrollTop = el.scrollHeight;
   }, []);
 
   const jumpToBottom = useCallback(() => {
@@ -167,7 +162,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
     if (atBottom) {
       userScrolledUpRef.current = false;
       setShowJumpToBottom(false);
@@ -184,6 +179,19 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
     el.addEventListener("scroll", handleScroll, { passive: true });
     return () => el.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
+
+  // MutationObserver: auto-scroll when DOM content changes (catches rapid updates)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const observer = new MutationObserver(() => {
+      if (!userScrolledUpRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+    observer.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, []);
 
   const nextId = () => `msg-${++msgIdCounter.current}`;
 
@@ -232,8 +240,8 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
       if (!entry.items) continue;
       for (const item of entry.items) {
         if (item.kind === "tool_pair" || item.kind === "subagent") {
-          // Collapse once a result arrives
-          if (item.toolResult !== null && !newCollapsed.has(item.toolUse.id)) {
+          // Collapse once a result arrives (but keep Edit tools expanded to show diffs)
+          if (item.toolResult !== null && !newCollapsed.has(item.toolUse.id) && item.toolUse.name !== "Edit") {
             newCollapsed.add(item.toolUse.id);
             changed = true;
           }
@@ -244,9 +252,9 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
             newCollapsed.add(groupKey);
             changed = true;
           }
-          // Also collapse individual tools within the group
+          // Also collapse individual tools within the group (but keep Edit tools expanded)
           for (const pair of item.pairs) {
-            if (pair.toolResult !== null && !newCollapsed.has(pair.toolUse.id)) {
+            if (pair.toolResult !== null && !newCollapsed.has(pair.toolUse.id) && pair.toolUse.name !== "Edit") {
               newCollapsed.add(pair.toolUse.id);
               changed = true;
             }
@@ -533,6 +541,8 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
   function autoResize(el: HTMLTextAreaElement) {
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    // Scroll conversation to bottom as input grows, so it pushes content up visually
+    scrollToBottom();
   }
 
   function toggleTool(id: string) {
@@ -767,7 +777,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
       </div>
 
       {/* Input */}
-      <div className={styles.inputArea} style={{ borderColor: `${theme.cursor}40` }}>
+      <div className={styles.inputArea}>
         <div className={styles.inputInner}>
         <textarea
           ref={inputRef}

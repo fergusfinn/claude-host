@@ -41,6 +41,7 @@ type Block =
   | { type: "ul"; items: InlineNode[][] }
   | { type: "ol"; items: { n: number; inline: InlineNode[] }[] }
   | { type: "hr" }
+  | { type: "table"; headers: InlineNode[][]; rows: InlineNode[][][] }
   | { type: "paragraph"; inline: InlineNode[] };
 
 // Inline types
@@ -160,6 +161,19 @@ function parseBlocks(text: string): Block[] {
       continue;
     }
 
+    // Table (lines starting with |)
+    if (line.match(/^\|.+\|/) && i + 1 < lines.length && lines[i + 1].match(/^\|[\s:|-]+\|/)) {
+      const headerCells = line.split("|").slice(1, -1).map(c => parseInline(c.trim()));
+      i += 2; // skip header + separator
+      const rows: InlineNode[][][] = [];
+      while (i < lines.length && lines[i].match(/^\|.+\|/)) {
+        rows.push(lines[i].split("|").slice(1, -1).map(c => parseInline(c.trim())));
+        i++;
+      }
+      blocks.push({ type: "table", headers: headerCells, rows });
+      continue;
+    }
+
     // Blank line — skip
     if (line.trim() === "") {
       i++;
@@ -176,7 +190,8 @@ function parseBlocks(text: string): Block[] {
       !lines[i].match(/^>\s?/) &&
       !lines[i].match(/^\s*[-*]\s+/) &&
       !lines[i].match(/^\s*\d+\.\s+/) &&
-      !lines[i].match(/^\s*([-*_])\s*\1(\s*\1)*\s*$/)
+      !lines[i].match(/^\s*([-*_])\s*\1(\s*\1)*\s*$/) &&
+      !lines[i].match(/^\|.+\|/)
     ) {
       paraLines.push(lines[i]);
       i++;
@@ -316,6 +331,55 @@ function renderBlock(
             </li>
           ))}
         </ol>
+      );
+
+    case "table":
+      return (
+        <div key={key} style={{ overflowX: "auto", margin: "0.4em 0" }}>
+          <table
+            style={{
+              borderCollapse: "collapse",
+              fontSize: "0.92em",
+              width: "100%",
+            }}
+          >
+            <thead>
+              <tr>
+                {block.headers.map((cell, j) => (
+                  <th
+                    key={j}
+                    style={{
+                      padding: "6px 12px",
+                      borderBottom: `2px solid ${theme.foreground}25`,
+                      textAlign: "left",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {renderInlineNodes(cell, theme)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, j) => (
+                <tr key={j}>
+                  {row.map((cell, k) => (
+                    <td
+                      key={k}
+                      style={{
+                        padding: "5px 12px",
+                        borderBottom: `1px solid ${theme.foreground}12`,
+                      }}
+                    >
+                      {renderInlineNodes(cell, theme)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       );
 
     case "hr":
