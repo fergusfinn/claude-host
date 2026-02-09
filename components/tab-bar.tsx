@@ -273,7 +273,15 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
                 const leaves = getAllLeaves(tab.layout);
                 const sessionName = leaves[0]?.sessionName;
                 if (sessionName) {
-                  window.open(`/${encodeURIComponent(sessionName)}`, "_blank");
+                  const w = Math.round(window.screen.availWidth * 0.6);
+                  const h = Math.round(window.screen.availHeight * 0.7);
+                  const left = Math.round((window.screen.availWidth - w) / 2);
+                  const top = Math.round((window.screen.availHeight - h) / 2);
+                  window.open(
+                    `/${encodeURIComponent(sessionName)}`,
+                    "_blank",
+                    `width=${w},height=${h},left=${left},top=${top}`,
+                  );
                   onDetachTab?.(contextMenu.tabId);
                 }
               }
