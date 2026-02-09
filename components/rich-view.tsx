@@ -635,8 +635,11 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
   }
 
   function autoResize(el: HTMLTextAreaElement) {
-    el.style.height = "auto";
+    // Use overflow hidden to prevent scrollbar flash during measurement
+    el.style.overflow = "hidden";
+    el.style.height = "0";
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    el.style.overflow = "";
     // Scroll conversation to bottom as input grows, so it pushes content up visually
     scrollToBottom();
   }

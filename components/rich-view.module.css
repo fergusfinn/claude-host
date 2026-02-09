@@ -945,45 +945,45 @@
   }
 
   .textBlock {
-    font-size: 14.5px;
+    font-size: 15.5px;
     line-height: 1.55;
   }
 
   .role_user > .textBlock {
     padding: 8px 12px;
-    font-size: 14.5px;
+    font-size: 15.5px;
   }
 
   .toolInput {
     padding: 6px 8px 6px 14px;
-    font-size: 11.5px;
+    font-size: 12.5px;
     max-height: 200px;
   }
 
   .toolResultContent {
     padding: 6px 8px 6px 14px;
-    font-size: 11.5px;
+    font-size: 12.5px;
     max-height: 200px;
   }
 
   .toolHeader {
     padding: 6px 8px;
     gap: 4px;
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .toolName {
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .toolSummary {
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .toolGroupHeader {
     padding: 6px 8px;
     gap: 4px;
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .toolGroupItems {
@@ -996,11 +996,11 @@
 
   .diffView {
     padding: 0 6px 0 14px;
-    font-size: 11.5px;
+    font-size: 12.5px;
   }
 
   .diffFilePath {
-    font-size: 10px;
+    font-size: 11px;
     word-break: break-all;
   }
 
@@ -1014,7 +1014,7 @@
   }
 
   .subagentDescription {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .questionBlock {
@@ -1022,16 +1022,16 @@
   }
 
   .questionHeader {
-    font-size: 13px;
+    font-size: 14px;
     gap: 6px;
   }
 
   .questionOptionLabel {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .questionOptionDesc {
-    font-size: 11.5px;
+    font-size: 12.5px;
   }
 
   .inputArea {
@@ -1051,7 +1051,7 @@
 
   .expandBtn {
     padding: 4px 14px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .welcomeShortcuts {
@@ -1093,17 +1093,17 @@
 
   .toolInput {
     padding: 4px 6px 4px 10px;
-    font-size: 10.5px;
+    font-size: 11.5px;
   }
 
   .toolResultContent {
     padding: 4px 6px 4px 10px;
-    font-size: 10.5px;
+    font-size: 11.5px;
   }
 
   .toolHeader {
     padding: 5px 6px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .inputArea {
@@ -1173,5 +1173,10 @@
   .input {
     font-size: 16px; /* Prevents iOS zoom */
     min-height: 40px;
+  }
+
+  /* When keyboard is open, safe-area-inset-bottom is behind the keyboard — don't add extra padding */
+  .inputArea:focus-within {
+    padding-bottom: 10px;
   }
 }
