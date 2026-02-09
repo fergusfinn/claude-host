@@ -91,7 +91,7 @@ class SessionManager {
       const executor = row.executor || "local";
       const mode = row.mode || "terminal";
       if (executor === "local") {
-        // Rich sessions have no tmux — they're alive as long as the DB row exists
+        // Rich sessions use tmux via wrapper — alive as long as the DB row exists
         if (mode === "rich") {
           alive.push({
             ...row,
@@ -185,10 +185,13 @@ class SessionManager {
 
   async create(name: string, description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal"): Promise<Session> {
     if (mode === "rich") {
-      // Rich sessions don't need tmux — just insert the DB row
+      // Rich sessions use tmux via the wrapper — insert DB row and create runtime dir
       this.db
         .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode) VALUES (?, ?, ?, ?, ?)")
         .run(name, description, command, executor, "rich");
+
+      // Create runtime directory for events file and FIFO
+      mkdirSync(join(process.cwd(), "data", "rich", name), { recursive: true });
 
       return {
         name,

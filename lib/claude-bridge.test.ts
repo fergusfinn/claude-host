@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "events";
-import type { ChildProcess } from "child_process";
 
 // Shared state for mocks — accessed via globalThis to survive hoisting
 const _mockState = {
@@ -9,17 +8,23 @@ const _mockState = {
   dbExec: vi.fn(),
   dbPragma: vi.fn(),
   prepare: vi.fn(),
-  spawn: vi.fn(),
+  spawnSync: vi.fn(),
+  execFileSync: vi.fn(),
+  // fs mocks
+  fsExistsSync: vi.fn(),
+  fsReadFileSync: vi.fn(),
+  fsWriteFileSync: vi.fn(),
+  fsOpenSync: vi.fn(),
+  fsCloseSync: vi.fn(),
+  fsReadSync: vi.fn(),
+  fsFstatSync: vi.fn(),
+  fsStatSync: vi.fn(),
+  fsRmSync: vi.fn(),
+  fsWatch: vi.fn(),
+  fsMkdirSync: vi.fn(),
+  fsWriteSync: vi.fn(),
 };
 _mockState.prepare.mockReturnValue({ run: _mockState.dbRun, get: _mockState.dbGet });
-
-// Expose for convenience
-const mockDbRun = _mockState.dbRun;
-const mockDbGet = _mockState.dbGet;
-const mockDbExec = _mockState.dbExec;
-const mockDbPragma = _mockState.dbPragma;
-const mockPrepare = _mockState.prepare;
-const mockSpawn = _mockState.spawn;
 
 vi.mock("better-sqlite3", () => {
   return {
@@ -31,16 +36,33 @@ vi.mock("better-sqlite3", () => {
   };
 });
 
-vi.mock("fs", () => ({
-  mkdirSync: vi.fn(),
+vi.mock("child_process", () => ({
+  spawnSync: (...args: any[]) => _mockState.spawnSync(...args),
+  execFileSync: (...args: any[]) => _mockState.execFileSync(...args),
 }));
 
-vi.mock("child_process", () => ({
-  spawn: (...args: any[]) => _mockState.spawn(...args),
-}));
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs");
+  return {
+    ...actual,
+    mkdirSync: (...args: any[]) => _mockState.fsMkdirSync(...args),
+    existsSync: (...args: any[]) => _mockState.fsExistsSync(...args),
+    readFileSync: (...args: any[]) => _mockState.fsReadFileSync(...args),
+    writeFileSync: (...args: any[]) => _mockState.fsWriteFileSync(...args),
+    openSync: (...args: any[]) => _mockState.fsOpenSync(...args),
+    closeSync: (...args: any[]) => _mockState.fsCloseSync(...args),
+    readSync: (...args: any[]) => _mockState.fsReadSync(...args),
+    fstatSync: (...args: any[]) => _mockState.fsFstatSync(...args),
+    statSync: (...args: any[]) => _mockState.fsStatSync(...args),
+    rmSync: (...args: any[]) => _mockState.fsRmSync(...args),
+    writeSync: (...args: any[]) => _mockState.fsWriteSync(...args),
+    watch: (...args: any[]) => _mockState.fsWatch(...args),
+    constants: actual.constants,
+  };
+});
 
 // Import after mocks
-import { bridgeRichSession, cleanupRichSession, richSessionExists } from "./claude-bridge";
+import { bridgeRichSession, cleanupRichSession, richSessionExists, richSessionTmuxAlive } from "./claude-bridge";
 
 // Helper: create a mock WebSocket
 function createMockWs(): any {
@@ -48,38 +70,51 @@ function createMockWs(): any {
   (ws as any).readyState = 1; // WebSocket.OPEN
   (ws as any).send = vi.fn();
   (ws as any).close = vi.fn();
-  // Make WebSocket.OPEN available
   Object.defineProperty(ws, "OPEN", { value: 1 });
   return ws;
 }
 
-// Helper: create a mock child process
-function createMockProc(): any {
-  const proc = new EventEmitter();
-  const stdin = new EventEmitter();
-  (stdin as any).write = vi.fn();
-  (stdin as any).end = vi.fn();
-  (stdin as any).destroyed = false;
-  (proc as any).stdin = stdin;
-  (proc as any).stdout = new EventEmitter();
-  (proc as any).stderr = new EventEmitter();
-  (proc as any).kill = vi.fn();
-  (proc as any).pid = 12345;
-  return proc;
+function setupDefaultMocks() {
+  // DB: no saved state
+  _mockState.dbGet.mockReturnValue(undefined);
+
+  // tmux: has-session returns "not found", other cmds succeed
+  _mockState.spawnSync.mockImplementation((_cmd: string, args: string[]) => {
+    if (args?.[0] === "has-session") return { status: 1 };
+    return { status: 0 };
+  });
+
+  // which tmux
+  _mockState.execFileSync.mockReturnValue("/usr/bin/tmux\n");
+
+  // fs defaults
+  _mockState.fsExistsSync.mockReturnValue(false);
+  _mockState.fsReadFileSync.mockReturnValue("");
+  _mockState.fsWriteFileSync.mockReturnValue(undefined);
+  _mockState.fsOpenSync.mockReturnValue(42);
+  _mockState.fsCloseSync.mockReturnValue(undefined);
+  _mockState.fsReadSync.mockReturnValue(0);
+  _mockState.fsFstatSync.mockReturnValue({ size: 0 });
+  _mockState.fsStatSync.mockReturnValue({ size: 0 });
+  _mockState.fsRmSync.mockReturnValue(undefined);
+  _mockState.fsMkdirSync.mockReturnValue(undefined);
+  _mockState.fsWriteSync.mockImplementation((_fd: number, buf: Buffer, offset: number, length: number) => length);
+
+  // fs.watch returns a mock watcher
+  _mockState.fsWatch.mockImplementation(() => {
+    const watcher = new EventEmitter();
+    (watcher as any).close = vi.fn();
+    return watcher;
+  });
 }
 
-describe("claude-bridge", () => {
-  let mockProc: any;
-
+describe("claude-bridge (tmux-backed)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDbGet.mockReturnValue(undefined); // No saved state
-    mockProc = createMockProc();
-    mockSpawn.mockReturnValue(mockProc);
+    setupDefaultMocks();
   });
 
   afterEach(() => {
-    // Clean up sessions between tests
     cleanupRichSession("test-session");
     cleanupRichSession("test-session-2");
   });
@@ -89,31 +124,9 @@ describe("claude-bridge", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
-      // Should send session_state with streaming: false
-      expect(ws.send).toHaveBeenCalledWith(
-        JSON.stringify({ type: "session_state", streaming: false }),
-      );
-    });
-
-    it("replays stored events on reconnect", () => {
-      const ws1 = createMockWs();
-      bridgeRichSession(ws1, "test-session");
-
-      // Send a prompt to trigger process spawn
-      ws1.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-
-      // Simulate a user event from process stdout
-      const userEvent = { type: "user", message: { role: "user", content: [{ type: "text", text: "hello" }] } };
-      mockProc.stdout.emit("data", Buffer.from(JSON.stringify(userEvent) + "\n"));
-
-      // Reconnect with new ws
-      const ws2 = createMockWs();
-      bridgeRichSession(ws2, "test-session");
-
-      // ws2 should have received the replayed event + session_state
-      const calls = ws2.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const eventMessages = calls.filter((c: any) => c.type === "event");
-      expect(eventMessages.length).toBeGreaterThanOrEqual(1);
+      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const sessionState = calls.find((c: any) => c.type === "session_state");
+      expect(sessionState).toEqual({ type: "session_state", streaming: false });
     });
 
     it("closes previous client on reconnect", () => {
@@ -126,51 +139,25 @@ describe("claude-bridge", () => {
       expect(ws1.close).toHaveBeenCalled();
     });
 
-    it("spawns claude process on first prompt", () => {
-      const ws = createMockWs();
-      bridgeRichSession(ws, "test-session");
+    it("replays events from file on reconnect", () => {
+      const events = [
+        { type: "system", subtype: "init", session_id: "s1" },
+        { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Hello" }] } },
+      ];
+      const content = events.map(e => JSON.stringify(e)).join("\n") + "\n";
 
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-
-      expect(mockSpawn).toHaveBeenCalledWith(
-        "claude",
-        expect.arrayContaining(["-p", "--output-format", "stream-json"]),
-        expect.any(Object),
+      _mockState.fsExistsSync.mockImplementation((p: string) =>
+        typeof p === "string" && p.includes("events.ndjson")
       );
-    });
+      _mockState.fsReadFileSync.mockReturnValue(content);
+      _mockState.fsStatSync.mockReturnValue({ size: Buffer.byteLength(content) });
 
-    it("writes prompt to process stdin", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
-
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-
-      expect(mockProc.stdin.write).toHaveBeenCalledWith(
-        expect.stringContaining('"hello"'),
-      );
-    });
-
-    it("rejects prompt while a turn is in progress", () => {
-      const ws = createMockWs();
-      bridgeRichSession(ws, "test-session");
-
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello again" }));
 
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const errors = calls.filter((c: any) => c.type === "error");
-      expect(errors).toHaveLength(1);
-      expect(errors[0].message).toContain("turn is already in progress");
-    });
-
-    it("handles interrupt signal", () => {
-      const ws = createMockWs();
-      bridgeRichSession(ws, "test-session");
-
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-      ws.emit("message", JSON.stringify({ type: "interrupt" }));
-
-      expect(mockProc.kill).toHaveBeenCalledWith("SIGINT");
+      const eventMessages = calls.filter((c: any) => c.type === "event");
+      expect(eventMessages.length).toBe(2);
     });
 
     it("handles invalid JSON gracefully", () => {
@@ -185,170 +172,162 @@ describe("claude-bridge", () => {
       expect(errors[0].message).toBe("Invalid JSON");
     });
 
-    it("forwards events from process stdout to websocket", () => {
+    it("rejects prompt while a turn is in progress", async () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-
-      const assistantEvent = {
-        type: "assistant",
-        message: { role: "assistant", content: [{ type: "text", text: "Hi there!" }] },
-      };
-      mockProc.stdout.emit("data", Buffer.from(JSON.stringify(assistantEvent) + "\n"));
-
-      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const events = calls.filter((c: any) => c.type === "event" && c.event.type === "assistant");
-      expect(events).toHaveLength(1);
-    });
-
-    it("sends turn_complete on result event", () => {
-      const ws = createMockWs();
-      bridgeRichSession(ws, "test-session");
+      // Make tmux session exist and FIFO writable
+      _mockState.spawnSync.mockImplementation((_cmd: string, args: string[]) => {
+        if (args?.[0] === "has-session") return { status: 0 };
+        return { status: 0 };
+      });
+      _mockState.fsOpenSync.mockReturnValue(99);
 
       ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
 
-      const resultEvent = { type: "result", total_cost_usd: 0.01, duration_ms: 1000 };
-      mockProc.stdout.emit("data", Buffer.from(JSON.stringify(resultEvent) + "\n"));
+      // Wait for async tryWrite
+      await new Promise((r) => setTimeout(r, 50));
 
-      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const turnComplete = calls.filter((c: any) => c.type === "turn_complete");
-      expect(turnComplete).toHaveLength(1);
-    });
-
-    it("captures session_id from init event", () => {
-      const ws = createMockWs();
-      bridgeRichSession(ws, "test-session");
-
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-
-      const initEvent = { type: "system", subtype: "init", session_id: "sess-123" };
-      mockProc.stdout.emit("data", Buffer.from(JSON.stringify(initEvent) + "\n"));
-
-      // Now if the process dies and restarts, it should use --resume
-      mockProc.emit("close", 1, null);
-
-      // The second spawn needs a fresh mock process
-      const mockProc2 = createMockProc();
-      mockSpawn.mockReturnValue(mockProc2);
-
-      // Send another prompt — should trigger new spawn with --resume
       ws.emit("message", JSON.stringify({ type: "prompt", text: "hello again" }));
 
-      const secondCall = mockSpawn.mock.calls[1];
-      expect(secondCall[1]).toContain("--resume");
-      expect(secondCall[1]).toContain("sess-123");
+      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const errors = calls.filter((c: any) => c.type === "error" && c.message.includes("turn is already in progress"));
+      expect(errors).toHaveLength(1);
     });
 
-    it("skips subagent events (parent_tool_use_id)", () => {
+    it("creates tmux session on first prompt if not running", async () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
+      _mockState.fsOpenSync.mockReturnValue(99);
+
       ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
 
-      const subagentEvent = {
-        type: "assistant",
-        parent_tool_use_id: "tool-1",
-        message: { role: "assistant", content: [] },
-      };
-      mockProc.stdout.emit("data", Buffer.from(JSON.stringify(subagentEvent) + "\n"));
+      await new Promise((r) => setTimeout(r, 50));
 
-      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const events = calls.filter((c: any) => c.type === "event" && c.event.type === "assistant");
-      expect(events).toHaveLength(0);
+      const tmuxCalls = _mockState.spawnSync.mock.calls.filter(
+        (c: any[]) => c[1]?.[0] === "new-session"
+      );
+      expect(tmuxCalls.length).toBeGreaterThanOrEqual(1);
+      // Should have the rich- prefix
+      expect(tmuxCalls[0][1]).toContain("rich-test-session");
     });
 
-    it("skips duplicate init events", () => {
+    it("sends interrupt via tmux send-keys", async () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
+      // Make tmux exist
+      _mockState.spawnSync.mockImplementation((_cmd: string, args: string[]) => {
+        if (args?.[0] === "has-session") return { status: 0 };
+        return { status: 0 };
+      });
+      _mockState.fsOpenSync.mockReturnValue(99);
 
-      const init1 = { type: "system", subtype: "init", session_id: "s1" };
-      const init2 = { type: "system", subtype: "init", session_id: "s1" };
-      mockProc.stdout.emit("data", Buffer.from(JSON.stringify(init1) + "\n" + JSON.stringify(init2) + "\n"));
+      // Send prompt to set turning=true
+      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Send interrupt
+      ws.emit("message", JSON.stringify({ type: "interrupt" }));
+
+      const sendKeysCalls = _mockState.spawnSync.mock.calls.filter(
+        (c: any[]) => c[1]?.[0] === "send-keys" && c[1]?.includes("C-c")
+      );
+      expect(sendKeysCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("skips subagent events during replay", () => {
+      const events = [
+        { type: "assistant", message: { role: "assistant", content: [] } },
+        { type: "assistant", parent_tool_use_id: "tool-1", message: { role: "assistant", content: [] } },
+      ];
+      const content = events.map(e => JSON.stringify(e)).join("\n") + "\n";
+
+      _mockState.fsExistsSync.mockImplementation((p: string) =>
+        typeof p === "string" && p.includes("events.ndjson")
+      );
+      _mockState.fsReadFileSync.mockReturnValue(content);
+      _mockState.fsStatSync.mockReturnValue({ size: Buffer.byteLength(content) });
+
+      const ws = createMockWs();
+      bridgeRichSession(ws, "test-session");
 
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const inits = calls.filter((c: any) => c.type === "event" && c.event.type === "system" && c.event.subtype === "init");
+      const eventMessages = calls.filter((c: any) => c.type === "event");
+      expect(eventMessages).toHaveLength(1);
+    });
+
+    it("skips duplicate init events during replay", () => {
+      const events = [
+        { type: "system", subtype: "init", session_id: "s1" },
+        { type: "system", subtype: "init", session_id: "s1" },
+        { type: "assistant", message: { role: "assistant", content: [] } },
+      ];
+      const content = events.map(e => JSON.stringify(e)).join("\n") + "\n";
+
+      _mockState.fsExistsSync.mockImplementation((p: string) =>
+        typeof p === "string" && p.includes("events.ndjson")
+      );
+      _mockState.fsReadFileSync.mockReturnValue(content);
+      _mockState.fsStatSync.mockReturnValue({ size: Buffer.byteLength(content) });
+
+      const ws = createMockWs();
+      bridgeRichSession(ws, "test-session");
+
+      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const inits = calls.filter((c: any) =>
+        c.type === "event" && c.event.type === "system" && c.event.subtype === "init"
+      );
       expect(inits).toHaveLength(1);
     });
 
-    it("does not send error on clean process exit (code 0) when not mid-turn", () => {
+    it("skips stream_event during replay", () => {
+      const events = [
+        { type: "system", subtype: "init", session_id: "s1" },
+        { type: "stream_event", event: { type: "content_block_delta" } },
+        { type: "assistant", message: { role: "assistant", content: [] } },
+      ];
+      const content = events.map(e => JSON.stringify(e)).join("\n") + "\n";
+
+      _mockState.fsExistsSync.mockImplementation((p: string) =>
+        typeof p === "string" && p.includes("events.ndjson")
+      );
+      _mockState.fsReadFileSync.mockReturnValue(content);
+      _mockState.fsStatSync.mockReturnValue({ size: Buffer.byteLength(content) });
+
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-
-      // Complete the turn first
-      const resultEvent = { type: "result", total_cost_usd: 0.01, duration_ms: 1000 };
-      mockProc.stdout.emit("data", Buffer.from(JSON.stringify(resultEvent) + "\n"));
-
-      // Now exit cleanly — should not produce an error
-      mockProc.emit("close", 0, null);
-
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const errors = calls.filter((c: any) => c.type === "error");
-      expect(errors).toHaveLength(0);
-    });
-
-    it("sends error + turn_complete on clean exit (code 0) while mid-turn", () => {
-      const ws = createMockWs();
-      bridgeRichSession(ws, "test-session");
-
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-      // Process exits cleanly while still turning
-      mockProc.emit("close", 0, null);
-
-      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const errors = calls.filter((c: any) => c.type === "error");
-      expect(errors).toHaveLength(1);
-      expect(errors[0].message).toContain("exited unexpectedly");
-
-      const turnCompletes = calls.filter((c: any) => c.type === "turn_complete");
-      expect(turnCompletes).toHaveLength(1);
-    });
-
-    it("sends error on non-zero process exit", () => {
-      const ws = createMockWs();
-      bridgeRichSession(ws, "test-session");
-
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-      mockProc.emit("close", 1, null);
-
-      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const errors = calls.filter((c: any) => c.type === "error");
-      expect(errors).toHaveLength(1);
-      expect(errors[0].message).toContain("code 1");
-    });
-
-    it("handles stderr output", () => {
-      const ws = createMockWs();
-      bridgeRichSession(ws, "test-session");
-
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-      mockProc.stderr.emit("data", Buffer.from("warning message"));
-
-      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const stderrEvents = calls.filter((c: any) => c.type === "event" && c.event.type === "stderr");
-      expect(stderrEvents).toHaveLength(1);
-      expect(stderrEvents[0].event.text).toBe("warning message");
+      const streamEvents = calls.filter((c: any) =>
+        c.type === "event" && c.event.type === "stream_event"
+      );
+      expect(streamEvents).toHaveLength(0);
     });
   });
 
   describe("cleanupRichSession", () => {
-    it("kills process and removes state", () => {
+    it("kills tmux session and removes state", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
-      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
+
+      // Make tmux session exist for cleanup
+      _mockState.spawnSync.mockImplementation((_cmd: string, args: string[]) => {
+        if (args?.[0] === "has-session") return { status: 0 };
+        return { status: 0 };
+      });
 
       cleanupRichSession("test-session");
 
-      expect(mockProc.kill).toHaveBeenCalled();
+      const killCalls = _mockState.spawnSync.mock.calls.filter(
+        (c: any[]) => c[1]?.[0] === "kill-session"
+      );
+      expect(killCalls.length).toBeGreaterThanOrEqual(1);
       expect(richSessionExists("test-session")).toBe(false);
     });
 
     it("handles cleanup for non-existent session", () => {
-      // Should not throw
       expect(() => cleanupRichSession("nonexistent")).not.toThrow();
     });
   });
@@ -357,7 +336,6 @@ describe("claude-bridge", () => {
     it("returns true for active session", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
-
       expect(richSessionExists("test-session")).toBe(true);
     });
 
@@ -366,34 +344,55 @@ describe("claude-bridge", () => {
     });
   });
 
+  describe("richSessionTmuxAlive", () => {
+    it("returns true when tmux session exists", () => {
+      _mockState.spawnSync.mockImplementation((_cmd: string, args: string[]) => {
+        if (args?.[0] === "has-session" && args?.[2] === "rich-test-session") {
+          return { status: 0 };
+        }
+        return { status: 1 };
+      });
+      expect(richSessionTmuxAlive("test-session")).toBe(true);
+    });
+
+    it("returns false when tmux session does not exist", () => {
+      expect(richSessionTmuxAlive("test-session")).toBe(false);
+    });
+  });
+
   describe("persistence", () => {
     it("attempts to load state from DB", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session-2");
 
-      // Should have tried to load from DB
-      expect(mockPrepare).toHaveBeenCalledWith(
-        expect.stringContaining("SELECT session_id, events FROM rich_sessions"),
+      expect(_mockState.prepare).toHaveBeenCalledWith(
+        expect.stringContaining("SELECT session_id"),
       );
     });
 
-    it("restores saved events from DB", () => {
+    it("migrates old SQLite events to file", () => {
       const savedEvents = [
-        { type: "system", subtype: "init" },
+        { type: "system", subtype: "init", session_id: "saved-session" },
         { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "saved reply" }] } },
       ];
-      mockDbGet.mockReturnValueOnce({
+      _mockState.dbGet.mockReturnValueOnce({
         session_id: "saved-session",
+        byte_offset: 0,
         events: JSON.stringify(savedEvents),
       });
+
+      // Events file doesn't exist yet — trigger migration
+      _mockState.fsExistsSync.mockReturnValue(false);
 
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session-2");
 
-      // Should replay the saved events
-      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const events = calls.filter((c: any) => c.type === "event");
-      expect(events).toHaveLength(2);
+      // Should have written events to file
+      const writeCalls = _mockState.fsWriteFileSync.mock.calls.filter(
+        (c: any[]) => typeof c[0] === "string" && c[0].includes("events.ndjson")
+      );
+      expect(writeCalls.length).toBeGreaterThanOrEqual(1);
+      expect(writeCalls[0][1]).toContain("saved-session");
     });
 
     it("deletes state from DB on cleanup", () => {
@@ -402,7 +401,7 @@ describe("claude-bridge", () => {
 
       cleanupRichSession("test-session-2");
 
-      expect(mockPrepare).toHaveBeenCalledWith(
+      expect(_mockState.prepare).toHaveBeenCalledWith(
         expect.stringContaining("DELETE FROM rich_sessions"),
       );
     });

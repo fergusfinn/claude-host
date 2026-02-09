@@ -1,21 +1,22 @@
-import { spawn, type ChildProcess } from "child_process";
+import { spawnSync, execFileSync } from "child_process";
 import { WebSocket } from "ws";
 import Database from "better-sqlite3";
-import { mkdirSync } from "fs";
+import {
+  mkdirSync, existsSync, readFileSync, writeFileSync, openSync,
+  closeSync, readSync, writeSync, fstatSync, watch, statSync, rmSync,
+  constants as fsConstants,
+  type FSWatcher,
+} from "fs";
 import { dirname, join } from "path";
 
 /**
- * Rich-mode bridge: spawns a long-lived `claude -p` process with
- * bidirectional stream-json I/O, relays events over WebSocket.
+ * Rich-mode bridge: runs `claude -p` inside a tmux session for process
+ * persistence across server restarts. Communication uses:
+ *   - A FIFO (named pipe) for sending prompts to claude's stdin
+ *   - An append-only NDJSON file for capturing claude's stdout events
  *
- * The process stays alive across turns — prompts are written to stdin
- * as NDJSON, and events are read from stdout. This enables multi-turn
- * conversations within a single process, which is required for features
- * like AskUserQuestion (the CLI auto-denies it in per-turn mode, but
- * the user can answer and send a follow-up in the same session).
- *
- * Session state (event log, session ID) persists to SQLite across both
- * WS reconnects and server restarts, so conversations survive crashes.
+ * The wrapper script (scripts/rich-wrapper.sh) manages the claude process
+ * lifecycle inside tmux, automatically restarting with --resume if it exits.
  *
  * Protocol (client <-> server over WebSocket):
  *   Client -> Server:  { type: "prompt", text: string }
@@ -25,16 +26,33 @@ import { dirname, join } from "path";
  *   Server -> Client:  { type: "session_state", streaming: boolean }
  */
 
+const TMUX = (() => {
+  try {
+    return execFileSync("which", ["tmux"], { encoding: "utf-8" }).trim();
+  } catch {
+    return "tmux";
+  }
+})();
+
+// Strip TMUX env var to avoid nesting issues
+delete process.env.TMUX;
+
+const WRAPPER_SCRIPT = join(process.cwd(), "scripts", "rich-wrapper.sh");
+const RICH_DATA_DIR = join(process.cwd(), "data", "rich");
+
 interface RichState {
   sessionId: string | null;
-  events: object[];
-  proc: ChildProcess | null;
+  eventsFilePath: string;
+  fifoPath: string;
+  byteOffset: number;
   ws: WebSocket | null;
   turning: boolean;
   initReceived: boolean;
-  spawning: boolean;
-  dirty: boolean; // true when events need to be flushed to DB
   command: string;
+  // File tailing
+  tailWatcher: FSWatcher | null;
+  pollTimer: ReturnType<typeof setInterval> | null;
+  lineBuffer: string; // partial line from last read
 }
 
 // --- SQLite persistence ---
@@ -53,36 +71,41 @@ function getDb(): Database.Database {
         name TEXT PRIMARY KEY,
         session_id TEXT,
         events TEXT NOT NULL DEFAULT '[]',
+        byte_offset INTEGER DEFAULT 0,
         updated_at INTEGER DEFAULT (unixepoch())
       )
     `);
+    // Migration: add byte_offset if missing
+    try {
+      _db.exec(`ALTER TABLE rich_sessions ADD COLUMN byte_offset INTEGER DEFAULT 0`);
+    } catch {
+      // Column already exists
+    }
   }
   return _db;
 }
 
-function loadState(name: string): { sessionId: string | null; events: object[] } | null {
+function loadState(name: string): { sessionId: string | null; byteOffset: number; events: object[] } | null {
   const db = getDb();
-  const row = db.prepare("SELECT session_id, events FROM rich_sessions WHERE name = ?").get(name) as
-    | { session_id: string | null; events: string }
+  const row = db.prepare("SELECT session_id, byte_offset, events FROM rich_sessions WHERE name = ?").get(name) as
+    | { session_id: string | null; byte_offset: number; events: string }
     | undefined;
   if (!row) return null;
-  try {
-    return { sessionId: row.session_id, events: JSON.parse(row.events) };
-  } catch {
-    return { sessionId: row.session_id, events: [] };
-  }
+  let events: object[] = [];
+  try { events = JSON.parse(row.events); } catch {}
+  return { sessionId: row.session_id, byteOffset: row.byte_offset ?? 0, events };
 }
 
-function saveState(name: string, sessionId: string | null, events: object[]): void {
+function saveState(name: string, sessionId: string | null, byteOffset: number): void {
   const db = getDb();
   db.prepare(`
-    INSERT INTO rich_sessions (name, session_id, events, updated_at)
-    VALUES (?, ?, ?, unixepoch())
+    INSERT INTO rich_sessions (name, session_id, byte_offset, events, updated_at)
+    VALUES (?, ?, ?, '[]', unixepoch())
     ON CONFLICT(name) DO UPDATE SET
       session_id = excluded.session_id,
-      events = excluded.events,
+      byte_offset = excluded.byte_offset,
       updated_at = excluded.updated_at
-  `).run(name, sessionId, JSON.stringify(events));
+  `).run(name, sessionId, byteOffset);
 }
 
 function deleteState(name: string): void {
@@ -92,55 +115,46 @@ function deleteState(name: string): void {
 
 // --- In-memory state ---
 
-// Module-level state survives across WS connections
 const sessions = new Map<string, RichState>();
-const flushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-/** Debounced flush: batches rapid event writes into one DB write per 2s */
-function schedulePersist(name: string, state: RichState): void {
-  state.dirty = true;
-  if (flushTimers.has(name)) return;
-  flushTimers.set(
-    name,
-    setTimeout(() => {
-      flushTimers.delete(name);
-      if (state.dirty) {
-        saveState(name, state.sessionId, state.events);
-        state.dirty = false;
-      }
-    }, 2000),
-  );
-}
-
-/** Immediately flush pending state to DB */
-function flushPersist(name: string, state: RichState): void {
-  const timer = flushTimers.get(name);
-  if (timer) {
-    clearTimeout(timer);
-    flushTimers.delete(name);
-  }
-  if (state.dirty) {
-    saveState(name, state.sessionId, state.events);
-    state.dirty = false;
-  }
+function sessionDir(name: string): string {
+  return join(RICH_DATA_DIR, name);
 }
 
 function getOrCreate(name: string, command = "claude"): RichState {
   let state = sessions.get(name);
   if (!state) {
-    // Try to restore from DB first
+    const dir = sessionDir(name);
     const saved = loadState(name);
+
     state = {
       sessionId: saved?.sessionId ?? null,
-      events: saved?.events ?? [],
-      proc: null,
+      eventsFilePath: join(dir, "events.ndjson"),
+      fifoPath: join(dir, "prompt.fifo"),
+      byteOffset: saved?.byteOffset ?? 0,
       ws: null,
       turning: false,
       initReceived: false,
-      spawning: false,
-      dirty: false,
       command,
+      tailWatcher: null,
+      pollTimer: null,
+      lineBuffer: "",
     };
+
+    // Migrate old SQLite-stored events to file if needed
+    if (saved?.events && saved.events.length > 0 && !existsSync(state.eventsFilePath)) {
+      mkdirSync(dir, { recursive: true });
+      const content = saved.events.map(e => JSON.stringify(e)).join("\n") + "\n";
+      writeFileSync(state.eventsFilePath, content);
+      state.byteOffset = Buffer.byteLength(content);
+      // Extract session_id from migrated events
+      for (const evt of saved.events) {
+        const sid = (evt as any).session_id;
+        if (sid) { state.sessionId = sid; break; }
+      }
+      saveState(name, state.sessionId, state.byteOffset);
+    }
+
     sessions.set(name, state);
   }
   return state;
@@ -152,17 +166,25 @@ function send(ws: WebSocket, msg: object) {
   }
 }
 
-/**
- * Ensure a long-lived claude process exists for this session.
- * If the process died (crash, etc.), restart with --resume to
- * restore conversation context.
- */
-function ensureProcess(name: string, state: RichState): ChildProcess {
-  if (state.proc) return state.proc;
-  if (state.spawning) throw new Error("Process is already starting");
-  state.spawning = true;
+// --- tmux session management ---
 
-  const args = [
+function tmuxName(sessionName: string): string {
+  return `rich-${sessionName}`;
+}
+
+function tmuxExists(sessionName: string): boolean {
+  return spawnSync(TMUX, ["has-session", "-t", tmuxName(sessionName)], { stdio: "pipe" }).status === 0;
+}
+
+function ensureTmuxSession(name: string, state: RichState): void {
+  const tName = tmuxName(name);
+  if (tmuxExists(name)) return;
+
+  const dir = sessionDir(name);
+  mkdirSync(dir, { recursive: true });
+
+  // Build claude args for the wrapper
+  const claudeArgs = [
     "-p",
     "--output-format", "stream-json",
     "--input-format", "stream-json",
@@ -170,166 +192,217 @@ function ensureProcess(name: string, state: RichState): ChildProcess {
   ];
 
   if (state.command.includes("--dangerously-skip-permissions")) {
-    args.push("--dangerously-skip-permissions");
+    claudeArgs.push("--dangerously-skip-permissions");
   }
 
-  // Resume previous conversation if process restarted
-  if (state.sessionId) {
-    args.push("--resume", state.sessionId);
+  // Create tmux session running the wrapper script
+  const r = spawnSync(TMUX, [
+    "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
+    "-c", process.cwd(),
+    "bash", WRAPPER_SCRIPT,
+    state.eventsFilePath, state.fifoPath, ...claudeArgs,
+  ], { stdio: "pipe" });
+
+  if (r.status !== 0) {
+    throw new Error(`Failed to create tmux session: ${r.stderr?.toString()}`);
   }
 
-  const proc = spawn("claude", args, {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env },
-  });
+  // Configure tmux session
+  spawnSync(TMUX, ["set-option", "-t", tName, "status", "off"], { stdio: "pipe" });
+  spawnSync(TMUX, ["set-option", "-t", tName, "remain-on-exit", "off"], { stdio: "pipe" });
 
-  console.log(`[rich:${name}] Spawned claude process (pid=${proc.pid}), resume=${state.sessionId ?? "none"}`);
-  state.proc = proc;
-  state.spawning = false;
-  let buffer = "";
-
-  proc.stdout!.on("data", (chunk: Buffer) => {
-    buffer += chunk.toString();
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const event = JSON.parse(trimmed);
-
-        // Capture session_id from init events
-        if (event.session_id && !state.sessionId) {
-          state.sessionId = event.session_id;
-        }
-
-        // Skip subagent internal events
-        if (event.parent_tool_use_id != null) continue;
-
-        // Skip duplicate init events (one per turn, only show first)
-        if (event.type === "system" && event.subtype === "init") {
-          if (state.initReceived) continue;
-          state.initReceived = true;
-        }
-
-        // Handle turn completion
-        if (event.type === "result") {
-          state.turning = false;
-          state.events.push(event);
-          schedulePersist(name, state);
-          if (state.ws) {
-            send(state.ws, { type: "event", event });
-            send(state.ws, { type: "turn_complete" });
-          }
-          // Flush immediately at turn boundaries for reliability
-          flushPersist(name, state);
-          continue;
-        }
-
-        // Don't persist ephemeral stream deltas
-        if (event.type !== "stream_event") {
-          state.events.push(event);
-          schedulePersist(name, state);
-        }
-        if (state.ws) send(state.ws, { type: "event", event });
-      } catch {
-        const raw = { type: "raw", text: trimmed };
-        state.events.push(raw);
-        schedulePersist(name, state);
-        if (state.ws) send(state.ws, { type: "event", event: raw });
-      }
-    }
-  });
-
-  proc.stderr!.on("data", (chunk: Buffer) => {
-    const text = chunk.toString().trim();
-    if (text) {
-      const event = { type: "stderr", text };
-      state.events.push(event);
-      schedulePersist(name, state);
-      if (state.ws) send(state.ws, { type: "event", event });
-    }
-  });
-
-  // Stream error handlers — without these, stream errors are unhandled and
-  // can cause the process to silently stop delivering data.
-  proc.stdout!.on("error", (err) => {
-    console.error(`[rich:${name}] stdout error:`, err.message);
-    if (state.ws) send(state.ws, { type: "error", message: `stdout error: ${err.message}` });
-  });
-  proc.stderr!.on("error", (err) => {
-    console.error(`[rich:${name}] stderr error:`, err.message);
-  });
-  proc.stdin!.on("error", (err) => {
-    // EPIPE is expected if the process exits before we finish writing — the
-    // close handler will take care of notifying the client.
-    if ((err as NodeJS.ErrnoException).code === "EPIPE") {
-      console.warn(`[rich:${name}] stdin EPIPE (process likely exited)`);
-    } else {
-      console.error(`[rich:${name}] stdin error:`, err.message);
-      if (state.ws) send(state.ws, { type: "error", message: `stdin error: ${err.message}` });
-    }
-  });
-
-  proc.on("close", (code, signal) => {
-    const wasTurning = state.turning;
-    const pid = proc.pid;
-
-    // Flush remaining buffer
-    if (buffer.trim()) {
-      try {
-        const event = JSON.parse(buffer.trim());
-        if (event.session_id && !state.sessionId) {
-          state.sessionId = event.session_id;
-        }
-        state.events.push(event);
-        if (state.ws) send(state.ws, { type: "event", event });
-      } catch (e) {
-        console.warn(`[rich:${name}] Failed to parse remaining buffer on close:`, buffer.trim());
-      }
-    }
-    buffer = "";
-    state.proc = null;
-    state.turning = false;
-    state.initReceived = false; // Reset so next process gets its init shown
-    // Flush on close to ensure all events are persisted
-    flushPersist(name, state);
-
-    if (code !== 0 && code !== null) {
-      console.warn(`[rich:${name}] Process (pid=${pid}) exited with code ${code}, signal=${signal}, wasTurning=${wasTurning}`);
-      if (state.ws) {
-        send(state.ws, { type: "error", message: `Process exited (code ${code})` });
-      }
-    } else if (wasTurning) {
-      // Process exited cleanly mid-turn — something went wrong (OOM, context
-      // exhaustion, API error handled internally, etc.). Must notify client
-      // or the UI will stay stuck in streaming state forever.
-      console.warn(`[rich:${name}] Process (pid=${pid}) exited cleanly (code=${code}, signal=${signal}) while turn was in progress`);
-      if (state.ws) {
-        send(state.ws, { type: "error", message: "Agent process exited unexpectedly" });
-      }
-    } else {
-      console.log(`[rich:${name}] Process (pid=${pid}) exited cleanly (code=${code}, signal=${signal})`);
-    }
-
-    // Always send turn_complete if we were mid-turn so the client exits streaming state
-    if (wasTurning && state.ws) {
-      send(state.ws, { type: "turn_complete" });
-    }
-  });
-
-  proc.on("error", (err) => {
-    console.error(`[rich:${name}] Process error (pid=${proc.pid}):`, err.message);
-    state.proc = null;
-    state.spawning = false;
-    state.turning = false;
-    state.initReceived = false;
-    if (state.ws) send(state.ws, { type: "error", message: err.message });
-  });
-
-  return proc;
+  console.log(`[rich:${name}] Created tmux session ${tName}`);
 }
+
+// --- Event file tailing ---
+
+/** Read new bytes from the events file starting at byteOffset */
+function readNewEvents(name: string, state: RichState): void {
+  if (!existsSync(state.eventsFilePath)) return;
+
+  let fd: number;
+  try {
+    fd = openSync(state.eventsFilePath, "r");
+  } catch {
+    return;
+  }
+
+  try {
+    const stat = fstatSync(fd);
+    if (stat.size <= state.byteOffset) return;
+
+    const buf = Buffer.alloc(stat.size - state.byteOffset);
+    readSync(fd, buf, 0, buf.length, state.byteOffset);
+    state.byteOffset = stat.size;
+
+    processEventChunk(name, state, buf.toString());
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Parse NDJSON chunk, relay events to WS client */
+function processEventChunk(name: string, state: RichState, chunk: string): void {
+  const data = state.lineBuffer + chunk;
+  const lines = data.split("\n");
+  state.lineBuffer = lines.pop() || "";
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    try {
+      const event = JSON.parse(trimmed);
+
+      // Capture session_id
+      if (event.session_id && !state.sessionId) {
+        state.sessionId = event.session_id;
+      }
+
+      // Skip subagent internal events
+      if (event.parent_tool_use_id != null) continue;
+
+      // Skip duplicate init events
+      if (event.type === "system" && event.subtype === "init") {
+        if (state.initReceived) continue;
+        state.initReceived = true;
+      }
+
+      // Handle turn completion
+      if (event.type === "result") {
+        state.turning = false;
+        if (state.ws) {
+          send(state.ws, { type: "event", event });
+          send(state.ws, { type: "turn_complete" });
+        }
+        // Persist offset at turn boundaries
+        saveState(name, state.sessionId, state.byteOffset);
+        continue;
+      }
+
+      // Forward event to WS client (skip ephemeral stream deltas from persistence,
+      // but still relay them to the client for live streaming)
+      if (state.ws) send(state.ws, { type: "event", event });
+    } catch {
+      // Non-JSON line — skip
+    }
+  }
+}
+
+/** Replay all events from file to a WebSocket client */
+function replayEventsFromFile(state: RichState, ws: WebSocket): void {
+  if (!existsSync(state.eventsFilePath)) return;
+
+  let content: string;
+  try {
+    content = readFileSync(state.eventsFilePath, "utf-8");
+  } catch {
+    return;
+  }
+
+  // Track init for dedup during replay
+  let initSeen = false;
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const event = JSON.parse(trimmed);
+
+      // Skip subagent events
+      if (event.parent_tool_use_id != null) continue;
+
+      // Skip stream deltas on replay
+      if (event.type === "stream_event") continue;
+
+      // Dedup init events
+      if (event.type === "system" && event.subtype === "init") {
+        if (initSeen) continue;
+        initSeen = true;
+      }
+
+      send(ws, { type: "event", event });
+    } catch {
+      // Skip unparseable lines
+    }
+  }
+}
+
+/** Start tailing the events file for live updates */
+function startTailing(name: string, state: RichState): void {
+  stopTailing(state);
+
+  // Read any events that accumulated while we weren't watching
+  readNewEvents(name, state);
+
+  // Watch for changes with fs.watch (backed by inotify/kqueue)
+  try {
+    if (existsSync(state.eventsFilePath)) {
+      state.tailWatcher = watch(state.eventsFilePath, () => {
+        readNewEvents(name, state);
+      });
+      state.tailWatcher.on("error", () => {
+        // Watcher failed — poll timer will handle it
+      });
+    }
+  } catch {
+    // fs.watch not available — fall through to poll timer
+  }
+
+  // Fallback poll timer for reliability (fs.watch can be flaky)
+  state.pollTimer = setInterval(() => {
+    readNewEvents(name, state);
+  }, 500);
+}
+
+/** Stop tailing the events file */
+function stopTailing(state: RichState): void {
+  if (state.tailWatcher) {
+    try { state.tailWatcher.close(); } catch {}
+    state.tailWatcher = null;
+  }
+  if (state.pollTimer) {
+    clearInterval(state.pollTimer);
+    state.pollTimer = null;
+  }
+}
+
+// --- FIFO prompt writing ---
+
+function sendPromptViaFifo(name: string, state: RichState, promptJson: string): boolean {
+  try {
+    // O_WRONLY | O_NONBLOCK — fails immediately with ENXIO if no reader
+    const fd = openSync(state.fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK);
+    try {
+      const buf = Buffer.from(promptJson + "\n");
+      let written = 0;
+      while (written < buf.length) {
+        // writeSync with offset to handle partial writes
+        const n = writeSync(fd, buf, written, buf.length - written);
+        written += n;
+      }
+      return true;
+    } finally {
+      closeSync(fd);
+    }
+  } catch (err: any) {
+    if (err.code === "ENXIO") {
+      console.error(`[rich:${name}] FIFO has no reader — wrapper may have died`);
+      return false;
+    }
+    console.error(`[rich:${name}] FIFO write error:`, err.message);
+    return false;
+  }
+}
+
+// --- Interrupt ---
+
+function sendInterrupt(name: string): void {
+  const tName = tmuxName(name);
+  spawnSync(TMUX, ["send-keys", "-t", tName, "C-c"], { stdio: "pipe" });
+}
+
+// --- Public API ---
 
 export function bridgeRichSession(ws: WebSocket, sessionName: string, command = "claude"): void {
   const state = getOrCreate(sessionName, command);
@@ -339,16 +412,27 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
     console.log(`[rich:${sessionName}] Disconnecting previous WS client`);
     state.ws.close();
   }
-  console.log(`[rich:${sessionName}] WS client connected (proc=${state.proc?.pid ?? "none"}, turning=${state.turning}, events=${state.events.length})`);
-  state.ws = ws;
 
-  // Replay stored events
-  for (const event of state.events) {
-    send(ws, { type: "event", event });
+  state.ws = ws;
+  state.initReceived = false; // Reset for replay dedup
+
+  // Replay events from the file (source of truth)
+  replayEventsFromFile(state, ws);
+
+  // Update byte offset to end of file so tailing picks up from here
+  if (existsSync(state.eventsFilePath)) {
+    try {
+      state.byteOffset = statSync(state.eventsFilePath).size;
+    } catch {}
   }
+
+  // Start tailing for live events
+  startTailing(sessionName, state);
 
   // Tell client whether a turn is currently in progress
   send(ws, { type: "session_state", streaming: state.turning });
+
+  console.log(`[rich:${sessionName}] WS client connected (tmux=${tmuxExists(sessionName)}, turning=${state.turning})`);
 
   // Handle incoming messages
   ws.on("message", (msg: Buffer | string) => {
@@ -362,8 +446,8 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
     }
 
     if (parsed.type === "interrupt") {
-      if (state.proc && state.turning) {
-        state.proc.kill("SIGINT");
+      if (state.turning && tmuxExists(sessionName)) {
+        sendInterrupt(sessionName);
       }
       return;
     }
@@ -374,12 +458,17 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
         return;
       }
 
-      let proc: ChildProcess;
+      // Ensure tmux session is running
       try {
-        proc = ensureProcess(sessionName, state);
+        ensureTmuxSession(sessionName, state);
       } catch (e: any) {
-        send(ws, { type: "error", message: `Failed to spawn claude: ${e.message}` });
+        send(ws, { type: "error", message: `Failed to start session: ${e.message}` });
         return;
+      }
+
+      // Ensure we're tailing (may not have started if tmux was just created)
+      if (!state.pollTimer) {
+        startTailing(sessionName, state);
       }
 
       const userMsg = {
@@ -390,61 +479,64 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
         },
       };
 
-      // Check stdin is still writable before committing to the turn
-      if (!proc.stdin || proc.stdin.destroyed) {
-        console.error(`[rich:${sessionName}] stdin is destroyed, cannot send prompt`);
-        send(ws, { type: "error", message: "Agent process stdin is closed" });
-        return;
-      }
+      // Wait briefly for the FIFO to become available (wrapper needs time to start)
+      const maxWait = 5000;
+      const start = Date.now();
+      const tryWrite = () => {
+        const ok = sendPromptViaFifo(sessionName, state, JSON.stringify(userMsg));
+        if (ok) {
+          state.turning = true;
+          return;
+        }
 
-      state.turning = true;
-      try {
-        proc.stdin.write(JSON.stringify(userMsg) + "\n");
-      } catch (e: any) {
-        console.error(`[rich:${sessionName}] stdin.write() threw:`, e.message);
-        state.turning = false;
-        send(ws, { type: "error", message: `Failed to send prompt: ${e.message}` });
-      }
+        if (Date.now() - start < maxWait) {
+          setTimeout(tryWrite, 200);
+        } else {
+          send(ws, { type: "error", message: "Failed to send prompt — wrapper not responding" });
+        }
+      };
+      tryWrite();
     }
   });
 
   const cleanup = (reason?: string) => {
-    // Only clear the ws ref if it's still us
     if (state.ws === ws) {
       console.log(`[rich:${sessionName}] WS client disconnected (reason=${reason ?? "unknown"}, turning=${state.turning})`);
       state.ws = null;
+      // Stop tailing when no client is connected (saves resources).
+      // Events are still captured by the wrapper in the file.
+      stopTailing(state);
+      // Persist current offset
+      saveState(sessionName, state.sessionId, state.byteOffset);
     }
-    // Do NOT kill the claude process — it should finish its turn
-    // and events will be stored for the next connection
   };
 
-  ws.on("close", (code: number, reason: Buffer) => cleanup(`close:${code}`));
+  ws.on("close", (code: number) => cleanup(`close:${code}`));
   ws.on("error", (err: Error) => cleanup(`error:${err.message}`));
 }
 
 /** Clean up all state for a rich session (called on session delete) */
 export function cleanupRichSession(name: string): void {
   const state = sessions.get(name);
-  if (!state) {
-    // Even if not in memory, clean up DB
-    deleteState(name);
-    return;
+  if (state) {
+    stopTailing(state);
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+      state.ws.close();
+    }
+    sessions.delete(name);
   }
-  if (state.proc) {
-    try {
-      state.proc.stdin?.end();
-      state.proc.kill();
-    } catch {}
+
+  // Kill tmux session
+  if (tmuxExists(name)) {
+    spawnSync(TMUX, ["kill-session", "-t", tmuxName(name)], { stdio: "pipe" });
   }
-  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-    state.ws.close();
+
+  // Remove runtime files
+  const dir = sessionDir(name);
+  if (existsSync(dir)) {
+    try { rmSync(dir, { recursive: true, force: true }); } catch {}
   }
-  const timer = flushTimers.get(name);
-  if (timer) {
-    clearTimeout(timer);
-    flushTimers.delete(name);
-  }
-  sessions.delete(name);
+
   deleteState(name);
 }
 
@@ -453,4 +545,9 @@ export function richSessionExists(name: string): boolean {
   if (sessions.has(name)) return true;
   // Check DB for persisted sessions that survived a restart
   return loadState(name) !== null;
+}
+
+/** Check if the rich session's tmux process is actively running */
+export function richSessionTmuxAlive(name: string): boolean {
+  return tmuxExists(name);
 }
