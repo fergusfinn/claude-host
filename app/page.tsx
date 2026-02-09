@@ -5,6 +5,8 @@ import { Dashboard, SettingsForm } from "@/components/dashboard";
 import { ExecutorsPage } from "@/components/executors-page";
 import { PaneLayout } from "@/components/pane-layout";
 import { TabBar } from "@/components/tab-bar";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
+import { useSwipeTabs } from "@/hooks/use-swipe-tabs";
 import { getThemeById, DEFAULT_DARK_THEME, type TerminalTheme, getFontById, DEFAULT_FONT_ID, type TerminalFont, ensureFontLoaded, getDefaultThemeForMode, themeToChromeVars } from "@/lib/themes";
 import { generateName } from "@/lib/names";
 import { loadShortcuts, type ShortcutMap } from "@/lib/shortcuts";
@@ -569,6 +571,9 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handler, true);
   }, [tabs, activeTabId, activeTab]);
 
+  const contentRef = useRef<HTMLDivElement>(null);
+  useSwipeTabs({ containerRef: contentRef, tabs, activeTabId, setActiveTabId });
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDialogElement>(null);
 
@@ -639,7 +644,24 @@ export default function Home() {
         mode={mode}
         onModeChange={handleModeChange}
       />
-      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+      <MobileTabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        currentTheme={theme}
+        currentFont={font}
+        keyMode={keyMode}
+        onKeyModeChange={setKeyMode}
+        onSelectTab={setActiveTabId}
+        onNew={quickCreate}
+        onThemeChange={handleThemeChange}
+        onFontChange={handleFontChange}
+        onRefresh={() => setRefreshKey((k) => k + 1)}
+        mode={mode}
+        onModeChange={handleModeChange}
+        onOpenExecutors={() => setActiveTabId(activeTabId === "executors" ? null : "executors")}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+      <div ref={contentRef} style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div style={{
           position: "absolute", inset: 0,
           display: activeTabId === null ? "flex" : "none",

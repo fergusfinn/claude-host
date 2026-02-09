@@ -199,8 +199,7 @@ button {
 
 @media (max-width: 600px) {
   .app-header {
-    height: 32px;
-    padding: 0 12px;
+    display: none;
   }
 
   .app-header-title {

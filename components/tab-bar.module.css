@@ -381,7 +381,7 @@
 
 @media (max-width: 600px) {
   .wrapper {
-    height: 32px;
+    display: none;
   }
 
   .tab {
