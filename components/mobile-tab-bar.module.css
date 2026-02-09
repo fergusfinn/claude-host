@@ -267,4 +267,16 @@
   .menuItemDanger .menuIcon {
     color: var(--danger);
   }
+
+  .menuUser {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .menuUser > .menuLabel {
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--text-2);
+  }
 }

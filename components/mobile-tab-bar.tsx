@@ -11,7 +11,7 @@ import {
 import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "@/components/rich-view";
 import { getAllLeaves } from "@/lib/layout";
 import type { TabState } from "@/app/page";
-import { Plus, RotateCw, Sun, Moon, X, EllipsisVertical, Server, Settings, RefreshCw } from "lucide-react";
+import { Plus, RotateCw, Sun, Moon, X, EllipsisVertical, Server, Settings, RefreshCw, LogOut } from "lucide-react";
 import styles from "./mobile-tab-bar.module.css";
 
 interface Props {
@@ -33,6 +33,8 @@ interface Props {
   onModeChange: (mode: "dark" | "light") => void;
   onOpenExecutors: () => void;
   onOpenSettings: () => void;
+  userName?: string | null;
+  onSignOut?: () => void;
 }
 
 function tabLabel(tab: TabState): string {
@@ -60,6 +62,8 @@ export function MobileTabBar({
   onModeChange,
   onOpenExecutors,
   onOpenSettings,
+  userName,
+  onSignOut,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [subMenu, setSubMenu] = useState<"none" | "fonts" | "richFonts" | "themes">("none");
@@ -243,6 +247,23 @@ export function MobileTabBar({
                     <span className={styles.menuIcon}><RefreshCw size={14} /></span>
                     <span className={styles.menuLabel}>Reload page</span>
                   </button>
+                  {userName && (
+                    <>
+                      <div className={styles.menuSep} />
+                      <div className={styles.menuUser}>
+                        <span className={styles.menuLabel}>{userName}</span>
+                        {onSignOut && (
+                          <button
+                            className={styles.menuItem}
+                            onClick={() => { onSignOut(); setMenuOpen(false); }}
+                          >
+                            <span className={styles.menuIcon}><LogOut size={14} /></span>
+                            <span className={styles.menuLabel}>Sign out</span>
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
 

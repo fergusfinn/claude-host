@@ -751,6 +751,8 @@ export default function Home() {
         onRefresh={() => setRefreshKey((k) => k + 1)}
         mode={mode}
         onModeChange={handleModeChange}
+        userName={session?.user?.name}
+        onSignOut={() => authClient.signOut().then(() => { window.location.href = "/login"; })}
       />
       <MobileTabBar
         tabs={tabs}
@@ -771,6 +773,8 @@ export default function Home() {
         onOpenExecutors={() => setActiveTabId(activeTabId === "executors" ? null : "executors")}
         onCloseTab={closeTabById}
         onOpenSettings={() => setSettingsOpen(true)}
+        userName={session?.user?.name}
+        onSignOut={() => authClient.signOut().then(() => { window.location.href = "/login"; })}
       />
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div style={{

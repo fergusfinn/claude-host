@@ -5,7 +5,7 @@ import { themesForMode, fonts, type TerminalTheme, type TerminalFont, ensureFont
 import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "@/components/rich-view";
 import { getAllLeaves } from "@/lib/layout";
 import type { TabState } from "@/app/page";
-import { Plus, RotateCw, Sun, Moon, X } from "lucide-react";
+import { Plus, RotateCw, Sun, Moon, X, LogOut } from "lucide-react";
 import styles from "./tab-bar.module.css";
 
 interface Props {
@@ -17,6 +17,8 @@ interface Props {
   richFont: string;
   keyMode: "insert" | "control";
   showHints: boolean;
+  userName?: string | null;
+  onSignOut?: () => void;
   onKeyModeChange: (mode: "insert" | "control") => void;
   onSelectTab: (tabId: string | null) => void;
   onCloseTab: (tabId: string) => void;
@@ -43,7 +45,7 @@ function tabExecutor(tab: TabState, sessionExecutors?: Record<string, string>): 
   return exec && exec !== "local" ? exec : null;
 }
 
-export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, richFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onNew, onReorderTab, onThemeChange, onFontChange, onRichFontChange, onRefresh, mode, onModeChange }: Props) {
+export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, richFont, keyMode, showHints, userName, onSignOut, onKeyModeChange, onSelectTab, onCloseTab, onNew, onReorderTab, onThemeChange, onFontChange, onRichFontChange, onRefresh, mode, onModeChange }: Props) {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [richFontPickerOpen, setRichFontPickerOpen] = useState(false);
@@ -282,6 +284,17 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
           </div>
         )}
       </div>
+
+      {userName && (
+        <div className={styles.userBadge}>
+          <span className={styles.userName}>{userName}</span>
+          {onSignOut && (
+            <button className={styles.signOutBtn} onClick={onSignOut} title="Sign out">
+              <LogOut size={12} />
+            </button>
+          )}
+        </div>
+      )}
 
       <div className={styles.modeWrap}>
         <button
