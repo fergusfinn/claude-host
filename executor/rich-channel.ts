@@ -122,7 +122,7 @@ export function openRichChannel(opts: RichChannelOpts): void {
     try {
       const fd = openSync(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK);
       try {
-        const payload = JSON.stringify({ role: "user", content: [{ type: "text", text }] }) + "\n";
+        const payload = JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text }] } }) + "\n";
         writeSync(fd, payload);
         return true;
       } finally {
