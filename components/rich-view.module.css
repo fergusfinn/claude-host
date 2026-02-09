@@ -228,7 +228,7 @@
 }
 
 .userLabel {
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 2px;
@@ -253,7 +253,7 @@
 /* Text blocks */
 
 .textBlock {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -265,7 +265,7 @@
   background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 /* Tool pair (paired tool_use + inline result) */
@@ -289,7 +289,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 12px 4px 28px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .toolPairResult {
@@ -315,7 +315,7 @@
 /* Done hint (collapsed state) */
 
 .toolDoneHint {
-  font-size: 10px;
+  font-size: 11px;
   margin-left: auto;
   padding-left: 8px;
   flex-shrink: 0;
@@ -331,7 +331,7 @@
   padding: 5px 10px;
   background: transparent;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
   border: none;
@@ -350,7 +350,7 @@
 }
 
 .toolIcon {
-  font-size: 11px;
+  font-size: 12px;
   width: 14px;
   text-align: center;
   flex-shrink: 0;
@@ -373,7 +373,7 @@
 .toolInput {
   margin: 0;
   padding: 8px 12px 8px 28px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   overflow-x: auto;
   max-height: 300px;
@@ -389,7 +389,7 @@
 .toolResultContent {
   margin: 0;
   padding: 6px 12px 6px 28px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   border-left: 2px solid;
   max-height: 300px;
@@ -408,7 +408,7 @@
   background: transparent;
   border: none;
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 28px;
   cursor: pointer;
   min-height: 28px;
@@ -421,13 +421,13 @@
 
 .diffView {
   padding: 0 12px 0 28px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   min-width: 0;
 }
 
 .diffFilePath {
-  font-size: 10px;
+  font-size: 11px;
   padding: 4px 0 2px;
   word-break: break-all;
 }
@@ -465,7 +465,7 @@
   padding: 5px 10px;
   background: transparent;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
   border: none;
@@ -477,7 +477,7 @@
 }
 
 .toolGroupCount {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
 }
 
@@ -502,7 +502,7 @@
   padding: 6px 10px;
   background: transparent;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
   border: none;
@@ -515,7 +515,7 @@
 }
 
 .subagentBadge {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -530,7 +530,7 @@
 }
 
 .subagentDescription {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   padding: 4px 0;
   opacity: 0.85;
@@ -548,7 +548,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 0;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .subagentDots span {
@@ -588,13 +588,13 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14px;
   margin-bottom: 8px;
   flex-wrap: wrap;
 }
 
 .questionBadge {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -638,13 +638,13 @@
 }
 
 .questionOptionLabel {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   word-break: break-word;
 }
 
 .questionOptionDesc {
-  font-size: 11px;
+  font-size: 12px;
   word-break: break-word;
 }
 
@@ -653,7 +653,7 @@
   padding: 8px 16px;
   border: 1px solid;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
@@ -670,7 +670,7 @@
 
 .questionAnswered {
   margin-top: 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* Result block (end of turn) */
@@ -685,7 +685,7 @@
 }
 
 .resultError {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   word-break: break-word;
 }
@@ -694,7 +694,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 16px 20px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .resultMetaItem {
@@ -704,7 +704,7 @@
 }
 
 .resultMetaLabel {
-  font-size: 9px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -716,7 +716,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  font-size: 12px;
+  font-size: 13px;
   opacity: 0.6;
 }
 
@@ -735,7 +735,7 @@
 
 .streamingPre {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
@@ -744,7 +744,7 @@
 .streamingCursor {
   display: inline-block;
   width: 7px;
-  height: 14px;
+  height: 16px;
   vertical-align: text-bottom;
   margin-left: 1px;
   animation: blink 0.8s step-end infinite;
