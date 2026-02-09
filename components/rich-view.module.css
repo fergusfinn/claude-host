@@ -3,6 +3,7 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  container-type: inline-size;
 }
 
 /* Status bar */
@@ -83,8 +84,7 @@
   -webkit-overflow-scrolling: touch;
 }
 
-/* Content centering wrapper for readability on wide screens */
-
+/* Center content and constrain width for readability on large screens */
 .messagesInner {
   width: 100%;
   max-width: 860px;
@@ -578,7 +578,6 @@
   gap: 2px;
   padding: 8px 12px;
   border: 1px solid;
-  border-radius: 3px;
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -615,7 +614,6 @@
   margin-top: 12px;
   padding: 8px 16px;
   border: 1px solid;
-  border-radius: 3px;
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -730,7 +728,6 @@
   font-family: inherit;
   font-size: 11px;
   border: 1px solid;
-  border-radius: 16px;
   cursor: pointer;
   z-index: 10;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -748,20 +745,11 @@
 .inputArea {
   display: flex;
   align-items: flex-end;
-  justify-content: center;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid;
   background: var(--bg-1);
   flex-shrink: 0;
-}
-
-.inputInner {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  width: 100%;
-  max-width: 860px;
 }
 
 .input {
@@ -823,11 +811,27 @@
   opacity: 0.8;
 }
 
+/* ---- Tablet responsive (601px–900px) ---- */
+
+@container (max-width: 900px) {
+  .messages {
+    padding: 14px;
+  }
+
+  .toolInput {
+    max-height: 250px;
+  }
+
+  .toolResultContent {
+    max-height: 250px;
+  }
+}
+
 /* ---- Mobile responsive (≤600px) ---- */
 
-@media (max-width: 600px) {
+@container (max-width: 600px) {
   .statusBar {
-    padding: 6px 10px;
+    padding: 6px 12px;
   }
 
   .messages {
@@ -836,12 +840,12 @@
 
   .role_user {
     padding-left: 6px;
-    margin-top: 12px;
+    margin-top: 14px;
   }
 
   .role_assistant {
     padding-left: 6px;
-    margin-top: 8px;
+    margin-top: 10px;
   }
 
   .textBlock {
@@ -851,6 +855,7 @@
 
   .role_user > .textBlock {
     padding: 8px 12px;
+    font-size: 13px;
   }
 
   .toolInput {
@@ -868,6 +873,14 @@
   .toolHeader {
     padding: 6px 8px;
     gap: 4px;
+    font-size: 11px;
+  }
+
+  .toolName {
+    font-size: 11px;
+  }
+
+  .toolSummary {
     font-size: 11px;
   }
 
@@ -890,13 +903,22 @@
     font-size: 10px;
   }
 
+  .diffFilePath {
+    font-size: 9px;
+    word-break: break-all;
+  }
+
   .subagentHeader {
     padding: 6px 8px;
     gap: 4px;
   }
 
   .subagentBody {
-    padding: 0 8px 8px 10px;
+    padding: 0 8px 8px 12px;
+  }
+
+  .subagentDescription {
+    font-size: 12px;
   }
 
   .questionBlock {
@@ -906,6 +928,14 @@
   .questionHeader {
     font-size: 12px;
     gap: 6px;
+  }
+
+  .questionOptionLabel {
+    font-size: 12px;
+  }
+
+  .questionOptionDesc {
+    font-size: 10px;
   }
 
   .inputArea {
@@ -952,9 +982,9 @@
 
 /* ---- Very small screens (≤380px) ---- */
 
-@media (max-width: 380px) {
+@container (max-width: 380px) {
   .messages {
-    padding: 6px 4px;
+    padding: 8px 4px;
   }
 
   .role_user {
@@ -994,7 +1024,7 @@
   }
 }
 
-/* ---- Touch devices: good tap targets ---- */
+/* ---- Touch devices: ensure good tap targets ---- */
 
 @media (pointer: coarse) {
   .toolHeader {
@@ -1049,7 +1079,7 @@
   }
 
   .input {
-    font-size: 16px;
+    font-size: 16px; /* Prevents iOS zoom */
     min-height: 40px;
   }
 }
