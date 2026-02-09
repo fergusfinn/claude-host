@@ -249,6 +249,14 @@ export function MobileTabBar({
                     </span>
                     <span className={styles.menuLabel}>Settings</span>
                   </button>
+                  <div className={styles.menuSep} />
+                  <button
+                    className={styles.menuItem}
+                    onClick={() => window.location.reload()}
+                  >
+                    <span className={styles.menuIcon}>&#x21bb;</span>
+                    <span className={styles.menuLabel}>Reload page</span>
+                  </button>
                 </>
               )}
 

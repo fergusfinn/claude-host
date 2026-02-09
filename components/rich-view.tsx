@@ -163,7 +163,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
 
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null);
 
   // Streaming text: ref is source of truth, reducer tick triggers re-renders
   const streamingTextRef = useRef("");
@@ -599,10 +599,11 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
     wsRef.current.send(JSON.stringify({ type: "prompt", text }));
     setInputValue("");
 
-    // Reset textarea height
+    // Reset contenteditable
     requestAnimationFrame(() => {
       if (inputRef.current) {
-        inputRef.current.style.height = "auto";
+        inputRef.current.textContent = "";
+        inputRef.current.style.height = "";
       }
     });
 
@@ -634,12 +635,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
     }
   }
 
-  function autoResize(el: HTMLTextAreaElement) {
-    // Use overflow hidden to prevent scrollbar flash during measurement
-    el.style.overflow = "hidden";
+  function autoResize(el: HTMLElement) {
     el.style.height = "0";
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
-    el.style.overflow = "";
     // Scroll conversation to bottom as input grows, so it pushes content up visually
     scrollToBottom();
   }
@@ -919,18 +917,23 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
       {/* Input */}
       <div className={`${styles.inputArea} ${justTransitioned ? styles.inputSettling : ""}`}>
         <div className={styles.inputInner}>
-        <textarea
+        <div
           ref={inputRef}
           className={styles.input}
-          value={inputValue}
-          onChange={(e) => {
-            setInputValue(e.target.value);
-            autoResize(e.target);
+          contentEditable={connected}
+          role="textbox"
+          data-placeholder={isStreaming ? "Type to queue a follow-up\u2026" : "Type a message\u2026"}
+          onInput={(e) => {
+            const text = e.currentTarget.textContent || "";
+            setInputValue(text);
+            autoResize(e.currentTarget);
           }}
           onKeyDown={handleKeyDown}
-          placeholder={isStreaming ? "Type to queue a follow-up…" : "Type a message…"}
-          disabled={!connected}
-          rows={1}
+          onPaste={(e) => {
+            e.preventDefault();
+            const text = e.clipboardData.getData("text/plain");
+            document.execCommand("insertText", false, text);
+          }}
           style={{
             color: theme.foreground,
           }}
