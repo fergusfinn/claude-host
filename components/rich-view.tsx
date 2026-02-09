@@ -8,14 +8,13 @@ import {
   truncateAtWord,
   getToolSummary,
   formatToolInput,
-  getToolIcon,
   type ContentBlock,
   type ContentBlockText,
   type ContentBlockToolUse,
   type ContentBlockToolResult,
   type RenderItem,
 } from "@/lib/rich-render";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, Square, FileText, Pencil, FilePlus, Terminal, LayoutGrid, Search, ListTree, Globe, CircleHelp, SquarePlus, Diamond } from "lucide-react";
 import styles from "./rich-view.module.css";
 
 export const RICH_FONT_OPTIONS: Record<string, { label: string; fontFamily: string; googleFontsUrl?: string }> = {
@@ -1078,7 +1077,7 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
     >
       <button className={styles.toolHeader} onClick={() => onToggle(toolUse.id)} style={{ color: toolColor }} aria-expanded={!collapsed}>
         <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
-        <span className={styles.toolIcon}>{getToolIcon(toolUse.name)}</span>
+        <span className={styles.toolIcon}>{toolIcon(toolUse.name)}</span>
         <span className={styles.toolName}>{toolUse.name}</span>
         {onOpenFile && toolUse.input.file_path && ["Read", "Edit", "Write"].includes(toolUse.name) ? (
           <span
@@ -1268,7 +1267,7 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
         aria-expanded={!isCollapsed}
       >
         <span className={styles.toolChevron}>{isCollapsed ? "\u25B8" : "\u25BE"}</span>
-        <span className={styles.toolIcon}>{getToolIcon(name)}</span>
+        <span className={styles.toolIcon}>{toolIcon(name)}</span>
         <span className={styles.toolName}>{name}</span>
         <span className={styles.toolGroupCount} style={{ color: `${theme.foreground}60` }}>
           {allDone ? `(${pairs.length})` : `(${doneCount}/${pairs.length})`}
@@ -1383,7 +1382,7 @@ const SubagentBlock = React.memo(function SubagentBlock({
     >
       <button className={styles.subagentHeader} onClick={() => onToggle(toolUse.id)} style={{ color: agentColor }} aria-expanded={!collapsed}>
         <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
-        <span className={styles.toolIcon}>{"\u229E"}</span>
+        <span className={styles.toolIcon}><SquarePlus size={TOOL_ICON_SIZE} /></span>
         <span className={styles.toolName}>Task</span>
         {subagentType && (
           <span className={styles.subagentBadge} style={{ background: `${agentColor}25`, color: agentColor }}>
@@ -1655,6 +1654,24 @@ function getResultDisplay(toolResult: ContentBlockToolResult | null, expanded?: 
       : lines.slice(0, 12).join("\n") + "\n\u2026"
     : null;
   return { content, lines, isLong, isExpanded, display };
+}
+
+const TOOL_ICON_SIZE = 12;
+const TOOL_ICONS: Record<string, React.ReactNode> = {
+  Read: <FileText size={TOOL_ICON_SIZE} />,
+  Edit: <Pencil size={TOOL_ICON_SIZE} />,
+  Write: <FilePlus size={TOOL_ICON_SIZE} />,
+  Bash: <Terminal size={TOOL_ICON_SIZE} />,
+  Glob: <LayoutGrid size={TOOL_ICON_SIZE} />,
+  Grep: <Search size={TOOL_ICON_SIZE} />,
+  Task: <ListTree size={TOOL_ICON_SIZE} />,
+  WebFetch: <Globe size={TOOL_ICON_SIZE} />,
+  WebSearch: <CircleHelp size={TOOL_ICON_SIZE} />,
+};
+const DEFAULT_TOOL_ICON = <Diamond size={TOOL_ICON_SIZE} />;
+
+function toolIcon(name: string): React.ReactNode {
+  return TOOL_ICONS[name] || DEFAULT_TOOL_ICON;
 }
 
 function getToolColor(name: string, theme: TerminalTheme): string {
