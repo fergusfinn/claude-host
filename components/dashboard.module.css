@@ -499,6 +499,91 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* Executor panel */
+
+.executorPanel {
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.executorPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+}
+
+.executorPanelTitle {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.executorRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 20px;
+  gap: 12px;
+}
+
+.executorRow + .executorRow {
+  border-top: 1px solid var(--border);
+}
+
+.executorRowLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.executorName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-0);
+  white-space: nowrap;
+}
+
+.executorVersion {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-2);
+  background: var(--bg-0);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.executorMeta {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.executorLabels {
+  font-size: 10px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.upgradeBtn {
+  background: transparent;
+  color: var(--text-2);
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: all 0.1s;
+}
+.upgradeBtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* ---- Mobile responsive ---- */
 
 @media (max-width: 600px) {
@@ -529,6 +614,14 @@
 
   .listHeader {
     padding: 8px 12px;
+  }
+
+  .executorPanelHeader {
+    padding: 8px 12px;
+  }
+
+  .executorRow {
+    padding: 6px 12px;
   }
 
   /* Show delete button always on touch devices */

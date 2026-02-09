@@ -4,6 +4,8 @@
  */
 
 import WebSocket from "ws";
+import { execSync } from "child_process";
+import path from "path";
 import type { ControlToExecutorMessage } from "../shared/protocol";
 import { TmuxRunner } from "./tmux-runner";
 import { openTerminalChannel } from "./terminal-channel";
@@ -14,6 +16,8 @@ interface ExecutorClientOpts {
   id: string;
   name: string;
   labels: string[];
+  version: string;
+  noUpgrade?: boolean;
 }
 
 export class ExecutorClient {
@@ -22,8 +26,13 @@ export class ExecutorClient {
   private reconnectDelay = 1000;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private destroyed = false;
+  private upgrading = false;
 
   constructor(private opts: ExecutorClientOpts) {}
+
+  get isUpgrading(): boolean {
+    return this.upgrading;
+  }
 
   start(): void {
     this.connect();
@@ -55,6 +64,7 @@ export class ExecutorClient {
         executorId: this.opts.id,
         name: this.opts.name,
         labels: this.opts.labels,
+        version: this.opts.version,
       });
 
       // Start heartbeat
@@ -176,6 +186,35 @@ export class ExecutorClient {
             sessionName: msg.sessionName,
           });
           this.send({ type: "response", id, ok: true });
+          break;
+        }
+
+        case "upgrade": {
+          if (this.opts.noUpgrade) {
+            console.log(`Upgrade requested but --no-upgrade is set, ignoring`);
+            break;
+          }
+          console.log(`Upgrade requested${msg.reason ? `: ${msg.reason}` : ""}`);
+          this.upgrading = true;
+          this.destroyed = true;
+          if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+
+          // Pull latest code and install deps
+          const repoDir = path.resolve(__dirname, "..");
+          console.log(`Running git pull && npm install in ${repoDir}...`);
+          try {
+            execSync("git pull origin main && npm install", {
+              cwd: repoDir,
+              stdio: "inherit",
+            });
+          } catch (err: any) {
+            console.error(`Upgrade commands failed: ${err.message}`);
+          }
+
+          if (this.ws) {
+            try { this.ws.close(); } catch {}
+          }
+          process.exit(42);
           break;
         }
 

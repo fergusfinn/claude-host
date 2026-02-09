@@ -6,15 +6,24 @@
  *   tsx executor/index.ts --url ws://control-plane:3000 --token <token> --id myhost --name "My Machine"
  */
 
+import { execSync } from "child_process";
 import { ExecutorClient } from "./client";
 
-function parseArgs(): { url: string; token: string; id: string; name: string; labels: string[] } {
+let VERSION: string;
+try {
+  VERSION = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+} catch {
+  VERSION = "unknown";
+}
+
+function parseArgs(): { url: string; token: string; id: string; name: string; labels: string[]; noUpgrade: boolean } {
   const args = process.argv.slice(2);
   let url = "";
   let token = "";
   let id = "";
   let name = "";
   let labels: string[] = [];
+  let noUpgrade = false;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -33,8 +42,11 @@ function parseArgs(): { url: string; token: string; id: string; name: string; la
       case "--labels":
         labels = (args[++i] || "").split(",").filter(Boolean);
         break;
+      case "--no-upgrade":
+        noUpgrade = true;
+        break;
       case "--help":
-        console.log(`Usage: tsx executor/index.ts --url <ws://host:port> --token <token> --id <id> --name <name> [--labels a,b,c]`);
+        console.log(`Usage: tsx executor/index.ts --url <ws://host:port> --token <token> --id <id> --name <name> [--labels a,b,c] [--no-upgrade]`);
         process.exit(0);
     }
   }
@@ -50,25 +62,28 @@ function parseArgs(): { url: string; token: string; id: string; name: string; la
     process.exit(1);
   }
 
-  return { url, token, id, name, labels };
+  return { url, token, id, name, labels, noUpgrade };
 }
 
 const opts = parseArgs();
-console.log(`Starting executor "${opts.name}" (${opts.id})`);
+console.log(`Starting executor "${opts.name}" (${opts.id}) v${VERSION}`);
 console.log(`Control plane: ${opts.url}`);
 
-const client = new ExecutorClient(opts);
+if (opts.noUpgrade) console.log("Auto-upgrade disabled (--no-upgrade)");
+const client = new ExecutorClient({ ...opts, version: VERSION });
 client.start();
 
-// Graceful shutdown
+// Graceful shutdown — preserve exit code 42 during upgrades
 process.on("SIGINT", () => {
   console.log("Shutting down...");
+  const code = client.isUpgrading ? 42 : 0;
   client.destroy();
-  process.exit(0);
+  process.exit(code);
 });
 
 process.on("SIGTERM", () => {
   console.log("Shutting down...");
+  const code = client.isUpgrading ? 42 : 0;
   client.destroy();
-  process.exit(0);
+  process.exit(code);
 });

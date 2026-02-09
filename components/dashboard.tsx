@@ -25,6 +25,7 @@ interface ExecutorInfo {
   labels: string[];
   status: string;
   sessionCount: number;
+  version?: string;
 }
 
 interface SessionGroup {
@@ -49,17 +50,13 @@ export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: stri
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/sessions");
-      setSessions(await res.json());
+      const [sessRes, execRes] = await Promise.all([
+        fetch("/api/sessions"),
+        fetch("/api/executors"),
+      ]);
+      setSessions(await sessRes.json());
+      setExecutors(await execRes.json());
     } catch {}
-  }, []);
-
-  // Load executors once
-  useEffect(() => {
-    fetch("/api/executors")
-      .then((r) => r.json())
-      .then(setExecutors)
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -143,6 +140,18 @@ export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: stri
     onConnect(name);
   }
 
+  async function upgradeExecutor(executorId?: string) {
+    try {
+      await fetch("/api/executors/upgrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ executorId }),
+      });
+      // Refetch to reflect status change
+      setTimeout(load, 1000);
+    } catch {}
+  }
+
   return (
     <div className={styles.root}>
       {sessions.length === 0 ? (
@@ -176,6 +185,10 @@ export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: stri
             ))}
           </div>
         </>
+      )}
+
+      {executors.length > 0 && (
+        <ExecutorPanel executors={executors} onUpgrade={upgradeExecutor} />
       )}
 
       <dialog
@@ -407,6 +420,53 @@ function SessionRow({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ExecutorPanel({
+  executors,
+  onUpgrade,
+}: {
+  executors: ExecutorInfo[];
+  onUpgrade: (executorId?: string) => void;
+}) {
+  const online = executors.filter((e) => e.status === "online");
+
+  return (
+    <div className={styles.executorPanel}>
+      <div className={styles.executorPanelHeader}>
+        <span className={styles.executorPanelTitle}>Executors</span>
+        {online.length > 0 && (
+          <button className={styles.upgradeBtn} onClick={() => onUpgrade()}>
+            Upgrade all
+          </button>
+        )}
+      </div>
+      {executors.map((ex) => (
+        <div key={ex.id} className={styles.executorRow}>
+          <div className={styles.executorRowLeft}>
+            <div className={`${styles.dot} ${ex.status !== "online" ? styles.dotStale : ""}`} />
+            <span className={styles.executorName}>{ex.name}</span>
+            {ex.version && (
+              <span className={styles.executorVersion}>{ex.version}</span>
+            )}
+            <span className={styles.executorMeta}>
+              {ex.status === "online"
+                ? `${ex.sessionCount} session${ex.sessionCount !== 1 ? "s" : ""}`
+                : "offline"}
+            </span>
+            {ex.labels.length > 0 && (
+              <span className={styles.executorLabels}>{ex.labels.join(", ")}</span>
+            )}
+          </div>
+          {ex.status === "online" && (
+            <button className={styles.upgradeBtn} onClick={() => onUpgrade(ex.id)}>
+              Upgrade
+            </button>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

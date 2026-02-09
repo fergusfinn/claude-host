@@ -9,6 +9,7 @@ export interface RegisterMessage {
   executorId: string;
   name: string;
   labels: string[];
+  version?: string;
 }
 
 export interface HeartbeatMessage {
@@ -88,6 +89,11 @@ export interface PingMessage {
   id: string;
 }
 
+export interface UpgradeMessage {
+  type: "upgrade";
+  reason?: string;
+}
+
 export type ControlToExecutorMessage =
   | CreateSessionRpc
   | CreateJobRpc
@@ -98,7 +104,8 @@ export type ControlToExecutorMessage =
   | SummarizeSessionRpc
   | AnalyzeSessionRpc
   | AttachSessionRpc
-  | PingMessage;
+  | PingMessage
+  | UpgradeMessage;
 
 // --- Helpers ---
 

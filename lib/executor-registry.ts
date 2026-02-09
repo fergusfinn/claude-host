@@ -11,6 +11,7 @@ import type {
   RegisterMessage,
   HeartbeatMessage,
   ResponseMessage,
+  UpgradeMessage,
 } from "../shared/protocol";
 import { RemoteExecutor } from "./executor-interface";
 
@@ -160,6 +161,26 @@ export class ExecutorRegistry {
     return executor?.info.status === "online";
   }
 
+  /** Send upgrade signal to a single executor */
+  upgradeExecutor(executorId: string, opts?: { reason?: string }): void {
+    const msg: UpgradeMessage = { type: "upgrade", reason: opts?.reason };
+    this.sendToExecutor(executorId, msg);
+  }
+
+  /** Send upgrade signal to all online executors, returns IDs signalled */
+  upgradeAllExecutors(opts?: { reason?: string }): string[] {
+    const ids: string[] = [];
+    for (const [id, executor] of this.executors) {
+      if (executor.info.status === "online") {
+        try {
+          this.upgradeExecutor(id, opts);
+          ids.push(id);
+        } catch {}
+      }
+    }
+    return ids;
+  }
+
   /** Get cached session liveness for a specific session on an executor */
   getSessionLiveness(executorId: string, sessionName: string): SessionLiveness | undefined {
     const executor = this.executors.get(executorId);
@@ -178,11 +199,12 @@ export class ExecutorRegistry {
         labels: msg.labels,
         status: "online",
         last_seen: Math.floor(Date.now() / 1000),
+        version: msg.version,
       },
       sessions: [],
     });
     this.onExecutorChange?.(id, "online");
-    console.log(`Executor registered: ${msg.name} (${id})`);
+    console.log(`Executor registered: ${msg.name} (${id})${msg.version ? ` v${msg.version}` : ""}`);
   }
 
   private handleHeartbeat(executorId: string, msg: HeartbeatMessage): void {

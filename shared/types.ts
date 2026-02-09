@@ -53,6 +53,7 @@ export interface ExecutorInfo {
   status: "online" | "offline";
   last_seen: number; // unix timestamp (seconds)
   sessionCount?: number;
+  version?: string;
 }
 
 // --- Executor interface ---
