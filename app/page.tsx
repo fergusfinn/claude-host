@@ -532,7 +532,27 @@ export default function Home() {
     } catch {}
   }
 
+  const [executorPickerOptions, setExecutorPickerOptions] = useState<Array<{ id: string; name: string }> | null>(null);
+
   async function quickCreateRich() {
+    // Fetch online executors; if multiple, show a picker
+    let onlineExecutors: Array<{ id: string; name: string; status: string }> = [];
+    try {
+      const execRes = await fetch("/api/executors");
+      const executors: Array<{ id: string; name: string; status: string }> = await execRes.json();
+      onlineExecutors = executors.filter((e) => e.status === "online");
+    } catch {}
+
+    if (onlineExecutors.length > 1) {
+      setExecutorPickerOptions(onlineExecutors);
+      return;
+    }
+
+    const executor = onlineExecutors.length === 1 ? onlineExecutors[0].id : "local";
+    await doCreateRich(executor);
+  }
+
+  async function doCreateRich(executor: string) {
     const name = generateName();
     try {
       const res = await fetch("/api/sessions", {
@@ -542,7 +562,7 @@ export default function Home() {
           name,
           description: "",
           command: "claude --dangerously-skip-permissions",
-          executor: "local",
+          executor,
           mode: "rich",
         }),
       });
@@ -847,6 +867,50 @@ export default function Home() {
         onSwitch={handleModeSwitch}
         onCancel={() => setModeSwitchSession(null)}
       />
+
+      {executorPickerOptions && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "var(--backdrop)", backdropFilter: "blur(2px)",
+          }}
+          onClick={() => setExecutorPickerOptions(null)}
+        >
+          <div
+            style={{
+              background: "var(--bg-2)", border: "1px solid var(--border)",
+              borderRadius: 12, padding: 4, width: "min(320px, calc(100vw - 32px))",
+              boxShadow: "0 16px 64px var(--shadow-dialog)",
+              fontFamily: "var(--mono)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: "12px 12px 8px", fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>
+              Select executor
+            </div>
+            {executorPickerOptions.map((ex) => (
+              <button
+                key={ex.id}
+                style={{
+                  display: "block", width: "100%", padding: "10px 12px",
+                  background: "transparent", border: "none", borderRadius: 8,
+                  fontFamily: "var(--mono)", fontSize: 13, color: "var(--text-1)",
+                  textAlign: "left", cursor: "pointer",
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.background = "var(--bg-3)")}
+                onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+                onClick={() => {
+                  setExecutorPickerOptions(null);
+                  doCreateRich(ex.id);
+                }}
+              >
+                {ex.name}{ex.name !== ex.id ? ` (${ex.id})` : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
