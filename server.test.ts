@@ -119,7 +119,7 @@ describe("server", () => {
       mockHead,
       expect.any(Function),
     );
-    expect(mockAttachSession).toHaveBeenCalledWith("my-session", { fake: "ws" });
+    expect(mockAttachSession).toHaveBeenCalledWith("my-session", { fake: "ws" }, 0, 0);
   });
 
   it("decodes URL-encoded session names", () => {
@@ -128,7 +128,7 @@ describe("server", () => {
 
     upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
 
-    expect(mockAttachSession).toHaveBeenCalledWith("my session", { fake: "ws" });
+    expect(mockAttachSession).toHaveBeenCalledWith("my session", { fake: "ws" }, 0, 0);
   });
 
   it("does not bridge non-matching paths (dev mode allows HMR)", () => {

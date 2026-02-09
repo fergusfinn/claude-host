@@ -134,6 +134,7 @@ describe("bridgeSession", () => {
     const name = uniqueName();
 
     bridgeSession(ws as any, name);
+    mockTermResize.mockReset();
 
     ws.emit("message", JSON.stringify({ resize: [0, 40] }));
     expect(mockTermResize).not.toHaveBeenCalled();

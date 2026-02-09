@@ -23,6 +23,7 @@ const _mockState = {
   fsWatch: vi.fn(),
   fsMkdirSync: vi.fn(),
   fsWriteSync: vi.fn(),
+  fsAppendFileSync: vi.fn(),
 };
 _mockState.prepare.mockReturnValue({ run: _mockState.dbRun, get: _mockState.dbGet });
 
@@ -56,6 +57,7 @@ vi.mock("fs", async () => {
     statSync: (...args: any[]) => _mockState.fsStatSync(...args),
     rmSync: (...args: any[]) => _mockState.fsRmSync(...args),
     writeSync: (...args: any[]) => _mockState.fsWriteSync(...args),
+    appendFileSync: (...args: any[]) => _mockState.fsAppendFileSync(...args),
     watch: (...args: any[]) => _mockState.fsWatch(...args),
     constants: actual.constants,
   };

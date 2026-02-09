@@ -380,6 +380,18 @@
   min-width: 0;
 }
 
+.toolSummaryClickable {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.toolSummaryClickable:hover {
+  text-decoration-style: solid;
+  opacity: 1;
+}
+
 .toolInput {
   margin: 0;
   padding: 8px 12px 8px 28px;

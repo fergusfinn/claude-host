@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, type MutableRefObject } from "react";
 import { generateName } from "@/lib/names";
+import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "./rich-view";
 import styles from "./dashboard.module.css";
 
 interface Session {
@@ -722,7 +723,13 @@ export function SettingsForm({
 }) {
   const [prefixTimeout, setPrefixTimeout] = useState(config.prefixTimeout || "800");
   const [showHints, setShowHints] = useState(config.showHints !== "false");
+  const [selectedRichFont, setSelectedRichFont] = useState(config.richFont || "system");
   const [saving, setSaving] = useState(false);
+
+  // Load all rich font options so button labels preview in the correct font
+  useEffect(() => {
+    for (const id of Object.keys(RICH_FONT_OPTIONS)) ensureRichFontLoaded(id);
+  }, []);
 
   const parsedHooks: Record<string, string> = (() => {
     try { return config.forkHooks ? JSON.parse(config.forkHooks) : {}; } catch { return {}; }
@@ -759,6 +766,7 @@ export function SettingsForm({
         prefixTimeout: String(parseInt(prefixTimeout) || 800),
         forkHooks: JSON.stringify(forkHooks),
         showHints: String(showHints),
+        richFont: selectedRichFont,
       });
     } finally {
       setSaving(false);
@@ -794,6 +802,34 @@ export function SettingsForm({
         </label>
         <div className={styles.hint}>
           Show shortcut hints when control mode is active (Ctrl+A)
+        </div>
+
+        <label className={styles.label} style={{ marginTop: 12 }}>Rich mode font</label>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+          {Object.entries(RICH_FONT_OPTIONS).map(([id, opt]) => (
+            <button
+              key={id}
+              type="button"
+              className={styles.input}
+              onClick={() => {
+                ensureRichFontLoaded(id);
+                setSelectedRichFont(id);
+              }}
+              style={{
+                width: "auto",
+                padding: "6px 12px",
+                cursor: "pointer",
+                fontFamily: opt.fontFamily,
+                border: id === selectedRichFont ? "1px solid var(--accent)" : undefined,
+                opacity: id === selectedRichFont ? 1 : 0.7,
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className={styles.hint}>
+          Font used for rich mode message text
         </div>
 
         <div style={{ marginTop: 12 }}>

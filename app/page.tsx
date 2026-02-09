@@ -11,11 +11,15 @@ import { generateName } from "@/lib/names";
 import { loadShortcuts, type ShortcutMap } from "@/lib/shortcuts";
 import {
   makeLeaf,
+  makeEditorLeaf,
   splitPane as layoutSplitPane,
+  splitPaneWithLeaf,
   removePane as layoutRemovePane,
   extractPane as layoutExtractPane,
   setRatio as layoutSetRatio,
   findNeighbor,
+  findEditorLeaf,
+  updateEditorFile,
   getAllLeaves,
   getLeafCount,
   type LayoutNode,
@@ -87,11 +91,6 @@ export default function Home() {
   const activeSessionName = activeTab
     ? getAllLeaves(activeTab.layout).find((l) => l.id === activeTab.focusedPaneId)?.sessionName ?? null
     : null;
-
-  // Check if ALL panes in the active tab are rich mode (hide terminal-specific UI)
-  const activeTabAllRich = activeTab
-    ? getAllLeaves(activeTab.layout).every((l) => sessionModes[l.sessionName] === "rich")
-    : false;
 
   // Get all session names across all tab layouts
   function getAllTabSessions(): string[] {
@@ -296,6 +295,12 @@ export default function Home() {
     const leaf = getAllLeaves(activeTab.layout).find((l) => l.id === targetPaneId);
     if (!leaf) return;
 
+    // Editor panes: just remove from layout, don't kill any session
+    if (leaf.editor) {
+      closeEditorPane(targetPaneId);
+      return;
+    }
+
     const remaining = layoutRemovePane(activeTab.layout, targetPaneId);
     if (remaining === null) {
       // Last pane → close the tab
@@ -330,6 +335,47 @@ export default function Home() {
     fetch(`/api/sessions/${encodeURIComponent(leaf.sessionName)}`, { method: "DELETE" })
       .then(() => loadSessions())
       .catch(() => {});
+  }
+
+  function closeEditorPane(paneId: string) {
+    if (!activeTab) return;
+    const remaining = layoutRemovePane(activeTab.layout, paneId);
+    if (!remaining) return; // shouldn't happen — editor is never the only pane
+    const remainingLeaves = getAllLeaves(remaining);
+    const focusedStillExists = remainingLeaves.some((l) => l.id === activeTab.focusedPaneId);
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === activeTab.id
+          ? { ...t, layout: remaining, focusedPaneId: focusedStillExists ? t.focusedPaneId : remainingLeaves[0].id }
+          : t
+      )
+    );
+  }
+
+  function openFileInEditor(paneId: string, filePath: string) {
+    if (!activeTab) return;
+
+    // Reuse existing editor pane if one exists in this tab
+    const existingEditor = findEditorLeaf(activeTab.layout);
+    if (existingEditor) {
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.id !== activeTab.id) return t;
+          return { ...t, layout: updateEditorFile(t.layout, existingEditor.id, filePath), focusedPaneId: existingEditor.id };
+        })
+      );
+      return;
+    }
+
+    // Create a new editor pane as a horizontal split
+    const sourceLeaf = getAllLeaves(activeTab.layout).find((l) => l.id === paneId);
+    const editorLeaf = makeEditorLeaf(sourceLeaf?.sessionName || "", filePath);
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== activeTab.id) return t;
+        return { ...t, layout: splitPaneWithLeaf(t.layout, paneId, "h", editorLeaf), focusedPaneId: editorLeaf.id };
+      })
+    );
   }
 
   async function splitActivePane(direction: "h" | "v", fork = true) {
@@ -630,7 +676,6 @@ export default function Home() {
         currentFont={font}
         keyMode={keyMode}
         showHints={showHints}
-        activeTabAllRich={activeTabAllRich}
         onKeyModeChange={setKeyMode}
         onSelectTab={setActiveTabId}
         onCloseTab={closeTabById}
@@ -655,7 +700,6 @@ export default function Home() {
         currentTheme={theme}
         currentFont={font}
         keyMode={keyMode}
-        activeTabAllRich={activeTabAllRich}
         onKeyModeChange={setKeyMode}
         onSelectTab={setActiveTabId}
         onNew={quickCreate}
@@ -706,6 +750,8 @@ export default function Home() {
                 if (leaf) closePane(leaf.id);
               }}
               onSwitchSession={connectSession}
+              onOpenFile={openFileInEditor}
+              onCloseEditor={closeEditorPane}
             />
           </div>
         ))}

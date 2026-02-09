@@ -17,11 +17,36 @@ import {
 } from "@/lib/rich-render";
 import styles from "./rich-view.module.css";
 
+export const RICH_FONT_OPTIONS: Record<string, { label: string; fontFamily: string; googleFontsUrl?: string }> = {
+  system: { label: "System", fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" },
+  geist: { label: "Geist", fontFamily: "'Geist', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=Geist:wght@300..900&display=swap" },
+  "ibm-plex-sans": { label: "IBM Plex Sans", fontFamily: "'IBM Plex Sans', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" },
+  "source-sans": { label: "Source Sans 3", fontFamily: "'Source Sans 3', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" },
+};
+
+const _loadedRichFonts = new Set<string>();
+export function ensureRichFontLoaded(fontId: string) {
+  if (_loadedRichFonts.has(fontId)) return;
+  const opt = RICH_FONT_OPTIONS[fontId];
+  if (!opt?.googleFontsUrl) return;
+  _loadedRichFonts.add(fontId);
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = opt.googleFontsUrl;
+  document.head.appendChild(link);
+}
+
+export function getRichFontFamily(fontId: string): string {
+  return RICH_FONT_OPTIONS[fontId]?.fontFamily ?? RICH_FONT_OPTIONS.system.fontFamily;
+}
+
 interface Props {
   sessionName: string;
   isActive: boolean;
   theme: TerminalTheme;
   font: TerminalFont;
+  richFont?: string;
+  onOpenFile?: (filePath: string) => void;
 }
 
 interface MessageEvent {
@@ -117,7 +142,11 @@ class MessageErrorBoundary extends React.Component<
 
 // ---- Component ----
 
-export function RichView({ sessionName, isActive, theme, font }: Props) {
+export function RichView({ sessionName, isActive, theme, font, richFont, onOpenFile }: Props) {
+  // Ensure the selected rich font is loaded
+  useEffect(() => {
+    if (richFont) ensureRichFontLoaded(richFont);
+  }, [richFont]);
   const [messages, setMessages] = useState<RenderedMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -648,7 +677,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
       style={{
         background: theme.background,
         color: theme.foreground,
-        fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+        fontFamily: getRichFontFamily(richFont || "system"),
       }}
     >
       {/* Status bar */}
@@ -775,6 +804,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
                             onToggle={() => toggleTool(item.toolUse.id)}
                             resultExpanded={expandedResults.has(item.toolUse.id)}
                             onToggleResult={() => toggleResultExpanded(item.toolUse.id)}
+                            onOpenFile={onOpenFile}
                           />
                         );
                       case "tool_group":
@@ -788,6 +818,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
                             onToggle={toggleTool}
                             expandedResults={expandedResults}
                             onToggleResult={toggleResultExpanded}
+                            onOpenFile={onOpenFile}
                           />
                         );
                       case "subagent":
@@ -802,6 +833,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
                             resultExpanded={expandedResults.has(item.toolUse.id)}
                             onToggleResult={() => toggleResultExpanded(item.toolUse.id)}
                             childMessages={subagentMessages.get(item.toolUse.id)}
+                            onOpenFile={onOpenFile}
                           />
                         );
                       case "question":
@@ -1001,6 +1033,7 @@ function ToolPairBlock({
   compact,
   resultExpanded,
   onToggleResult,
+  onOpenFile,
 }: {
   toolUse: ContentBlockToolUse;
   toolResult: ContentBlockToolResult | null;
@@ -1010,6 +1043,7 @@ function ToolPairBlock({
   compact?: boolean;
   resultExpanded?: boolean;
   onToggleResult?: () => void;
+  onOpenFile?: (filePath: string) => void;
 }) {
   const toolColor = getToolColor(toolUse.name, theme);
   const isEditTool = toolUse.name === "Edit" && toolUse.input.old_string != null;
@@ -1047,9 +1081,20 @@ function ToolPairBlock({
         <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
         <span className={styles.toolIcon}>{getToolIcon(toolUse.name)}</span>
         <span className={styles.toolName}>{toolUse.name}</span>
-        <span className={styles.toolSummary} style={{ color: `${theme.foreground}80` }}>
-          {getToolSummary(toolUse.name, toolUse.input)}
-        </span>
+        {onOpenFile && toolUse.input.file_path && ["Read", "Edit", "Write"].includes(toolUse.name) ? (
+          <span
+            className={`${styles.toolSummary} ${styles.toolSummaryClickable}`}
+            style={{ color: `${theme.foreground}80` }}
+            onClick={(e) => { e.stopPropagation(); onOpenFile(toolUse.input.file_path as string); }}
+            title={`Open ${toolUse.input.file_path}`}
+          >
+            {getToolSummary(toolUse.name, toolUse.input)}
+          </span>
+        ) : (
+          <span className={styles.toolSummary} style={{ color: `${theme.foreground}80` }}>
+            {getToolSummary(toolUse.name, toolUse.input)}
+          </span>
+        )}
         {collapsed && toolResult === null && (
           <span className={styles.toolPending}>
             <span className={styles.toolPendingDot} style={{ background: toolColor }} />
@@ -1070,6 +1115,7 @@ function ToolPairBlock({
               oldStr={toolUse.input.old_string as string}
               newStr={(toolUse.input.new_string as string) || ""}
               theme={theme}
+              onOpenFile={onOpenFile}
             />
           ) : (
             <pre
@@ -1120,11 +1166,13 @@ function DiffView({
   oldStr,
   newStr,
   theme,
+  onOpenFile,
 }: {
   filePath: string;
   oldStr: string;
   newStr: string;
   theme: TerminalTheme;
+  onOpenFile?: (filePath: string) => void;
 }) {
   const oldLines = oldStr.split("\n");
   const newLines = newStr.split("\n");
@@ -1153,7 +1201,12 @@ function DiffView({
 
   return (
     <div className={styles.diffView}>
-      <div className={styles.diffFilePath} style={{ color: `${theme.foreground}60` }}>
+      <div
+        className={`${styles.diffFilePath} ${onOpenFile ? styles.toolSummaryClickable : ""}`}
+        style={{ color: `${theme.foreground}60`, cursor: onOpenFile ? "pointer" : undefined }}
+        onClick={onOpenFile ? () => onOpenFile(filePath) : undefined}
+        title={onOpenFile ? `Open ${filePath}` : undefined}
+      >
         {filePath}
       </div>
       <pre className={styles.diffContent}>
@@ -1190,6 +1243,7 @@ function ToolGroupBlock({
   onToggle,
   expandedResults,
   onToggleResult,
+  onOpenFile,
 }: {
   name: string;
   pairs: Array<{ toolUse: ContentBlockToolUse; toolResult: ContentBlockToolResult | null }>;
@@ -1198,6 +1252,7 @@ function ToolGroupBlock({
   onToggle: (id: string) => void;
   expandedResults: Set<string>;
   onToggleResult: (id: string) => void;
+  onOpenFile?: (filePath: string) => void;
 }) {
   const toolColor = getToolColor(name, theme);
   const groupKey = `group-${pairs[0].toolUse.id}`;
@@ -1237,6 +1292,7 @@ function ToolGroupBlock({
               onToggle={() => onToggle(pair.toolUse.id)}
               resultExpanded={expandedResults.has(pair.toolUse.id)}
               onToggleResult={() => onToggleResult(pair.toolUse.id)}
+              onOpenFile={onOpenFile}
               compact
             />
           ))}
@@ -1255,6 +1311,7 @@ function SubagentBlock({
   resultExpanded,
   onToggleResult,
   childMessages,
+  onOpenFile,
 }: {
   toolUse: ContentBlockToolUse;
   toolResult: ContentBlockToolResult | null;
@@ -1264,6 +1321,7 @@ function SubagentBlock({
   resultExpanded?: boolean;
   onToggleResult?: () => void;
   childMessages?: RenderedMessage[];
+  onOpenFile?: (filePath: string) => void;
 }) {
   const agentColor = theme.mode === "light" ? theme.magenta : theme.brightMagenta;
   const subagentType = toolUse.input.subagent_type as string | undefined;
@@ -1423,6 +1481,7 @@ function SubagentBlock({
                               onToggle={() => toggleNestedTool(item.toolUse.id)}
                               resultExpanded={nestedExpandedResults.has(item.toolUse.id)}
                               onToggleResult={() => toggleNestedResult(item.toolUse.id)}
+                              onOpenFile={onOpenFile}
                               compact
                             />
                           );
@@ -1437,6 +1496,7 @@ function SubagentBlock({
                               onToggle={toggleNestedTool}
                               expandedResults={nestedExpandedResults}
                               onToggleResult={toggleNestedResult}
+                              onOpenFile={onOpenFile}
                             />
                           );
                         default:
