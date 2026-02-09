@@ -940,7 +940,8 @@
   }
 
   .role_assistant {
-    margin-top: 14px;
+    padding-left: 6px;
+    margin-top: 10px;
   }
 
   .textBlock {
@@ -1035,7 +1036,7 @@
 
   .inputArea {
     padding: 8px 10px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
   .inputInner {
@@ -1083,7 +1084,7 @@
   }
 
   .role_assistant {
-    /* no padding-left needed — card style */
+    padding-left: 4px;
   }
 
   .role_user > .textBlock {
@@ -1107,7 +1108,7 @@
 
   .inputArea {
     padding: 8px 6px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
   .questionBlock {
