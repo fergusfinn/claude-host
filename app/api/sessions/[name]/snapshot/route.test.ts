@@ -24,7 +24,7 @@ describe("GET /api/sessions/[name]/snapshot", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ text: "$ hello world\n" });
-    expect(mockSnapshot).toHaveBeenCalledWith("my-sess");
+    expect(mockSnapshot).toHaveBeenCalledWith("my-sess", "local");
   });
 
   it("returns placeholder for non-running session", async () => {

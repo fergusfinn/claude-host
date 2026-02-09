@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    env: { NODE_ENV: "test" },
+    env: { NODE_ENV: "test", AUTH_DISABLED: "1" },
     include: ["**/*.test.ts"],
     coverage: {
       provider: "v8",

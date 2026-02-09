@@ -28,7 +28,7 @@ describe("POST /api/sessions/fork", () => {
 
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual(forked);
-    expect(mockFork).toHaveBeenCalledWith("orig");
+    expect(mockFork).toHaveBeenCalledWith("orig", "local");
   });
 
   it("returns 400 when source is missing", async () => {

@@ -5,10 +5,11 @@ import { WebSocketServer } from "ws";
 import { execFileSync, spawnSync } from "child_process";
 import { getSessionManager } from "./lib/sessions";
 import { ExecutorRegistry } from "./lib/executor-registry";
-// bridgeRichSession is now called via executor interface
+import { getAuthUser } from "./lib/auth";
 
 const dev = process.env.NODE_ENV !== "production";
 const EXECUTOR_TOKEN = process.env.EXECUTOR_TOKEN || "";
+const VALID_SESSION_NAME = /^[a-zA-Z0-9_-]+$/;
 
 // Support --port <n> CLI flag, falling back to PORT env, then 3000
 function resolvePort(): number {
@@ -33,7 +34,7 @@ try {
 }
 
 function validateExecutorToken(url: string): boolean {
-  if (!EXECUTOR_TOKEN) return true;
+  if (!EXECUTOR_TOKEN) return false; // fail closed — no token configured means no executor access
   try {
     const parsed = new URL(url, "http://localhost");
     return parsed.searchParams.get("token") === EXECUTOR_TOKEN;
@@ -65,13 +66,17 @@ app.prepare().then(() => {
 
   const wss = new WebSocketServer({ noServer: true });
 
-  server.on("upgrade", (req, socket, head) => {
+  server.on("upgrade", async (req, socket, head) => {
     const { pathname } = parse(req.url!);
 
     // --- Browser terminal sessions: /ws/sessions/<name> ---
     const terminalMatch = pathname?.match(/^\/ws\/sessions\/([^/]+)$/);
     if (terminalMatch) {
+      const user = await getAuthUser(req);
+      if (!user) { socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n"); socket.destroy(); return; }
       const sessionName = decodeURIComponent(terminalMatch[1]);
+      if (!VALID_SESSION_NAME.test(sessionName)) { socket.write("HTTP/1.1 400 Bad Request\r\n\r\n"); socket.destroy(); return; }
+      if (!sessionManager.isOwnedBy(sessionName, user.userId)) { socket.write("HTTP/1.1 403 Forbidden\r\n\r\n"); socket.destroy(); return; }
       const parsed = new URL(req.url!, "http://localhost");
       const cols = parseInt(parsed.searchParams.get("cols") || "") || 0;
       const rows = parseInt(parsed.searchParams.get("rows") || "") || 0;
@@ -84,7 +89,11 @@ app.prepare().then(() => {
     // --- Rich-mode sessions: /ws/rich/<name> ---
     const richMatch = pathname?.match(/^\/ws\/rich\/([^/]+)$/);
     if (richMatch) {
+      const user = await getAuthUser(req);
+      if (!user) { socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n"); socket.destroy(); return; }
       const sessionName = decodeURIComponent(richMatch[1]);
+      if (!VALID_SESSION_NAME.test(sessionName)) { socket.write("HTTP/1.1 400 Bad Request\r\n\r\n"); socket.destroy(); return; }
+      if (!sessionManager.isOwnedBy(sessionName, user.userId)) { socket.write("HTTP/1.1 403 Forbidden\r\n\r\n"); socket.destroy(); return; }
       wss.handleUpgrade(req, socket, head, (ws) => {
         sessionManager.attachRichSession(sessionName, ws);
       });

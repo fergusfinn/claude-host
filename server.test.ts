@@ -11,6 +11,8 @@ vi.mock("./lib/sessions.js", () => ({
     attachSession: mockAttachSession,
     setRegistry: mockSetRegistry,
     upsertExecutor: mockUpsertExecutor,
+    isOwnedBy: vi.fn(() => true),
+    adoptOrphanedSessions: vi.fn(),
   }),
 }));
 
@@ -106,12 +108,12 @@ describe("server", () => {
     expect(upgradeHandler).toBeTypeOf("function");
   });
 
-  it("calls attachSession for /ws/sessions/{name} upgrades", () => {
+  it("calls attachSession for /ws/sessions/{name} upgrades", async () => {
     const mockSocket = { destroy: vi.fn() };
     const mockHead = Buffer.alloc(0);
     const mockReq = { url: "/ws/sessions/my-session" };
 
-    upgradeHandler(mockReq, mockSocket, mockHead);
+    await upgradeHandler(mockReq, mockSocket, mockHead);
 
     expect(mockHandleUpgrade).toHaveBeenCalledWith(
       mockReq,
@@ -122,21 +124,32 @@ describe("server", () => {
     expect(mockAttachSession).toHaveBeenCalledWith("my-session", { fake: "ws" }, 0, 0);
   });
 
-  it("decodes URL-encoded session names", () => {
-    const mockSocket = { destroy: vi.fn() };
+  it("rejects session names with invalid characters", async () => {
+    const mockSocket = { write: vi.fn(), destroy: vi.fn() };
     const mockReq = { url: "/ws/sessions/my%20session" };
 
-    upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
+    await upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
 
-    expect(mockAttachSession).toHaveBeenCalledWith("my session", { fake: "ws" }, 0, 0);
+    expect(mockSocket.write).toHaveBeenCalledWith("HTTP/1.1 400 Bad Request\r\n\r\n");
+    expect(mockSocket.destroy).toHaveBeenCalled();
+    expect(mockAttachSession).not.toHaveBeenCalled();
   });
 
-  it("does not bridge non-matching paths (dev mode allows HMR)", () => {
+  it("decodes URL-encoded session names with valid chars", async () => {
+    const mockSocket = { destroy: vi.fn() };
+    const mockReq = { url: "/ws/sessions/my-session_1" };
+
+    await upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
+
+    expect(mockAttachSession).toHaveBeenCalledWith("my-session_1", { fake: "ws" }, 0, 0);
+  });
+
+  it("does not bridge non-matching paths (dev mode allows HMR)", async () => {
     // NODE_ENV is "test" so dev=true — non-matching upgrades pass through for HMR
     const mockSocket = { destroy: vi.fn() };
     const mockReq = { url: "/some/other/path" };
 
-    upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
+    await upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
 
     expect(mockHandleUpgrade).not.toHaveBeenCalled();
     expect(mockAttachSession).not.toHaveBeenCalled();
@@ -144,30 +157,30 @@ describe("server", () => {
     expect(mockSocket.destroy).not.toHaveBeenCalled();
   });
 
-  it("does not match /ws/sessions/ with extra path segments", () => {
+  it("does not match /ws/sessions/ with extra path segments", async () => {
     const mockSocket = { destroy: vi.fn() };
     const mockReq = { url: "/ws/sessions/name/extra" };
 
-    upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
+    await upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
 
     expect(mockHandleUpgrade).not.toHaveBeenCalled();
   });
 
-  it("does not match /ws/sessions/ with no name", () => {
+  it("does not match /ws/sessions/ with no name", async () => {
     const mockSocket = { destroy: vi.fn() };
     const mockReq = { url: "/ws/sessions/" };
 
-    upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
+    await upgradeHandler(mockReq, mockSocket, Buffer.alloc(0));
 
     expect(mockHandleUpgrade).not.toHaveBeenCalled();
   });
 
-  it("does not match unrelated WebSocket paths", () => {
+  it("does not match unrelated WebSocket paths", async () => {
     const mockSocket = { destroy: vi.fn() };
 
     for (const url of ["/ws/other", "/api/sessions", "/ws", "/"]) {
       mockHandleUpgrade.mockClear();
-      upgradeHandler({ url }, mockSocket, Buffer.alloc(0));
+      await upgradeHandler({ url }, mockSocket, Buffer.alloc(0));
       expect(mockHandleUpgrade).not.toHaveBeenCalled();
     }
   });

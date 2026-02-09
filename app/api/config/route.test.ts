@@ -22,14 +22,15 @@ describe("GET /api/config", () => {
   it("returns all config", async () => {
     mockGetAllConfig.mockReturnValue({ theme: "dark", font: "mono" });
 
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/config"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ theme: "dark", font: "mono" });
+    expect(mockGetAllConfig).toHaveBeenCalledWith("local");
   });
 
   it("returns empty object when no config", async () => {
     mockGetAllConfig.mockReturnValue({});
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/config"));
     expect(await res.json()).toEqual({});
   });
 });
@@ -45,8 +46,8 @@ describe("PUT /api/config", () => {
     const res = await PUT(req);
 
     expect(res.status).toBe(200);
-    expect(mockSetConfig).toHaveBeenCalledWith("theme", "dark");
-    expect(mockSetConfig).toHaveBeenCalledWith("font", "mono");
+    expect(mockSetConfig).toHaveBeenCalledWith("theme", "dark", "local");
+    expect(mockSetConfig).toHaveBeenCalledWith("font", "mono", "local");
     expect(await res.json()).toEqual({ theme: "dark", font: "mono" });
   });
 
@@ -60,6 +61,6 @@ describe("PUT /api/config", () => {
     await PUT(req);
 
     expect(mockSetConfig).toHaveBeenCalledTimes(1);
-    expect(mockSetConfig).toHaveBeenCalledWith("good", "value");
+    expect(mockSetConfig).toHaveBeenCalledWith("good", "value", "local");
   });
 });

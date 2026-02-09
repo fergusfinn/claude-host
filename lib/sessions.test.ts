@@ -48,14 +48,14 @@ function mgr() {
 describe("SessionManager", () => {
   describe("list", () => {
     it("returns empty array initially", () => {
-      expect(mgr().list()).toEqual([]);
+      expect(mgr().list("local")).toEqual([]);
     });
 
     it("auto-cleans dead sessions from DB", async () => {
       // Create a session (tmux mock succeeds for new-session)
       await mgr().create("", "bash");
       // has-session returns 1 (dead) by default, so list should clean it up
-      expect(mgr().list()).toEqual([]);
+      expect(mgr().list("local")).toEqual([]);
     });
 
     it("returns alive sessions with alive=true", async () => {
@@ -67,7 +67,7 @@ describe("SessionManager", () => {
         }
         return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
       });
-      const sessions = mgr().list();
+      const sessions = mgr().list("local");
       expect(sessions).toHaveLength(1);
       expect(sessions[0].name).toBe(created.name);
       expect(sessions[0].alive).toBe(true);
@@ -153,7 +153,7 @@ describe("SessionManager", () => {
 
     it("uses dark-ansi theme even when mode is light", async () => {
       const m = mgr();
-      m.setConfig("mode", "light");
+      m.setConfig("mode", "light", "local");
       const s = await m.create("");
       expect(s.command).toContain("dark-ansi");
     });
@@ -170,10 +170,10 @@ describe("SessionManager", () => {
         }
         return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
       });
-      expect(m.list()).toHaveLength(1);
+      expect(m.list("local")).toHaveLength(1);
 
-      await m.delete(created.name);
-      expect(m.list()).toHaveLength(0);
+      await m.delete(created.name, "local");
+      expect(m.list("local")).toHaveLength(0);
     });
 
     it("kills tmux session if it exists", async () => {
@@ -186,7 +186,7 @@ describe("SessionManager", () => {
         return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
       });
 
-      await m.delete(created.name);
+      await m.delete(created.name, "local");
 
       const killCalls = vi.mocked(spawnSync).mock.calls.filter(
         (c) => c[1] && (c[1] as string[]).includes("kill-session"),
@@ -205,7 +205,7 @@ describe("SessionManager", () => {
         return { status: 0, stdout: "", stderr: Buffer.from(""), pid: 0, output: [], signal: null } as any;
       });
 
-      await m.delete(created.name);
+      await m.delete(created.name, "local");
 
       const killCalls = vi.mocked(spawnSync).mock.calls.filter(
         (c) => c[1] && (c[1] as string[]).includes("kill-session"),
@@ -216,31 +216,31 @@ describe("SessionManager", () => {
 
   describe("config", () => {
     it("returns null for non-existent key", () => {
-      expect(mgr().getConfig("missing")).toBeNull();
+      expect(mgr().getConfig("missing", "local")).toBeNull();
     });
 
     it("sets and gets a config value", () => {
       const m = mgr();
-      m.setConfig("theme", "dark");
-      expect(m.getConfig("theme")).toBe("dark");
+      m.setConfig("theme", "dark", "local");
+      expect(m.getConfig("theme", "local")).toBe("dark");
     });
 
     it("overwrites existing config value", () => {
       const m = mgr();
-      m.setConfig("theme", "dark");
-      m.setConfig("theme", "light");
-      expect(m.getConfig("theme")).toBe("light");
+      m.setConfig("theme", "dark", "local");
+      m.setConfig("theme", "light", "local");
+      expect(m.getConfig("theme", "local")).toBe("light");
     });
 
     it("returns all config as an object", () => {
       const m = mgr();
-      m.setConfig("theme", "dark");
-      m.setConfig("font", "mono");
-      expect(m.getAllConfig()).toEqual({ theme: "dark", font: "mono" });
+      m.setConfig("theme", "dark", "local");
+      m.setConfig("font", "mono", "local");
+      expect(m.getAllConfig("local")).toEqual({ theme: "dark", font: "mono" });
     });
 
     it("returns empty object when no config exists", () => {
-      expect(mgr().getAllConfig()).toEqual({});
+      expect(mgr().getAllConfig("local")).toEqual({});
     });
   });
 
@@ -249,7 +249,7 @@ describe("SessionManager", () => {
       const m = mgr();
       const created = await m.create("", "bash");
       // has-session returns 1 by default
-      expect(await m.snapshot(created.name)).toBe("[session not running]");
+      expect(await m.snapshot(created.name, "local")).toBe("[session not running]");
     });
 
     it("returns tmux capture-pane output for running session", async () => {
@@ -265,7 +265,7 @@ describe("SessionManager", () => {
         return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
       });
 
-      expect(await m.snapshot(created.name)).toBe("hello world\n");
+      expect(await m.snapshot(created.name, "local")).toBe("hello world\n");
     });
 
     it("returns [empty] when capture-pane returns no output", async () => {
@@ -281,27 +281,27 @@ describe("SessionManager", () => {
         return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
       });
 
-      expect(await m.snapshot(created.name)).toBe("[empty]");
+      expect(await m.snapshot(created.name, "local")).toBe("[empty]");
     });
   });
 
   describe("getForkHooks", () => {
     it("returns default hook when no config set", () => {
-      const hooks = mgr().getForkHooks();
+      const hooks = mgr().getForkHooks("local");
       expect(hooks).toHaveProperty("claude");
       expect(hooks.claude).toContain("fork-claude.sh");
     });
 
     it("returns parsed hooks from config", () => {
       const m = mgr();
-      m.setConfig("forkHooks", JSON.stringify({ python: "/usr/bin/hook.sh" }));
-      expect(m.getForkHooks()).toEqual({ python: "/usr/bin/hook.sh" });
+      m.setConfig("forkHooks", JSON.stringify({ python: "/usr/bin/hook.sh" }), "local");
+      expect(m.getForkHooks("local")).toEqual({ python: "/usr/bin/hook.sh" });
     });
 
     it("returns empty object for invalid JSON in config", () => {
       const m = mgr();
-      m.setConfig("forkHooks", "not json");
-      expect(m.getForkHooks()).toEqual({});
+      m.setConfig("forkHooks", "not json", "local");
+      expect(m.getForkHooks("local")).toEqual({});
     });
   });
 
@@ -392,9 +392,9 @@ describe("SessionManager", () => {
       const m = mgr();
       const sourceName = await createSource(m, "bash");
       // Disable hooks so command passes through directly
-      m.setConfig("forkHooks", "{}");
+      m.setConfig("forkHooks", "{}", "local");
 
-      const session = await m.fork(sourceName);
+      const session = await m.fork(sourceName, "local");
 
       expect(session.command).toBe("bash");
       // send-keys should include the source command
@@ -405,22 +405,19 @@ describe("SessionManager", () => {
       expect((sendKeysCall![1] as string[])[3]).toBe("bash");
     });
 
-    it("defaults to claude when source not in DB", async () => {
+    it("rejects fork when source not in DB", async () => {
       const m = mgr();
-      // Don't create source — fork should default to "claude"
-      // Disable hooks
-      m.setConfig("forkHooks", "{}");
+      m.setConfig("forkHooks", "{}", "local");
 
-      const session = await m.fork("nonexistent");
-      expect(session.command).toBe("claude");
+      await expect(m.fork("nonexistent", "local")).rejects.toThrow("Not found");
     });
 
     it("returns correct session object with server-generated slug", async () => {
       const m = mgr();
       const sourceName = await createSource(m, "bash");
-      m.setConfig("forkHooks", "{}");
+      m.setConfig("forkHooks", "{}", "local");
 
-      const session = await m.fork(sourceName);
+      const session = await m.fork(sourceName, "local");
 
       expect(session.name).toMatch(/^[a-z]+-[a-z]+/);
       expect(session.name).not.toBe(sourceName);
@@ -432,9 +429,9 @@ describe("SessionManager", () => {
     it("creates tmux session with standard options", async () => {
       const m = mgr();
       const sourceName = await createSource(m, "bash");
-      m.setConfig("forkHooks", "{}");
+      m.setConfig("forkHooks", "{}", "local");
 
-      await m.fork(sourceName);
+      await m.fork(sourceName, "local");
 
       const calls = vi.mocked(spawnSync).mock.calls;
       const newSessionCall = calls.find(
@@ -450,7 +447,7 @@ describe("SessionManager", () => {
     it("includes -c <cwd> when source has a working directory", async () => {
       const m = mgr();
       const sourceName = await createSource(m, "bash");
-      m.setConfig("forkHooks", "{}");
+      m.setConfig("forkHooks", "{}", "local");
 
       // getPaneCwd calls tmuxExists(source) then display-message
       // has-session must return 0 for source (so getPaneCwd proceeds)
@@ -466,7 +463,7 @@ describe("SessionManager", () => {
         return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
       });
 
-      await m.fork(sourceName);
+      await m.fork(sourceName, "local");
 
       const newSessionCall = vi.mocked(spawnSync).mock.calls.find(
         (c) => c[1] && (c[1] as string[]).includes("new-session"),
@@ -479,9 +476,9 @@ describe("SessionManager", () => {
     it("does not include -c when source has no CWD", async () => {
       const m = mgr();
       const sourceName = await createSource(m, "bash");
-      m.setConfig("forkHooks", "{}");
+      m.setConfig("forkHooks", "{}", "local");
 
-      await m.fork(sourceName);
+      await m.fork(sourceName, "local");
 
       const newSessionCall = vi.mocked(spawnSync).mock.calls.find(
         (c) => c[1] && (c[1] as string[]).includes("new-session"),
@@ -493,9 +490,9 @@ describe("SessionManager", () => {
     it("sends claude command as-is in fork (no inline --session-id)", async () => {
       const m = mgr();
       const sourceName = await createSource(m, "claude");
-      m.setConfig("forkHooks", "{}");
+      m.setConfig("forkHooks", "{}", "local");
 
-      await m.fork(sourceName);
+      await m.fork(sourceName, "local");
 
       const calls = vi.mocked(spawnSync).mock.calls;
       const sendKeysCall = calls.find(
@@ -511,9 +508,9 @@ describe("SessionManager", () => {
     it("does not generate session ID for non-claude forked commands", async () => {
       const m = mgr();
       const sourceName = await createSource(m, "bash");
-      m.setConfig("forkHooks", "{}");
+      m.setConfig("forkHooks", "{}", "local");
 
-      await m.fork(sourceName);
+      await m.fork(sourceName, "local");
 
       const calls = vi.mocked(spawnSync).mock.calls;
       const setEnvCall = calls.find(
@@ -528,7 +525,7 @@ describe("SessionManager", () => {
     it("throws when tmux new-session fails", async () => {
       const m = mgr();
       const sourceName = await createSource(m, "bash");
-      m.setConfig("forkHooks", "{}");
+      m.setConfig("forkHooks", "{}", "local");
 
       vi.mocked(spawnSync).mockImplementation((_cmd, args) => {
         if (args && (args as string[]).includes("has-session")) {
@@ -540,7 +537,7 @@ describe("SessionManager", () => {
         return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
       });
 
-      await expect(m.fork(sourceName)).rejects.toThrow("Failed to create tmux session");
+      await expect(m.fork(sourceName, "local")).rejects.toThrow("Failed to create tmux session");
     });
 
     it("executes fork hook and uses its output as command", async () => {
@@ -555,7 +552,7 @@ describe("SessionManager", () => {
       // Mock execSync to return the hook output
       vi.mocked(execSync).mockReturnValue("claude --resume abc\n");
 
-      const session = await m.fork(sourceName);
+      const session = await m.fork(sourceName, "local");
 
       // The hook output should be the fork command
       expect(session.command).toBe("claude --resume abc");
@@ -576,7 +573,7 @@ describe("SessionManager", () => {
         throw new Error("hook failed");
       });
 
-      const session = await m.fork(sourceName);
+      const session = await m.fork(sourceName, "local");
 
       // Should fall back to the source command (which includes --settings from create)
       expect(session.command).toContain("claude");
@@ -588,7 +585,7 @@ describe("SessionManager", () => {
       const sourceName = await createSource(m, "claude");
       // No hook file created in tempDir — existsSync returns false
 
-      await m.fork(sourceName);
+      await m.fork(sourceName, "local");
 
       // execSync should NOT have been called for hook
       expect(vi.mocked(execSync)).not.toHaveBeenCalled();
@@ -597,9 +594,9 @@ describe("SessionManager", () => {
     it("persists forked session in DB", async () => {
       const m = mgr();
       const sourceName = await createSource(m, "bash");
-      m.setConfig("forkHooks", "{}");
+      m.setConfig("forkHooks", "{}", "local");
 
-      const forked = await m.fork(sourceName);
+      const forked = await m.fork(sourceName, "local");
 
       // Make has-session return 0 so list shows sessions
       vi.mocked(spawnSync).mockImplementation((_cmd, args) => {
@@ -609,7 +606,7 @@ describe("SessionManager", () => {
         return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
       });
 
-      const sessions = m.list();
+      const sessions = m.list("local");
       const found = sessions.find((s: any) => s.name === forked.name);
       expect(found).toBeDefined();
       expect(found!.description).toBe(`forked from ${sourceName}`);

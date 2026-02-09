@@ -23,6 +23,6 @@ describe("DELETE /api/sessions/[name]", () => {
     const res = await DELETE(req, { params: Promise.resolve({ name: "my-sess" }) });
 
     expect(res.status).toBe(204);
-    expect(mockDelete).toHaveBeenCalledWith("my-sess");
+    expect(mockDelete).toHaveBeenCalledWith("my-sess", "local");
   });
 });

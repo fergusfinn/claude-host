@@ -92,6 +92,47 @@ class SessionManager {
     } catch {
       // Column already exists
     }
+    // Migration: add user_id to sessions
+    try {
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN user_id TEXT DEFAULT NULL`);
+    } catch {
+      // Column already exists
+    }
+    // Migration: add user_id to executors
+    try {
+      this.db.exec(`ALTER TABLE executors ADD COLUMN user_id TEXT DEFAULT NULL`);
+    } catch {
+      // Column already exists
+    }
+    // Migration: per-user config table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_config (
+        user_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        PRIMARY KEY (user_id, key)
+      )
+    `);
+  }
+
+  /** Assign all unowned sessions/executors to the given user (first-login migration) */
+  adoptUnownedResources(userId: string): void {
+    this.db.prepare("UPDATE sessions SET user_id = ? WHERE user_id IS NULL").run(userId);
+    this.db.prepare("UPDATE executors SET user_id = ? WHERE user_id IS NULL").run(userId);
+    // Migrate global config to per-user config
+    const globalRows = this.db.prepare("SELECT key, value FROM config").all() as { key: string; value: string }[];
+    if (globalRows.length > 0) {
+      const insert = this.db.prepare("INSERT OR IGNORE INTO user_config (user_id, key, value) VALUES (?, ?, ?)");
+      for (const row of globalRows) {
+        insert.run(userId, row.key, row.value);
+      }
+    }
+  }
+
+  /** Check if a session belongs to a user */
+  isOwnedBy(name: string, userId: string): boolean {
+    const row = this.db.prepare("SELECT 1 FROM sessions WHERE name = ? AND user_id = ?").get(name, userId);
+    return !!row;
   }
 
   /** Set the executor registry (called by server.ts after startup) */
@@ -103,10 +144,10 @@ class SessionManager {
     return this._registry;
   }
 
-  list(): Session[] {
+  list(userId: string): Session[] {
     const rows = this.db
-      .prepare("SELECT * FROM sessions ORDER BY position ASC, created_at DESC")
-      .all() as any[];
+      .prepare("SELECT * FROM sessions WHERE user_id = ? ORDER BY position ASC, created_at DESC")
+      .all(userId) as any[];
     const alive: Session[] = [];
     const deadNames: string[] = [];
     for (const row of rows) {
@@ -205,7 +246,7 @@ class SessionManager {
     return alive;
   }
 
-  async create(description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal"): Promise<Session> {
+  async create(description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal", userId: string = "local"): Promise<Session> {
     const name = this.uniqueName();
 
     // Inject theme settings for claude commands
@@ -219,8 +260,8 @@ class SessionManager {
       await exec.createRichSession({ name, command: finalCommand });
 
       this.db
-        .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode, position) VALUES (?, ?, ?, ?, ?, ?)")
-        .run(name, description, finalCommand, executor, "rich", this.nextPosition());
+        .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode, position, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .run(name, description, finalCommand, executor, "rich", this.nextPosition(), userId);
 
       return {
         name,
@@ -243,8 +284,8 @@ class SessionManager {
     const result = await exec.createSession({ name, description, command: finalCommand });
 
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, position) VALUES (?, ?, ?, ?, ?)")
-      .run(name, description, result.command, executor, this.nextPosition());
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, position, user_id) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(name, description, result.command, executor, this.nextPosition(), userId);
 
     return {
       name,
@@ -262,7 +303,7 @@ class SessionManager {
     };
   }
 
-  async createJob(prompt: string, maxIterations = 50, executor = "local", skipPermissions = true): Promise<Session> {
+  async createJob(prompt: string, maxIterations = 50, executor = "local", skipPermissions = true, userId: string = "local"): Promise<Session> {
     const name = this.uniqueName();
 
     let command = skipPermissions ? "claude --dangerously-skip-permissions" : "claude";
@@ -273,8 +314,8 @@ class SessionManager {
 
     // Insert into DB with job fields
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, job_prompt, job_max_iterations, position) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(name, prompt.slice(0, 200), command, executor, prompt, maxIterations, this.nextPosition());
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, job_prompt, job_max_iterations, position, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(name, prompt.slice(0, 200), command, executor, prompt, maxIterations, this.nextPosition(), userId);
 
     return {
       name,
@@ -292,7 +333,8 @@ class SessionManager {
     };
   }
 
-  async delete(name: string): Promise<void> {
+  async delete(name: string, userId: string): Promise<void> {
+    if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
     const mode = this.getMode(name);
     if (mode === "rich") {
       cleanupRichSession(name);
@@ -301,31 +343,32 @@ class SessionManager {
       const exec = this.getExecutor(executor);
       await exec.deleteSession(name);
     }
-    this.db.prepare("DELETE FROM sessions WHERE name = ?").run(name);
+    this.db.prepare("DELETE FROM sessions WHERE name = ? AND user_id = ?").run(name, userId);
   }
 
-  getConfig(key: string): string | null {
-    const row = this.db.prepare("SELECT value FROM config WHERE key = ?").get(key) as
+  getConfig(key: string, userId: string): string | null {
+    const row = this.db.prepare("SELECT value FROM user_config WHERE key = ? AND user_id = ?").get(key, userId) as
       | { value: string }
       | undefined;
     return row?.value ?? null;
   }
 
-  setConfig(key: string, value: string): void {
+  setConfig(key: string, value: string, userId: string): void {
     this.db
-      .prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)")
-      .run(key, value);
+      .prepare("INSERT OR REPLACE INTO user_config (user_id, key, value) VALUES (?, ?, ?)")
+      .run(userId, key, value);
   }
 
-  getAllConfig(): Record<string, string> {
-    const rows = this.db.prepare("SELECT key, value FROM config").all() as {
+  getAllConfig(userId: string): Record<string, string> {
+    const rows = this.db.prepare("SELECT key, value FROM user_config WHERE user_id = ?").all(userId) as {
       key: string;
       value: string;
     }[];
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   }
 
-  async snapshot(name: string): Promise<string> {
+  async snapshot(name: string, userId: string): Promise<string> {
+    if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
     const mode = this.getSessionMode(name);
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
@@ -336,7 +379,8 @@ class SessionManager {
     return exec.snapshotSession(name);
   }
 
-  async summarize(name: string): Promise<string> {
+  async summarize(name: string, userId: string): Promise<string> {
+    if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
     const mode = this.getSessionMode(name);
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
@@ -424,8 +468,8 @@ class SessionManager {
   }
 
   /** Get configured fork hooks: command prefix -> hook script path */
-  getForkHooks(): Record<string, string> {
-    const raw = this.getConfig("forkHooks");
+  getForkHooks(userId: string): Record<string, string> {
+    const raw = this.getConfig("forkHooks", userId);
     if (!raw) {
       // Default: bundled claude fork hook
       return { claude: join(process.cwd(), "hooks", "fork-claude.sh") };
@@ -437,11 +481,12 @@ class SessionManager {
     }
   }
 
-  setForkHooks(hooks: Record<string, string>): void {
-    this.setConfig("forkHooks", JSON.stringify(hooks));
+  setForkHooks(hooks: Record<string, string>, userId: string): void {
+    this.setConfig("forkHooks", JSON.stringify(hooks), userId);
   }
 
-  async fork(sourceName: string): Promise<Session> {
+  async fork(sourceName: string, userId: string = "local"): Promise<Session> {
+    if (!this.isOwnedBy(sourceName, userId)) throw new Error("Not found");
     const newName = this.uniqueName();
 
     // Get source session info from DB
@@ -453,7 +498,7 @@ class SessionManager {
     const sourceMode = (sourceRow?.mode || "terminal") as "terminal" | "rich";
 
     if (sourceMode === "rich") {
-      return this.forkRichSession(sourceName, newName, sourceCommand, sourceExecutor);
+      return this.forkRichSession(sourceName, newName, sourceCommand, sourceExecutor, userId);
     }
 
     // Fork targets the same executor as the source
@@ -465,7 +510,7 @@ class SessionManager {
       sourceCwd = this.localExecutor.getPaneCwd(sourceName);
     }
 
-    const hooks = this.getForkHooks();
+    const hooks = this.getForkHooks(userId);
     const result = await exec.forkSession({
       sourceName,
       newName,
@@ -475,8 +520,8 @@ class SessionManager {
     });
 
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode, position) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(newName, `forked from ${sourceName}`, result.command, sourceName, sourceExecutor, "terminal", this.nextPosition());
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode, position, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(newName, `forked from ${sourceName}`, result.command, sourceName, sourceExecutor, "terminal", this.nextPosition(), userId);
 
     return {
       name: newName,
@@ -494,7 +539,7 @@ class SessionManager {
     };
   }
 
-  private async forkRichSession(sourceName: string, newName: string, sourceCommand: string, sourceExecutor: string): Promise<Session> {
+  private async forkRichSession(sourceName: string, newName: string, sourceCommand: string, sourceExecutor: string, userId: string): Promise<Session> {
     // Get the Claude session_id from rich_sessions table
     const richRow = this.db
       .prepare("SELECT session_id FROM rich_sessions WHERE name = ?")
@@ -519,8 +564,8 @@ class SessionManager {
     mkdirSync(join(process.cwd(), "data", "rich", newName), { recursive: true });
 
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode, position) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(newName, `forked from ${sourceName}`, forkCommand, sourceName, sourceExecutor, "rich", this.nextPosition());
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode, position, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(newName, `forked from ${sourceName}`, forkCommand, sourceName, sourceExecutor, "rich", this.nextPosition(), userId);
 
     return {
       name: newName,
@@ -554,10 +599,10 @@ class SessionManager {
   }
 
   /** List registered executors */
-  listExecutors(): ExecutorInfo[] {
+  listExecutors(userId: string): ExecutorInfo[] {
     const executors: ExecutorInfo[] = [];
     if (this.localExecutor) {
-      const localCount = (this.db.prepare("SELECT COUNT(*) as c FROM sessions WHERE executor = 'local'").get() as any).c;
+      const localCount = (this.db.prepare("SELECT COUNT(*) as c FROM sessions WHERE executor = 'local' AND user_id = ?").get(userId) as any).c;
       executors.push({ id: "local", name: "local", labels: [], status: "online", last_seen: Math.floor(Date.now() / 1000), version: localVersion, sessionCount: localCount });
     }
     if (this._registry) {
@@ -584,11 +629,11 @@ class SessionManager {
   }
 
   /** Reorder sessions: accepts an ordered array of session names */
-  reorder(names: string[]): void {
-    const stmt = this.db.prepare("UPDATE sessions SET position = ? WHERE name = ?");
+  reorder(names: string[], userId: string): void {
+    const stmt = this.db.prepare("UPDATE sessions SET position = ? WHERE name = ? AND user_id = ?");
     const tx = this.db.transaction(() => {
       for (let i = 0; i < names.length; i++) {
-        stmt.run(i, names[i]);
+        stmt.run(i, names[i], userId);
       }
     });
     tx();
@@ -654,7 +699,7 @@ class SessionManager {
 }
 
 // Singleton — survives Next.js hot reloads in dev
-const SCHEMA_VERSION = 8; // bump to force re-creation after class changes
+const SCHEMA_VERSION = 9; // bump to force re-creation after class changes
 const globalForSessions = globalThis as unknown as {
   __sessions?: SessionManager;
   __sessionsVersion?: number;

@@ -4,7 +4,6 @@ import { memo } from "react";
 import type { LayoutNode } from "@/lib/layout";
 import { TerminalView } from "./terminal-view";
 import { RichView } from "./rich-view";
-import { FileViewerPane } from "./file-viewer-pane";
 import { ResizeHandle } from "./resize-handle";
 import type { TerminalTheme, TerminalFont } from "@/lib/themes";
 
@@ -21,8 +20,6 @@ interface Props {
   onResize: (splitId: string, ratio: number) => void;
   onCloseSession: (sessionName: string) => void;
   onSwitchSession: (sessionName: string) => void;
-  onOpenFile?: (paneId: string, filePath: string) => void;
-  onCloseEditor?: (paneId: string) => void;
   onSwitchMode?: (sessionName: string) => void;
 }
 
@@ -83,16 +80,13 @@ const PaneTerminal = memo(function PaneTerminal({
   onFocusPane,
   onCloseSession,
   onSwitchSession,
-  onOpenFile,
-  onCloseEditor,
   onSwitchMode,
   isTabActive,
   isSinglePane,
 }: { leaf: Extract<LayoutNode, { type: "leaf" }> } & Omit<NodeProps, "node">) {
   const isFocused = leaf.id === focusedPaneId;
   const showBorder = !isSinglePane;
-  const isEditor = leaf.editor != null;
-  const isRich = !isEditor && sessionModes?.[leaf.sessionName] === "rich";
+  const isRich = sessionModes?.[leaf.sessionName] === "rich";
 
   return (
     <div
@@ -108,14 +102,7 @@ const PaneTerminal = memo(function PaneTerminal({
         transition: "border-color 0.1s",
       }}
     >
-      {isEditor ? (
-        <FileViewerPane
-          filePath={leaf.editor!.filePath}
-          theme={theme}
-          font={font}
-          onClose={() => onCloseEditor?.(leaf.id)}
-        />
-      ) : isRich ? (
+      {isRich ? (
         <RichView
           key={`${leaf.sessionName}-${refreshKey}`}
           sessionName={leaf.sessionName}
@@ -123,7 +110,6 @@ const PaneTerminal = memo(function PaneTerminal({
           theme={theme}
           font={font}
           richFont={richFont}
-          onOpenFile={onOpenFile ? (fp: string) => onOpenFile(leaf.id, fp) : undefined}
           onSwitchMode={onSwitchMode ? () => onSwitchMode(leaf.sessionName) : undefined}
         />
       ) : (
