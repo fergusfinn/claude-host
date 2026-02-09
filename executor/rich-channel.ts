@@ -110,19 +110,45 @@ export function openRichChannel(opts: RichChannelOpts): void {
 
   function startTailing(): void {
     pollTimer = setInterval(() => readNewEvents(), 500);
-    try {
-      watcher = watch(eventsFile, () => readNewEvents());
-    } catch {}
+    if (existsSync(eventsFile)) {
+      try {
+        watcher = watch(eventsFile, () => readNewEvents());
+      } catch {}
+    }
   }
 
-  function sendPromptViaFifo(text: string): void {
-    if (!existsSync(fifoPath)) return;
+  function tryWriteFifo(text: string): boolean {
+    if (!existsSync(fifoPath)) return false;
     try {
       const fd = openSync(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK);
-      const payload = JSON.stringify({ role: "user", content: [{ type: "text", text }] }) + "\n";
-      writeSync(fd, payload);
-      closeSync(fd);
-    } catch {}
+      try {
+        const payload = JSON.stringify({ role: "user", content: [{ type: "text", text }] }) + "\n";
+        writeSync(fd, payload);
+        return true;
+      } finally {
+        closeSync(fd);
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  /** Retry writing to FIFO for up to 5s (wrapper needs time to create & open it) */
+  function sendPromptViaFifo(text: string): void {
+    if (tryWriteFifo(text)) return;
+
+    const maxWait = 5000;
+    const start = Date.now();
+    const retry = () => {
+      if (destroyed) return;
+      if (tryWriteFifo(text)) return;
+      if (Date.now() - start < maxWait) {
+        setTimeout(retry, 200);
+      } else {
+        console.error(`Rich channel (${opts.sessionName}): FIFO write failed after ${maxWait}ms`);
+      }
+    };
+    setTimeout(retry, 200);
   }
 
   function sendInterrupt(): void {
@@ -145,13 +171,20 @@ export function openRichChannel(opts: RichChannelOpts): void {
     // Replay existing events then start tailing
     replayEvents();
 
-    // Send session state
-    const processAlive = tmuxExists();
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "session_state", streaming: false, process_alive: processAlive }));
-    }
-
-    startTailing();
+    // Wait briefly for the tmux session to be ready (it may have just been spawned)
+    const sendState = (attempt = 0) => {
+      if (destroyed) return;
+      const processAlive = tmuxExists();
+      if (processAlive || attempt >= 10) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "session_state", streaming: false, process_alive: processAlive }));
+        }
+        startTailing();
+      } else {
+        setTimeout(() => sendState(attempt + 1), 500);
+      }
+    };
+    sendState();
   });
 
   ws.on("message", (msg: Buffer | string) => {
