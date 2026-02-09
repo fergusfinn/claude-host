@@ -386,6 +386,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
           if (msg.streaming) {
             setIsStreaming(true);
             if (!streamingStartRef.current) streamingStartRef.current = Date.now();
+          } else {
+            setIsStreaming(false);
+            streamingStartRef.current = 0;
           }
           if (msg.process_alive !== undefined) setProcessAlive(msg.process_alive);
         } else if (msg.type === "error") {
@@ -655,23 +658,23 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
     scrollToBottom();
   }
 
-  function toggleTool(id: string) {
+  const toggleTool = useCallback((id: string) => {
     setCollapsedTools((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
-  function toggleResultExpanded(id: string) {
+  const toggleResultExpanded = useCallback((id: string) => {
     setExpandedResults((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   // Auto-focus input when active (skip on touch devices to avoid
   // opening the virtual keyboard on tab switch)
@@ -843,9 +846,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
                             toolResult={item.toolResult}
                             theme={theme}
                             collapsed={collapsedTools.has(item.toolUse.id)}
-                            onToggle={() => toggleTool(item.toolUse.id)}
+                            onToggle={toggleTool}
                             resultExpanded={expandedResults.has(item.toolUse.id)}
-                            onToggleResult={() => toggleResultExpanded(item.toolUse.id)}
+                            onToggleResult={toggleResultExpanded}
                             onOpenFile={onOpenFile}
                           />
                         );
@@ -871,9 +874,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
                             toolResult={item.toolResult}
                             theme={theme}
                             collapsed={collapsedTools.has(item.toolUse.id)}
-                            onToggle={() => toggleTool(item.toolUse.id)}
+                            onToggle={toggleTool}
                             resultExpanded={expandedResults.has(item.toolUse.id)}
-                            onToggleResult={() => toggleResultExpanded(item.toolUse.id)}
+                            onToggleResult={toggleResultExpanded}
                             childMessages={subagentMessages.get(item.toolUse.id)}
                             onOpenFile={onOpenFile}
                           />
@@ -978,7 +981,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
 
 // ---- Sub-components ----
 
-function ThinkingIndicator({ startTime, theme }: { startTime: number; theme: TerminalTheme }) {
+const ThinkingIndicator = React.memo(function ThinkingIndicator({ startTime, theme }: { startTime: number; theme: TerminalTheme }) {
   const effectiveStart = startTime || Date.now();
   const [elapsed, setElapsed] = useState(0);
 
@@ -1000,7 +1003,7 @@ function ThinkingIndicator({ startTime, theme }: { startTime: number; theme: Ter
       </span>
     </div>
   );
-}
+});
 
 function StreamingMarkdown({ text, theme }: { text: string; theme: TerminalTheme }) {
   const [renderedText, setRenderedText] = useState(text);
@@ -1057,15 +1060,15 @@ function StreamingMarkdown({ text, theme }: { text: string; theme: TerminalTheme
   );
 }
 
-function TextBlock({ text, theme }: { text: string; theme: TerminalTheme }) {
+const TextBlock = React.memo(function TextBlock({ text, theme }: { text: string; theme: TerminalTheme }) {
   return (
     <div className={styles.textBlock}>
       <MemoizedMarkdown text={text} theme={theme} />
     </div>
   );
-}
+});
 
-function ToolPairBlock({
+const ToolPairBlock = React.memo(function ToolPairBlock({
   toolUse,
   toolResult,
   theme,
@@ -1080,10 +1083,10 @@ function ToolPairBlock({
   toolResult: ContentBlockToolResult | null;
   theme: TerminalTheme;
   collapsed: boolean;
-  onToggle: () => void;
+  onToggle: (id: string) => void;
   compact?: boolean;
   resultExpanded?: boolean;
-  onToggleResult?: () => void;
+  onToggleResult?: (id: string) => void;
   onOpenFile?: (filePath: string) => void;
 }) {
   const toolColor = getToolColor(toolUse.name, theme);
@@ -1118,7 +1121,7 @@ function ToolPairBlock({
       className={`${styles.toolPair} ${compact ? styles.toolPairCompact : ""}`}
       style={{ background: `${toolColor}08` }}
     >
-      <button className={styles.toolHeader} onClick={onToggle} style={{ color: toolColor }}>
+      <button className={styles.toolHeader} onClick={() => onToggle(toolUse.id)} style={{ color: toolColor }}>
         <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
         <span className={styles.toolIcon}>{getToolIcon(toolUse.name)}</span>
         <span className={styles.toolName}>{toolUse.name}</span>
@@ -1188,7 +1191,7 @@ function ToolPairBlock({
               {isResultLong && onToggleResult && (
                 <button
                   className={styles.expandBtn}
-                  onClick={onToggleResult}
+                  onClick={() => onToggleResult(toolUse.id)}
                   style={{ color: theme.cyan }}
                 >
                   {isExpanded ? "show less" : `show all (${resultLines.length} lines)`}
@@ -1200,9 +1203,9 @@ function ToolPairBlock({
       )}
     </div>
   );
-}
+});
 
-function DiffView({
+const DiffView = React.memo(function DiffView({
   filePath,
   oldStr,
   newStr,
@@ -1274,9 +1277,9 @@ function DiffView({
       </pre>
     </div>
   );
-}
+});
 
-function ToolGroupBlock({
+const ToolGroupBlock = React.memo(function ToolGroupBlock({
   name,
   pairs,
   theme,
@@ -1330,9 +1333,9 @@ function ToolGroupBlock({
               toolResult={pair.toolResult}
               theme={theme}
               collapsed={collapsedTools.has(pair.toolUse.id)}
-              onToggle={() => onToggle(pair.toolUse.id)}
+              onToggle={onToggle}
               resultExpanded={expandedResults.has(pair.toolUse.id)}
-              onToggleResult={() => onToggleResult(pair.toolUse.id)}
+              onToggleResult={onToggleResult}
               onOpenFile={onOpenFile}
               compact
             />
@@ -1341,9 +1344,9 @@ function ToolGroupBlock({
       )}
     </div>
   );
-}
+});
 
-function SubagentBlock({
+const SubagentBlock = React.memo(function SubagentBlock({
   toolUse,
   toolResult,
   theme,
@@ -1358,9 +1361,9 @@ function SubagentBlock({
   toolResult: ContentBlockToolResult | null;
   theme: TerminalTheme;
   collapsed: boolean;
-  onToggle: () => void;
+  onToggle: (id: string) => void;
   resultExpanded?: boolean;
-  onToggleResult?: () => void;
+  onToggleResult?: (id: string) => void;
   childMessages?: RenderedMessage[];
   onOpenFile?: (filePath: string) => void;
 }) {
@@ -1439,23 +1442,23 @@ function SubagentBlock({
     if (changed) setNestedCollapsed(newCollapsed);
   }, [childRenderItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleNestedTool = (id: string) => {
+  const toggleNestedTool = useCallback((id: string) => {
     setNestedCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  const toggleNestedResult = (id: string) => {
+  const toggleNestedResult = useCallback((id: string) => {
     setNestedExpandedResults((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
   const hasChildContent = childRenderItems.some(({ items }) => items.length > 0);
 
@@ -1466,7 +1469,7 @@ function SubagentBlock({
         background: `${agentColor}0d`,
       }}
     >
-      <button className={styles.subagentHeader} onClick={onToggle} style={{ color: agentColor }}>
+      <button className={styles.subagentHeader} onClick={() => onToggle(toolUse.id)} style={{ color: agentColor }}>
         <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
         <span className={styles.toolIcon}>{"\u229E"}</span>
         <span className={styles.toolName}>Task</span>
@@ -1519,9 +1522,9 @@ function SubagentBlock({
                               toolResult={item.toolResult}
                               theme={theme}
                               collapsed={nestedCollapsed.has(item.toolUse.id)}
-                              onToggle={() => toggleNestedTool(item.toolUse.id)}
+                              onToggle={toggleNestedTool}
                               resultExpanded={nestedExpandedResults.has(item.toolUse.id)}
-                              onToggleResult={() => toggleNestedResult(item.toolUse.id)}
+                              onToggleResult={toggleNestedResult}
                               onOpenFile={onOpenFile}
                               compact
                             />
@@ -1584,7 +1587,7 @@ function SubagentBlock({
               {isResultLong && onToggleResult && (
                 <button
                   className={styles.expandBtn}
-                  onClick={onToggleResult}
+                  onClick={() => onToggleResult(toolUse.id)}
                   style={{ color: theme.cyan }}
                 >
                   {isExpanded ? "show less" : `show all (${resultLines.length} lines)`}
@@ -1596,9 +1599,9 @@ function SubagentBlock({
       )}
     </div>
   );
-}
+});
 
-function QuestionBlock({
+const QuestionBlock = React.memo(function QuestionBlock({
   toolUse,
   toolResult,
   theme,
@@ -1719,7 +1722,7 @@ function QuestionBlock({
       )}
     </div>
   );
-}
+});
 
 // ---- Helpers (component-local) ----
 
