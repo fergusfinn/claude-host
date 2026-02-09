@@ -33,17 +33,20 @@ function computeMinSize(clients: Map<WebSocket, ClientInfo>): { cols: number; ro
   };
 }
 
-export function bridgeSession(ws: WebSocket, sessionName: string): void {
+export function bridgeSession(ws: WebSocket, sessionName: string, initialCols?: number, initialRows?: number): void {
+  const cols = (initialCols && initialCols > 0) ? initialCols : 80;
+  const rows = (initialRows && initialRows > 0) ? initialRows : 24;
+
   let session = sessions.get(sessionName);
 
   if (!session) {
-    // First client — spawn a new PTY
+    // First client — spawn a new PTY at the client's actual dimensions
     let term: pty.IPty;
     try {
       term = pty.spawn("/bin/sh", ["-c", `exec tmux attach -t "${sessionName}"`], {
         name: "xterm-256color",
-        cols: 80,
-        rows: 24,
+        cols,
+        rows,
         env: { ...process.env, LANG: process.env.LANG || "en_US.UTF-8", LC_CTYPE: process.env.LC_CTYPE || "en_US.UTF-8" } as Record<string, string>,
       });
     } catch (e: any) {
@@ -70,9 +73,11 @@ export function bridgeSession(ws: WebSocket, sessionName: string): void {
     });
   }
 
-  // Add this client
-  const clientInfo: ClientInfo = { ws, cols: 80, rows: 24 };
+  // Add this client with its actual dimensions and resize the PTY immediately
+  const clientInfo: ClientInfo = { ws, cols, rows };
   session.clients.set(ws, clientInfo);
+  const min = computeMinSize(session.clients);
+  session.term.resize(min.cols, min.rows);
 
   // Handle messages from this client
   const sess = session; // capture for closures

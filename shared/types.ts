@@ -72,5 +72,5 @@ export interface ExecutorInterface {
   summarizeSession(name: string): Promise<string>;
   analyzeSession(name: string): Promise<SessionAnalysis>;
   createJob(opts: CreateJobOpts): Promise<{ name: string; command: string }>;
-  attachSession(name: string, userWs: WebSocket): void;
+  attachSession(name: string, userWs: WebSocket, cols?: number, rows?: number): void;
 }

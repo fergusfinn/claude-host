@@ -127,6 +127,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
   const [collapsedTools, setCollapsedTools] = useState<Set<string>>(new Set());
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [wasEmpty, setWasEmpty] = useState(true);
 
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -575,6 +576,17 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
 
   const isEmpty = messages.length === 0 && !isStreaming;
 
+  // Track transition from empty → non-empty for animation
+  const justTransitioned = !isEmpty && wasEmpty;
+  useEffect(() => {
+    if (!isEmpty && wasEmpty) {
+      // Clear after animation completes
+      const t = setTimeout(() => setWasEmpty(false), 400);
+      return () => clearTimeout(t);
+    }
+    if (isEmpty) setWasEmpty(true);
+  }, [isEmpty, wasEmpty]);
+
   return (
     <div
       className={`${styles.root} ${isEmpty ? styles.rootEmpty : ""}`}
@@ -612,11 +624,9 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
                   <div className={styles.welcomeMark} style={{ background: theme.cursor }} />
                 </div>
                 <div className={styles.welcomeText}>
-                  <p className={styles.welcomeTitle} style={{ color: theme.foreground }}>Rich Mode</p>
+                  <p className={styles.welcomeTitle} style={{ color: theme.foreground }}>{sessionName}</p>
                   <p className={styles.welcomeHint}>
-                    Type a prompt below to start a conversation.
-                    <br />
-                    Responses render as styled markdown with collapsible tool calls.
+                    Type a message to start a conversation
                   </p>
                 </div>
                 <div className={styles.welcomeShortcuts}>

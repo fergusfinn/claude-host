@@ -12,12 +12,31 @@
 }
 
 .rootEmpty .messagesWrap {
-  flex: 0;
+  flex: 1;
 }
 
 .rootEmpty .messages {
   position: static;
   overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rootEmpty .inputArea {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(28px);
+  background: transparent;
+  z-index: 1;
+  animation: emptyInputIn 0.3s ease-out both;
+}
+
+@keyframes emptyInputIn {
+  from { opacity: 0; transform: translateY(38px); }
+  to { opacity: 1; transform: translateY(28px); }
 }
 
 /* Status bar */
@@ -116,23 +135,29 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  opacity: 0.6;
-  padding: 24px;
+  gap: 12px;
+  padding: 24px 24px 80px;
+  animation: welcomeFadeIn 0.4s ease-out both;
+}
+
+@keyframes welcomeFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .welcomeIcon {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-bottom: 4px;
 }
 
 .welcomeMark {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
 }
 
 .welcomeText {
@@ -140,15 +165,16 @@
 }
 
 .welcomeTitle {
-  font-size: 14px;
+  font-size: 20px;
   font-weight: 600;
-  margin: 0 0 4px;
+  margin: 0 0 6px;
 }
 
 .welcomeHint {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
   margin: 0;
+  opacity: 0.5;
 }
 
 .welcomeShortcuts {
@@ -157,8 +183,8 @@
   justify-content: center;
   gap: 12px 16px;
   font-size: 10px;
-  margin-top: 8px;
-  color: var(--text-3);
+  margin-top: 4px;
+  opacity: 0.35;
 }
 
 .kbd {
@@ -761,6 +787,16 @@
   flex-shrink: 0;
 }
 
+/* Animate input settling into bottom position after first message */
+.inputSettling {
+  animation: inputSettle 0.35s ease-out both;
+}
+
+@keyframes inputSettle {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .inputInner {
   display: flex;
   align-items: flex-end;
@@ -989,11 +1025,11 @@
   }
 
   .welcome {
-    padding: 16px;
+    padding: 16px 16px 72px;
   }
 
-  .welcomeHint {
-    font-size: 13px;
+  .welcomeTitle {
+    font-size: 18px;
   }
 
   .resultMeta {

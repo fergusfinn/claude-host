@@ -412,10 +412,10 @@ class SessionManager {
   }
 
   /** Attach a user's WebSocket to a session's terminal */
-  attachSession(name: string, userWs: import("ws").WebSocket): void {
+  attachSession(name: string, userWs: import("ws").WebSocket, cols?: number, rows?: number): void {
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
-    exec.attachSession(name, userWs);
+    exec.attachSession(name, userWs, cols, rows);
   }
 
   /** List registered executors */

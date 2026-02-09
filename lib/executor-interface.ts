@@ -53,8 +53,8 @@ export class LocalExecutor implements ExecutorInterface {
     return this.runner.analyzeSession(name);
   }
 
-  attachSession(name: string, userWs: WebSocket): void {
-    bridgeSession(userWs, name);
+  attachSession(name: string, userWs: WebSocket, cols?: number, rows?: number): void {
+    bridgeSession(userWs, name, cols, rows);
   }
 
   // Expose runner for direct tmux checks (used by SessionManager)
@@ -114,7 +114,7 @@ export class RemoteExecutor implements ExecutorInterface {
     return this.rpc("analyze_session", { name });
   }
 
-  attachSession(name: string, userWs: WebSocket): void {
+  attachSession(name: string, userWs: WebSocket, _cols?: number, _rows?: number): void {
     const channelId = rpcId();
 
     // Wait for executor to open terminal channel, then bridge

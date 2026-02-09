@@ -67,8 +67,11 @@ app.prepare().then(() => {
     const terminalMatch = pathname?.match(/^\/ws\/sessions\/([^/]+)$/);
     if (terminalMatch) {
       const sessionName = decodeURIComponent(terminalMatch[1]);
+      const parsed = new URL(req.url!, "http://localhost");
+      const cols = parseInt(parsed.searchParams.get("cols") || "") || 0;
+      const rows = parseInt(parsed.searchParams.get("rows") || "") || 0;
       wss.handleUpgrade(req, socket, head, (ws) => {
-        sessionManager.attachSession(sessionName, ws);
+        sessionManager.attachSession(sessionName, ws, cols, rows);
       });
       return;
     }

@@ -60,11 +60,24 @@ export function TerminalView({ sessionName, isActive, theme, font, onClose, onSw
         return true;
       });
 
-      const ro = new ResizeObserver(() => {
+      let lastCols = term.cols;
+      let lastRows = term.rows;
+      let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const sendResize = () => {
         fitAddon.fit();
-        if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ resize: [term.cols, term.rows] }));
+        if (term.cols !== lastCols || term.rows !== lastRows) {
+          lastCols = term.cols;
+          lastRows = term.rows;
+          if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ resize: [term.cols, term.rows] }));
+          }
         }
+      };
+
+      const ro = new ResizeObserver(() => {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(sendResize, 100);
       });
       ro.observe(container);
 
@@ -72,6 +85,7 @@ export function TerminalView({ sessionName, isActive, theme, font, onClose, onSw
       // can't be missed if React tears down during a later await.
       cleanupRef.current = () => {
         intentionalClose = true;
+        if (resizeTimer) clearTimeout(resizeTimer);
         ro.disconnect();
         ws?.close();
         term.dispose();
@@ -95,12 +109,13 @@ export function TerminalView({ sessionName, isActive, theme, font, onClose, onSw
 
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       ws = new WebSocket(
-        `${proto}//${location.host}/ws/sessions/${encodeURIComponent(sessionName)}`
+        `${proto}//${location.host}/ws/sessions/${encodeURIComponent(sessionName)}?cols=${term.cols}&rows=${term.rows}`
       );
 
       ws.onopen = () => {
         setError(null);
-        ws!.send(JSON.stringify({ resize: [term.cols, term.rows] }));
+        lastCols = term.cols;
+        lastRows = term.rows;
       };
 
       ws.onmessage = (e) => {
