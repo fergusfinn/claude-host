@@ -233,6 +233,13 @@ export class TmuxRunner {
       claudeArgs.push("--settings", settingsMatch[1]);
     }
 
+    console.log(`[rich:${name}] Creating tmux session ${tName}`);
+    console.log(`[rich:${name}]   cwd: ${process.cwd()}`);
+    console.log(`[rich:${name}]   wrapper: ${wrapperScript} (exists: ${existsSync(wrapperScript)})`);
+    console.log(`[rich:${name}]   events: ${eventsFile}`);
+    console.log(`[rich:${name}]   fifo: ${fifoPath}`);
+    console.log(`[rich:${name}]   claudeArgs: ${JSON.stringify(claudeArgs)}`);
+
     const r = spawnSync(TMUX, [
       "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
       "-c", process.cwd(),
@@ -244,7 +251,23 @@ export class TmuxRunner {
     }
 
     spawnSync(TMUX, ["set-option", "-t", tName, "status", "off"], { stdio: "pipe" });
-    spawnSync(TMUX, ["set-option", "-t", tName, "remain-on-exit", "off"], { stdio: "pipe" });
+    // Keep remain-on-exit ON so we can diagnose crashes
+    spawnSync(TMUX, ["set-option", "-t", tName, "remain-on-exit", "on"], { stdio: "pipe" });
+
+    // Check if session is still alive after a brief delay
+    setTimeout(() => {
+      const alive = spawnSync(TMUX, ["has-session", "-t", tName], { stdio: "pipe" }).status === 0;
+      console.log(`[rich:${name}] Post-create check: tmux alive=${alive}`);
+      if (alive) {
+        const capture = spawnSync(TMUX, ["capture-pane", "-t", tName, "-p", "-S", "-20"], {
+          encoding: "utf-8", timeout: 2000,
+        });
+        const paneContent = (capture.stdout || "").trim();
+        if (paneContent) {
+          console.log(`[rich:${name}] Pane content:\n${paneContent}`);
+        }
+      }
+    }, 3000);
 
     return { name, command };
   }
