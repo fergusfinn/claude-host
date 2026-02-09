@@ -225,12 +225,13 @@
 .dialog {
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 12px;
   color: var(--text-0);
   padding: 0;
   width: min(420px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;
+  overflow: hidden;
   font-family: var(--mono);
   box-shadow: 0 16px 64px var(--shadow-dialog);
   position: fixed;
@@ -279,7 +280,7 @@
 .rerollBtn {
   background: var(--bg-0);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 8px;
   color: var(--text-2);
   font-size: 16px;
   padding: 0 10px;
@@ -292,15 +293,15 @@
 .input {
   display: block;
   width: 100%;
-  padding: 9px 11px;
+  padding: 9px 12px;
   background: var(--bg-0);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 8px;
   color: var(--text-0);
   font-family: var(--mono);
   font-size: 13px;
   outline: none;
-  transition: border-color 0.1s;
+  transition: border-color 0.15s;
 }
 .input:focus { border-color: var(--accent); }
 .input::placeholder { color: var(--text-3); }
@@ -311,11 +312,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  border-top: 1px solid var(--border);
+  padding: 12px 16px;
 }
 
-.dialogFooterRight { display: flex; gap: 6px; }
+.dialogFooterRight { display: flex; gap: 8px; }
 
 /* Fork hooks */
 
@@ -369,15 +369,15 @@
 .textarea {
   display: block;
   width: 100%;
-  padding: 9px 11px;
+  padding: 9px 12px;
   background: var(--bg-0);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 8px;
   color: var(--text-0);
   font-family: var(--mono);
   font-size: 13px;
   outline: none;
-  transition: border-color 0.1s;
+  transition: border-color 0.15s;
   resize: vertical;
   min-height: 80px;
 }
@@ -390,7 +390,7 @@
   display: flex;
   gap: 0;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -440,7 +440,7 @@
   display: flex;
   gap: 0;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 8px;
   overflow: hidden;
 }
 
