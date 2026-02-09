@@ -88,7 +88,7 @@
 .restartBtn {
   background: none;
   border: 1px solid currentColor;
-  border-radius: 3px;
+  border-radius: 6px;
   padding: 0 6px;
   font-size: 10px;
   font-family: var(--mono);
@@ -181,7 +181,7 @@
 .welcomeMark {
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .welcomeText {
@@ -214,6 +214,7 @@
 .kbd {
   padding: 1px 5px;
   border: 1px solid;
+  border-radius: 3px;
   font-family: inherit;
   font-size: 10px;
   margin-right: 3px;
@@ -300,7 +301,7 @@
   padding: 10px 14px;
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 12px;
   font-size: 14px;
 }
 
@@ -309,7 +310,7 @@
 .toolPair {
   margin: 2px 0;
   min-width: 0;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .toolPairCompact {
@@ -377,7 +378,7 @@
 
 .toolHeader:hover {
   background: var(--bg-2);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .toolChevron {
@@ -505,7 +506,7 @@
 .toolGroup {
   margin: 2px 0;
   min-width: 0;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .toolGroupHeader {
@@ -525,7 +526,7 @@
 
 .toolGroupHeader:hover {
   background: var(--bg-2);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .toolGroupCount {
@@ -541,7 +542,7 @@
 
 .subagent {
   margin: 8px 0;
-  border-radius: 6px;
+  border-radius: 8px;
   min-width: 0;
 }
 
@@ -563,7 +564,7 @@
 
 .subagentHeader:hover {
   background: var(--bg-2);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .subagentBadge {
@@ -572,7 +573,7 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 1px 6px;
-  border-radius: 2px;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
@@ -640,7 +641,7 @@
 .questionBlock {
   margin: 8px 0;
   padding: 12px 16px;
-  border-radius: 6px;
+  border-radius: 12px;
 }
 
 .questionItem {
@@ -683,6 +684,7 @@
   gap: 2px;
   padding: 8px 12px;
   border: 1px solid;
+  border-radius: 8px;
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -719,6 +721,7 @@
   margin-top: 12px;
   padding: 8px 16px;
   border: 1px solid;
+  border-radius: 8px;
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
@@ -798,6 +801,7 @@
   font-family: inherit;
   font-size: 11px;
   border: 1px solid;
+  border-radius: 20px;
   cursor: pointer;
   z-index: 10;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -815,6 +819,7 @@
 .inputArea {
   padding: 12px 16px 14px;
   background: var(--bg-1);
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -838,11 +843,13 @@
   border-radius: 12px;
   padding: 8px 8px 8px 16px;
   background: var(--bg-2);
-  transition: border-color 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .inputInner:focus-within {
-  border-color: var(--accent-dim);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
 .input {
@@ -874,16 +881,15 @@
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 8px;
-  font-size: 16px;
+  border-radius: 50%;
   cursor: pointer;
   flex-shrink: 0;
-  font-family: inherit;
-  transition: all 0.1s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .sendBtn:disabled {
-  opacity: 0.3;
+  background: var(--bg-3) !important;
+  color: var(--text-3) !important;
   cursor: default;
 }
 
@@ -894,16 +900,14 @@
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: 50%;
   cursor: pointer;
   flex-shrink: 0;
-  font-family: inherit;
-  transition: all 0.1s;
+  transition: filter 0.15s;
 }
 
 .stopBtn:hover {
-  opacity: 0.8;
+  filter: brightness(0.85);
 }
 
 /* ---- Tablet responsive (601px–900px) ---- */
@@ -1159,15 +1163,13 @@
   .sendBtn {
     width: 40px;
     height: 40px;
-    font-size: 18px;
-    border-radius: 6px;
+    border-radius: 50%;
   }
 
   .stopBtn {
     width: 40px;
     height: 40px;
-    font-size: 14px;
-    border-radius: 6px;
+    border-radius: 50%;
   }
 
   .input {

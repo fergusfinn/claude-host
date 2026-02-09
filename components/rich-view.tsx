@@ -15,6 +15,7 @@ import {
   type ContentBlockToolResult,
   type RenderItem,
 } from "@/lib/rich-render";
+import { ArrowUp, Square } from "lucide-react";
 import styles from "./rich-view.module.css";
 
 export const RICH_FONT_OPTIONS: Record<string, { label: string; fontFamily: string; googleFontsUrl?: string }> = {
@@ -952,26 +953,26 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
         {isStreaming && (
           <button
             className={styles.stopBtn}
-            onClick={sendInterrupt}
+            onMouseDown={(e) => { e.preventDefault(); sendInterrupt(); }}
             style={{
               background: theme.red,
               color: theme.background,
             }}
             title="Stop (Esc)"
           >
-            {"\u25A0"}
+            <Square size={12} />
           </button>
         )}
         <button
           className={styles.sendBtn}
-          onClick={() => sendPrompt(inputValue)}
+          onMouseDown={(e) => { e.preventDefault(); sendPrompt(inputValue); }}
           disabled={!connected || !inputValue.trim()}
           style={{
             background: inputValue.trim() ? theme.cursor : "transparent",
             color: inputValue.trim() ? theme.background : theme.foreground,
           }}
         >
-          {"\u21B5"}
+          <ArrowUp size={16} />
         </button>
         </div>
       </div>
