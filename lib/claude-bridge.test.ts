@@ -176,7 +176,7 @@ describe("claude-bridge (tmux-backed)", () => {
       expect(errors[0].message).toBe("Invalid JSON");
     });
 
-    it("rejects prompt while a turn is in progress", async () => {
+    it("queues follow-up prompt while a turn is in progress", async () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
@@ -194,9 +194,24 @@ describe("claude-bridge (tmux-backed)", () => {
 
       ws.emit("message", JSON.stringify({ type: "prompt", text: "hello again" }));
 
+      await new Promise((r) => setTimeout(r, 50));
+
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const errors = calls.filter((c: any) => c.type === "error" && c.message.includes("turn is already in progress"));
-      expect(errors).toHaveLength(1);
+
+      // Both messages should be accepted (no errors)
+      const errors = calls.filter((c: any) => c.type === "error");
+      expect(errors).toHaveLength(0);
+
+      // Both user messages should be broadcast as events
+      const userEvents = calls.filter(
+        (c: any) => c.type === "event" && c.event?.type === "user"
+      );
+      expect(userEvents).toHaveLength(2);
+      expect(userEvents[0].event.message.content[0].text).toBe("hello");
+      expect(userEvents[1].event.message.content[0].text).toBe("hello again");
+
+      // Second message should include queued flag
+      expect(userEvents[1].event.queued).toBe(true);
     });
 
     it("creates tmux session on first prompt if not running", async () => {

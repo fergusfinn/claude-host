@@ -556,13 +556,17 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
         broadcast(state, { type: "session_state", streaming: state.turning, process_alive: true });
       }
 
-      const userMsg = {
+      const isQueued = state.turning;
+      const userMsg: Record<string, any> = {
         type: "user",
         message: {
           role: "user",
           content: [{ type: "text", text: parsed.text }],
         },
       };
+      if (isQueued) {
+        userMsg.queued = true;
+      }
 
       // Wait briefly for the FIFO to become available (wrapper needs time to start)
       const maxWait = 5000;

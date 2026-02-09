@@ -86,6 +86,7 @@ interface RenderedMessage {
   blocks: ContentBlock[];
   result?: ResultEvent;
   timestamp: number;
+  queued?: boolean;
 }
 
 interface RenderPlanEntry {
@@ -532,6 +533,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
       streamingTextRef.current = "";
       bumpStreamingTick();
       const msg = event as MessageEvent;
+      const queued = !!(event as any).queued;
       setMessages((prev) => [
         ...prev,
         {
@@ -539,6 +541,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
           role: "user",
           blocks: msg.message.content,
           timestamp: Date.now(),
+          queued,
         },
       ]);
       scrollToBottom();
@@ -790,7 +793,14 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
                     className={`${styles.message} ${styles.role_user} ${styles.messageEnter}`}
                     style={{ borderLeft: `2px solid ${theme.foreground}20` }}
                   >
-                    <div className={styles.userLabel} style={{ color: `${theme.foreground}40` }}>you</div>
+                    <div className={styles.userLabel} style={{ color: `${theme.foreground}40` }}>
+                      you
+                      {msg.queued && (
+                        <span className={styles.queuedBadge} style={{ color: theme.yellow }}>
+                          queued
+                        </span>
+                      )}
+                    </div>
                     {items.map((item, i) =>
                       item.kind === "text" ? (
                         <TextBlock key={`${msg.id}-${i}`} text={item.block.text} theme={theme} />
@@ -915,7 +925,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
             autoResize(e.target);
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message…"
+          placeholder={isStreaming ? "Type to queue a follow-up…" : "Type a message…"}
           disabled={!connected}
           rows={1}
           style={{
