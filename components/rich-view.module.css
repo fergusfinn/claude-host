@@ -258,6 +258,16 @@
   letter-spacing: 0.05em;
   margin-bottom: 2px;
   padding-left: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.queuedBadge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  opacity: 0.8;
 }
 
 .role_assistant {
@@ -1025,7 +1035,6 @@
 
   .inputArea {
     padding: 8px 10px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
 
   .inputInner {
@@ -1097,7 +1106,6 @@
 
   .inputArea {
     padding: 8px 6px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
 
   .questionBlock {
