@@ -250,20 +250,18 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
 
   const nextId = () => `msg-${++msgIdCounter.current}`;
 
-  // --- Result map: tool_use_id → tool_result ---
-  const resultMap = useMemo(() => {
-    const map = new Map<string, ContentBlockToolResult>();
+  // --- Render plan: build result map and render items in a single pass ---
+  const renderPlan = useMemo((): RenderPlanEntry[] => {
+    // First pass: collect tool_result blocks into a map
+    const resultMap = new Map<string, ContentBlockToolResult>();
     for (const msg of messages) {
       if (msg.role !== "user") continue;
       for (const block of msg.blocks) {
-        if (block.type === "tool_result") map.set(block.tool_use_id, block);
+        if (block.type === "tool_result") resultMap.set(block.tool_use_id, block);
       }
     }
-    return map;
-  }, [messages]);
 
-  // --- Render plan: transform messages into grouped render items ---
-  const renderPlan = useMemo((): RenderPlanEntry[] => {
+    // Second pass: build render items using the result map
     return messages.map((msg) => {
       if (msg.role === "result" || msg.role === "system") {
         return { msg, items: null };
@@ -285,7 +283,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
 
       return { msg, items: null };
     });
-  }, [messages, resultMap]);
+  }, [messages]);
 
   // --- Auto-collapse all tool calls that have completed ---
   // Auto-collapse non-Edit tools immediately on appearance
@@ -1091,21 +1089,7 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
 }) {
   const toolColor = getToolColor(toolUse.name, theme);
   const isEditTool = toolUse.name === "Edit" && toolUse.input.old_string != null;
-
-  const resultContent = toolResult
-    ? typeof toolResult.content === "string"
-      ? toolResult.content
-      : toolResult.content.map((c) => c.text || "").join("\n")
-    : null;
-
-  const resultLines = resultContent ? resultContent.split("\n") : [];
-  const isResultLong = resultLines.length > 20;
-  const isExpanded = resultExpanded || !isResultLong;
-  const displayResult = resultContent
-    ? isExpanded
-      ? resultContent
-      : resultLines.slice(0, 12).join("\n") + "\n…"
-    : null;
+  const { content: resultContent, lines: resultLines, isLong: isResultLong, isExpanded, display: displayResult } = getResultDisplay(toolResult, resultExpanded);
 
   // Done hint for collapsed state
   const doneHint = collapsed && toolResult
@@ -1121,7 +1105,7 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
       className={`${styles.toolPair} ${compact ? styles.toolPairCompact : ""}`}
       style={{ background: `${toolColor}08` }}
     >
-      <button className={styles.toolHeader} onClick={() => onToggle(toolUse.id)} style={{ color: toolColor }}>
+      <button className={styles.toolHeader} onClick={() => onToggle(toolUse.id)} style={{ color: toolColor }} aria-expanded={!collapsed}>
         <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
         <span className={styles.toolIcon}>{getToolIcon(toolUse.name)}</span>
         <span className={styles.toolName}>{toolUse.name}</span>
@@ -1310,6 +1294,7 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
         className={styles.toolGroupHeader}
         onClick={() => onToggle(groupKey)}
         style={{ color: toolColor }}
+        aria-expanded={!isCollapsed}
       >
         <span className={styles.toolChevron}>{isCollapsed ? "\u25B8" : "\u25BE"}</span>
         <span className={styles.toolIcon}>{getToolIcon(name)}</span>
@@ -1370,21 +1355,7 @@ const SubagentBlock = React.memo(function SubagentBlock({
   const agentColor = theme.mode === "light" ? theme.magenta : theme.brightMagenta;
   const subagentType = toolUse.input.subagent_type as string | undefined;
   const description = toolUse.input.description as string | undefined;
-
-  const resultContent = toolResult
-    ? typeof toolResult.content === "string"
-      ? toolResult.content
-      : toolResult.content.map((c) => c.text || "").join("\n")
-    : null;
-
-  const resultLines = resultContent ? resultContent.split("\n") : [];
-  const isResultLong = resultLines.length > 20;
-  const isExpanded = resultExpanded || !isResultLong;
-  const displayResult = resultContent
-    ? isExpanded
-      ? resultContent
-      : resultLines.slice(0, 12).join("\n") + "\n…"
-    : null;
+  const { content: resultContent, lines: resultLines, isLong: isResultLong, isExpanded, display: displayResult } = getResultDisplay(toolResult, resultExpanded);
 
   // Build result map and render items for child messages
   const childResultMap = useMemo(() => {
@@ -1469,7 +1440,7 @@ const SubagentBlock = React.memo(function SubagentBlock({
         background: `${agentColor}0d`,
       }}
     >
-      <button className={styles.subagentHeader} onClick={() => onToggle(toolUse.id)} style={{ color: agentColor }}>
+      <button className={styles.subagentHeader} onClick={() => onToggle(toolUse.id)} style={{ color: agentColor }} aria-expanded={!collapsed}>
         <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
         <span className={styles.toolIcon}>{"\u229E"}</span>
         <span className={styles.toolName}>Task</span>
@@ -1680,6 +1651,8 @@ const QuestionBlock = React.memo(function QuestionBlock({
                   className={`${styles.questionOption} ${selected ? styles.questionOptionSelected : ""}`}
                   onClick={() => toggleOption(qIdx, oIdx, q.multiSelect)}
                   disabled={!isInteractive}
+                  aria-pressed={selected}
+                  role={q.multiSelect ? "checkbox" : "radio"}
                   style={{
                     borderColor: selected ? theme.green : `${theme.foreground}20`,
                     background: selected ? `${theme.green}15` : "transparent",
@@ -1725,6 +1698,23 @@ const QuestionBlock = React.memo(function QuestionBlock({
 });
 
 // ---- Helpers (component-local) ----
+
+function getResultDisplay(toolResult: ContentBlockToolResult | null, expanded?: boolean) {
+  const content = toolResult
+    ? typeof toolResult.content === "string"
+      ? toolResult.content
+      : toolResult.content.map((c) => c.text || "").join("\n")
+    : null;
+  const lines = content ? content.split("\n") : [];
+  const isLong = lines.length > 20;
+  const isExpanded = expanded || !isLong;
+  const display = content
+    ? isExpanded
+      ? content
+      : lines.slice(0, 12).join("\n") + "\n\u2026"
+    : null;
+  return { content, lines, isLong, isExpanded, display };
+}
 
 function getToolColor(name: string, theme: TerminalTheme): string {
   // For light themes, use standard (darker) ANSI colors; for dark themes, bright variants are fine
