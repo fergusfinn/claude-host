@@ -375,10 +375,15 @@ class SessionManager {
   async fork(sourceName: string, newName: string): Promise<Session> {
     // Get source session info from DB
     const sourceRow = this.db
-      .prepare("SELECT command, executor FROM sessions WHERE name = ?")
-      .get(sourceName) as { command: string; executor: string } | undefined;
+      .prepare("SELECT command, executor, mode FROM sessions WHERE name = ?")
+      .get(sourceName) as { command: string; executor: string; mode: string } | undefined;
     const sourceCommand = sourceRow?.command || "claude";
     const sourceExecutor = sourceRow?.executor || "local";
+    const sourceMode = (sourceRow?.mode || "terminal") as "terminal" | "rich";
+
+    if (sourceMode === "rich") {
+      return this.forkRichSession(sourceName, newName, sourceCommand, sourceExecutor);
+    }
 
     // Fork targets the same executor as the source
     const exec = this.getExecutor(sourceExecutor);
@@ -407,6 +412,50 @@ class SessionManager {
       description: `forked from ${sourceName}`,
       command: result.command,
       mode: "terminal" as const,
+      parent: sourceName,
+      executor: sourceExecutor,
+      last_activity: Math.floor(Date.now() / 1000),
+      created_at: new Date().toISOString(),
+      alive: true,
+      job_prompt: null,
+      job_max_iterations: null,
+      needs_input: false,
+    };
+  }
+
+  private async forkRichSession(sourceName: string, newName: string, sourceCommand: string, sourceExecutor: string): Promise<Session> {
+    // Get the Claude session_id from rich_sessions table
+    const richRow = this.db
+      .prepare("SELECT session_id FROM rich_sessions WHERE name = ?")
+      .get(sourceName) as { session_id: string | null } | undefined;
+
+    if (!richRow?.session_id) {
+      throw new Error(`Cannot fork rich session "${sourceName}": no session ID found (session may not have been started yet)`);
+    }
+
+    // Build fork command: base command + --resume <id> --fork-session
+    // Strip any existing --resume/--fork-session/--session-id from the source command
+    const cleanCommand = sourceCommand
+      .replace(/--resume\s+\S+/g, "")
+      .replace(/--fork-session/g, "")
+      .replace(/--session-id\s+\S+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const forkCommand = `${cleanCommand} --resume ${richRow.session_id} --fork-session`;
+
+    // Create runtime directory for the new rich session
+    mkdirSync(join(process.cwd(), "data", "rich", newName), { recursive: true });
+
+    this.db
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(newName, `forked from ${sourceName}`, forkCommand, sourceName, sourceExecutor, "rich");
+
+    return {
+      name: newName,
+      description: `forked from ${sourceName}`,
+      command: forkCommand,
+      mode: "rich" as const,
       parent: sourceName,
       executor: sourceExecutor,
       last_activity: Math.floor(Date.now() / 1000),

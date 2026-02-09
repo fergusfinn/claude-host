@@ -23,11 +23,38 @@ SESSION_ID=""
 trap 'kill $CLAUDE_PID 2>/dev/null; exit 0' TERM
 trap 'kill -INT $CLAUDE_PID 2>/dev/null' INT
 
+# FIRST_RUN tracks whether this is the initial launch (for --fork-session support).
+# On first run, CLAUDE_ARGS may contain --resume <id> --fork-session for forking.
+# On restart, we strip those and use the discovered SESSION_ID instead.
+FIRST_RUN=1
+
 while true; do
-  # Build command — add --resume if we have a session ID from a previous run
-  CMD=(claude "${CLAUDE_ARGS[@]}")
-  if [ -n "$SESSION_ID" ]; then
-    CMD+=(--resume "$SESSION_ID")
+  # Build command
+  CMD=(claude)
+  if [ "$FIRST_RUN" -eq 1 ]; then
+    # First run: pass all args as-is (may include --resume + --fork-session)
+    CMD+=("${CLAUDE_ARGS[@]}")
+  else
+    # Restart: strip --resume <value> and --fork-session from original args,
+    # then use the discovered SESSION_ID instead
+    SKIP_NEXT=""
+    for arg in "${CLAUDE_ARGS[@]}"; do
+      if [ "${SKIP_NEXT}" = "1" ]; then
+        SKIP_NEXT=""
+        continue
+      fi
+      if [ "$arg" = "--resume" ]; then
+        SKIP_NEXT=1
+        continue
+      fi
+      if [ "$arg" = "--fork-session" ]; then
+        continue
+      fi
+      CMD+=("$arg")
+    done
+    if [ -n "$SESSION_ID" ]; then
+      CMD+=(--resume "$SESSION_ID")
+    fi
   fi
 
   # Open FIFO read-write (fd 3) so it stays open even when no writer is connected.
@@ -50,6 +77,9 @@ while true; do
   # Extract the most recent session_id from events for --resume
   SESSION_ID=$(grep -o '"session_id":"[^"]*"' "$EVENTS_FILE" 2>/dev/null \
     | tail -1 | cut -d'"' -f4)
+
+  # After first run, strip --fork-session on subsequent restarts
+  FIRST_RUN=0
 
   # Write restart marker so clients know claude is restarting
   echo '{"type":"system","subtype":"restart","message":"Claude process restarted"}' >> "$EVENTS_FILE"

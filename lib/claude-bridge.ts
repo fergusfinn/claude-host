@@ -215,6 +215,15 @@ function ensureTmuxSession(name: string, state: RichState): void {
     claudeArgs.push("--settings", settingsMatch[1]);
   }
 
+  // Extract --resume and --fork-session for forked rich sessions
+  const resumeMatch = state.command.match(/--resume\s+(\S+)/);
+  if (resumeMatch) {
+    claudeArgs.push("--resume", resumeMatch[1]);
+  }
+  if (state.command.includes("--fork-session")) {
+    claudeArgs.push("--fork-session");
+  }
+
   // Create tmux session running the wrapper script
   const r = spawnSync(TMUX, [
     "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",

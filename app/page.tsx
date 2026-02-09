@@ -339,10 +339,8 @@ export default function Home() {
 
     try {
       let res: Response;
-      // Don't fork from rich sessions — always create fresh terminal
-      const sourceIsRich = sourceSession ? sessionModes[sourceSession] === "rich" : false;
-      if (fork && sourceSession && !sourceIsRich) {
-        // Fork from the focused pane's session
+      if (fork && sourceSession) {
+        // Fork from the focused pane's session (works for both terminal and rich)
         res = await fetch("/api/sessions/fork", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -358,6 +356,11 @@ export default function Home() {
         });
       }
       if (!res.ok) return;
+      // Read the created session's mode so the pane renders correctly
+      const created = await res.json();
+      if (created.mode) {
+        setSessionModes((prev) => ({ ...prev, [name]: created.mode }));
+      }
       await loadSessions();
 
       setTabs((prev) =>
