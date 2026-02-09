@@ -502,16 +502,6 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
   function sendPrompt(text: string) {
     if (!text.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: nextId(),
-        role: "user",
-        blocks: [{ type: "text", text }],
-        timestamp: Date.now(),
-      },
-    ]);
-
     setIsStreaming(true);
     setError(null);
     userScrolledUpRef.current = false;

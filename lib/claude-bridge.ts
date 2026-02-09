@@ -2,7 +2,7 @@ import { spawnSync, execFileSync } from "child_process";
 import { WebSocket } from "ws";
 import Database from "better-sqlite3";
 import {
-  mkdirSync, existsSync, readFileSync, writeFileSync, openSync,
+  mkdirSync, existsSync, readFileSync, writeFileSync, appendFileSync, openSync,
   closeSync, readSync, writeSync, fstatSync, watch, statSync, rmSync,
   constants as fsConstants,
   type FSWatcher,
@@ -53,6 +53,7 @@ interface RichState {
   tailWatcher: FSWatcher | null;
   pollTimer: ReturnType<typeof setInterval> | null;
   lineBuffer: string; // partial line from last read
+  lastPromptText: string | null; // dedup user events echoed by claude
 }
 
 // --- SQLite persistence ---
@@ -139,6 +140,7 @@ function getOrCreate(name: string, command = "claude"): RichState {
       tailWatcher: null,
       pollTimer: null,
       lineBuffer: "",
+      lastPromptText: null,
     };
 
     // Migrate old SQLite-stored events to file if needed
@@ -268,6 +270,16 @@ function processEventChunk(name: string, state: RichState, chunk: string): void 
 
       // Skip subagent internal events
       if (event.parent_tool_use_id != null) continue;
+
+      // Dedup user events echoed by claude that we already wrote to the events file
+      if (event.type === "user" && state.lastPromptText) {
+        const content = event.message?.content;
+        if (Array.isArray(content) && content.length === 1
+            && content[0].type === "text" && content[0].text === state.lastPromptText) {
+          state.lastPromptText = null;
+          continue;
+        }
+      }
 
       // Skip duplicate init events
       if (event.type === "system" && event.subtype === "init") {
@@ -485,6 +497,13 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
         const ok = sendPromptViaFifo(sessionName, state, JSON.stringify(userMsg));
         if (ok) {
           state.turning = true;
+          // Broadcast immediately so clients see the message without waiting for file tailing
+          broadcast(state, { type: "event", event: userMsg });
+          // Also persist to the events file for replay on reconnect
+          const userLine = JSON.stringify(userMsg) + "\n";
+          appendFileSync(state.eventsFilePath, userLine);
+          state.byteOffset += Buffer.byteLength(userLine);
+          state.lastPromptText = parsed.text as string;
           return;
         }
 
