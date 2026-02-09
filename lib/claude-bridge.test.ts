@@ -56,7 +56,11 @@ function createMockWs(): any {
 // Helper: create a mock child process
 function createMockProc(): any {
   const proc = new EventEmitter();
-  (proc as any).stdin = { write: vi.fn(), end: vi.fn() };
+  const stdin = new EventEmitter();
+  (stdin as any).write = vi.fn();
+  (stdin as any).end = vi.fn();
+  (stdin as any).destroyed = false;
+  (proc as any).stdin = stdin;
   (proc as any).stdout = new EventEmitter();
   (proc as any).stderr = new EventEmitter();
   (proc as any).kill = vi.fn();
@@ -222,7 +226,11 @@ describe("claude-bridge", () => {
       mockProc.stdout.emit("data", Buffer.from(JSON.stringify(initEvent) + "\n"));
 
       // Now if the process dies and restarts, it should use --resume
-      mockProc.emit("close", 1);
+      mockProc.emit("close", 1, null);
+
+      // The second spawn needs a fresh mock process
+      const mockProc2 = createMockProc();
+      mockSpawn.mockReturnValue(mockProc2);
 
       // Send another prompt — should trigger new spawn with --resume
       ws.emit("message", JSON.stringify({ type: "prompt", text: "hello again" }));
@@ -265,16 +273,39 @@ describe("claude-bridge", () => {
       expect(inits).toHaveLength(1);
     });
 
-    it("does not send error on clean process exit (code 0)", () => {
+    it("does not send error on clean process exit (code 0) when not mid-turn", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
       ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-      mockProc.emit("close", 0);
+
+      // Complete the turn first
+      const resultEvent = { type: "result", total_cost_usd: 0.01, duration_ms: 1000 };
+      mockProc.stdout.emit("data", Buffer.from(JSON.stringify(resultEvent) + "\n"));
+
+      // Now exit cleanly — should not produce an error
+      mockProc.emit("close", 0, null);
 
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const errors = calls.filter((c: any) => c.type === "error");
       expect(errors).toHaveLength(0);
+    });
+
+    it("sends error + turn_complete on clean exit (code 0) while mid-turn", () => {
+      const ws = createMockWs();
+      bridgeRichSession(ws, "test-session");
+
+      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
+      // Process exits cleanly while still turning
+      mockProc.emit("close", 0, null);
+
+      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const errors = calls.filter((c: any) => c.type === "error");
+      expect(errors).toHaveLength(1);
+      expect(errors[0].message).toContain("exited unexpectedly");
+
+      const turnCompletes = calls.filter((c: any) => c.type === "turn_complete");
+      expect(turnCompletes).toHaveLength(1);
     });
 
     it("sends error on non-zero process exit", () => {
@@ -282,7 +313,7 @@ describe("claude-bridge", () => {
       bridgeRichSession(ws, "test-session");
 
       ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
-      mockProc.emit("close", 1);
+      mockProc.emit("close", 1, null);
 
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const errors = calls.filter((c: any) => c.type === "error");

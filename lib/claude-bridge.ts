@@ -178,6 +178,7 @@ function ensureProcess(name: string, state: RichState): ChildProcess {
     env: { ...process.env },
   });
 
+  console.log(`[rich:${name}] Spawned claude process (pid=${proc.pid}), resume=${state.sessionId ?? "none"}`);
   state.proc = proc;
   state.spawning = false;
   let buffer = "";
@@ -246,7 +247,30 @@ function ensureProcess(name: string, state: RichState): ChildProcess {
     }
   });
 
-  proc.on("close", (code) => {
+  // Stream error handlers — without these, stream errors are unhandled and
+  // can cause the process to silently stop delivering data.
+  proc.stdout!.on("error", (err) => {
+    console.error(`[rich:${name}] stdout error:`, err.message);
+    if (state.ws) send(state.ws, { type: "error", message: `stdout error: ${err.message}` });
+  });
+  proc.stderr!.on("error", (err) => {
+    console.error(`[rich:${name}] stderr error:`, err.message);
+  });
+  proc.stdin!.on("error", (err) => {
+    // EPIPE is expected if the process exits before we finish writing — the
+    // close handler will take care of notifying the client.
+    if ((err as NodeJS.ErrnoException).code === "EPIPE") {
+      console.warn(`[rich:${name}] stdin EPIPE (process likely exited)`);
+    } else {
+      console.error(`[rich:${name}] stdin error:`, err.message);
+      if (state.ws) send(state.ws, { type: "error", message: `stdin error: ${err.message}` });
+    }
+  });
+
+  proc.on("close", (code, signal) => {
+    const wasTurning = state.turning;
+    const pid = proc.pid;
+
     // Flush remaining buffer
     if (buffer.trim()) {
       try {
@@ -256,7 +280,9 @@ function ensureProcess(name: string, state: RichState): ChildProcess {
         }
         state.events.push(event);
         if (state.ws) send(state.ws, { type: "event", event });
-      } catch {}
+      } catch (e) {
+        console.warn(`[rich:${name}] Failed to parse remaining buffer on close:`, buffer.trim());
+      }
     }
     buffer = "";
     state.proc = null;
@@ -264,14 +290,32 @@ function ensureProcess(name: string, state: RichState): ChildProcess {
     state.initReceived = false; // Reset so next process gets its init shown
     // Flush on close to ensure all events are persisted
     flushPersist(name, state);
-    // Don't send error for clean exits (code 0) — process may have been
-    // intentionally stopped. Non-zero means unexpected crash.
-    if (code !== 0 && code !== null && state.ws) {
-      send(state.ws, { type: "error", message: `Process exited (code ${code})` });
+
+    if (code !== 0 && code !== null) {
+      console.warn(`[rich:${name}] Process (pid=${pid}) exited with code ${code}, signal=${signal}, wasTurning=${wasTurning}`);
+      if (state.ws) {
+        send(state.ws, { type: "error", message: `Process exited (code ${code})` });
+      }
+    } else if (wasTurning) {
+      // Process exited cleanly mid-turn — something went wrong (OOM, context
+      // exhaustion, API error handled internally, etc.). Must notify client
+      // or the UI will stay stuck in streaming state forever.
+      console.warn(`[rich:${name}] Process (pid=${pid}) exited cleanly (code=${code}, signal=${signal}) while turn was in progress`);
+      if (state.ws) {
+        send(state.ws, { type: "error", message: "Agent process exited unexpectedly" });
+      }
+    } else {
+      console.log(`[rich:${name}] Process (pid=${pid}) exited cleanly (code=${code}, signal=${signal})`);
+    }
+
+    // Always send turn_complete if we were mid-turn so the client exits streaming state
+    if (wasTurning && state.ws) {
+      send(state.ws, { type: "turn_complete" });
     }
   });
 
   proc.on("error", (err) => {
+    console.error(`[rich:${name}] Process error (pid=${proc.pid}):`, err.message);
     state.proc = null;
     state.spawning = false;
     state.turning = false;
@@ -287,8 +331,10 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string): void {
 
   // Disconnect previous client if any
   if (state.ws && state.ws !== ws && state.ws.readyState === WebSocket.OPEN) {
+    console.log(`[rich:${sessionName}] Disconnecting previous WS client`);
     state.ws.close();
   }
+  console.log(`[rich:${sessionName}] WS client connected (proc=${state.proc?.pid ?? "none"}, turning=${state.turning}, events=${state.events.length})`);
   state.ws = ws;
 
   // Replay stored events
@@ -331,8 +377,6 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string): void {
         return;
       }
 
-      state.turning = true;
-
       const userMsg = {
         type: "user",
         message: {
@@ -341,21 +385,36 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string): void {
         },
       };
 
-      proc.stdin!.write(JSON.stringify(userMsg) + "\n");
+      // Check stdin is still writable before committing to the turn
+      if (!proc.stdin || proc.stdin.destroyed) {
+        console.error(`[rich:${sessionName}] stdin is destroyed, cannot send prompt`);
+        send(ws, { type: "error", message: "Agent process stdin is closed" });
+        return;
+      }
+
+      state.turning = true;
+      try {
+        proc.stdin.write(JSON.stringify(userMsg) + "\n");
+      } catch (e: any) {
+        console.error(`[rich:${sessionName}] stdin.write() threw:`, e.message);
+        state.turning = false;
+        send(ws, { type: "error", message: `Failed to send prompt: ${e.message}` });
+      }
     }
   });
 
-  const cleanup = () => {
+  const cleanup = (reason?: string) => {
     // Only clear the ws ref if it's still us
     if (state.ws === ws) {
+      console.log(`[rich:${sessionName}] WS client disconnected (reason=${reason ?? "unknown"}, turning=${state.turning})`);
       state.ws = null;
     }
     // Do NOT kill the claude process — it should finish its turn
     // and events will be stored for the next connection
   };
 
-  ws.on("close", cleanup);
-  ws.on("error", cleanup);
+  ws.on("close", (code: number, reason: Buffer) => cleanup(`close:${code}`));
+  ws.on("error", (err: Error) => cleanup(`error:${err.message}`));
 }
 
 /** Clean up all state for a rich session (called on session delete) */
