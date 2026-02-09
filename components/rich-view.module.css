@@ -853,22 +853,17 @@
   font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
+  resize: none;
   padding: 5px 0 6px;
-  min-height: 21px;
+  min-height: 0;
   max-height: 200px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  -webkit-user-modify: read-write-plaintext-only;
 }
 
-.input:empty::before {
-  content: attr(data-placeholder);
+.input::placeholder {
   color: var(--text-3);
-  pointer-events: none;
 }
 
-.input:not([contenteditable="true"]) {
+.input:disabled {
   opacity: 0.5;
 }
 
