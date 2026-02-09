@@ -1,6 +1,6 @@
 // WS protocol message types between executor and control plane
 
-import type { SessionLiveness, CreateSessionOpts, CreateJobOpts, ForkSessionOpts } from "./types";
+import type { SessionLiveness, CreateSessionOpts, CreateJobOpts, ForkSessionOpts, CreateRichSessionOpts } from "./types";
 
 // --- Executor → Control Plane ---
 
@@ -84,6 +84,26 @@ export interface AttachSessionRpc {
   sessionName: string;
 }
 
+export interface CreateRichSessionRpc {
+  type: "create_rich_session";
+  id: string;
+  opts: CreateRichSessionOpts;
+}
+
+export interface AttachRichSessionRpc {
+  type: "attach_rich_session";
+  id: string;
+  channelId: string;
+  sessionName: string;
+  command: string;
+}
+
+export interface SnapshotRichSessionRpc {
+  type: "snapshot_rich_session";
+  id: string;
+  name: string;
+}
+
 export interface PingMessage {
   type: "ping";
   id: string;
@@ -104,6 +124,9 @@ export type ControlToExecutorMessage =
   | SummarizeSessionRpc
   | AnalyzeSessionRpc
   | AttachSessionRpc
+  | CreateRichSessionRpc
+  | AttachRichSessionRpc
+  | SnapshotRichSessionRpc
   | PingMessage
   | UpgradeMessage;
 

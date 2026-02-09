@@ -5,9 +5,9 @@
 
 import { execFileSync, spawnSync, execSync } from "child_process";
 import { randomUUID } from "crypto";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, resolve } from "path";
-import type { CreateSessionOpts, CreateJobOpts, ForkSessionOpts, SessionLiveness, SessionAnalysis } from "../shared/types";
+import type { CreateSessionOpts, CreateJobOpts, ForkSessionOpts, CreateRichSessionOpts, SessionLiveness, SessionAnalysis } from "../shared/types";
 
 const TMUX = (() => {
   try {
@@ -201,6 +201,83 @@ export class TmuxRunner {
     } catch {
       return "[capture failed]";
     }
+  }
+
+  createRichSession(opts: CreateRichSessionOpts): { name: string; command: string } {
+    const { name, command = "claude" } = opts;
+
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+      throw new Error("Name must be alphanumeric, hyphens, underscores only");
+    }
+
+    const tName = `rich-${name}`;
+    if (spawnSync(TMUX, ["has-session", "-t", tName], { stdio: "pipe" }).status === 0) {
+      // Already running — fine
+      return { name, command };
+    }
+
+    const dataDir = join(process.cwd(), "data", "rich", name);
+    mkdirSync(dataDir, { recursive: true });
+
+    const eventsFile = join(dataDir, "events.ndjson");
+    const fifoPath = join(dataDir, "prompt.fifo");
+    const wrapperScript = join(process.cwd(), "scripts", "rich-wrapper.sh");
+
+    // Build claude args
+    const claudeArgs = ["-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose"];
+    if (command.includes("--dangerously-skip-permissions")) {
+      claudeArgs.push("--dangerously-skip-permissions");
+    }
+    const settingsMatch = command.match(/--settings\s+'([^']+)'/);
+    if (settingsMatch) {
+      claudeArgs.push("--settings", settingsMatch[1]);
+    }
+
+    const r = spawnSync(TMUX, [
+      "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
+      "-c", process.cwd(),
+      "bash", wrapperScript, eventsFile, fifoPath, ...claudeArgs,
+    ], { stdio: "pipe" });
+
+    if (r.status !== 0) {
+      throw new Error(`Failed to create rich tmux session: ${r.stderr?.toString()}`);
+    }
+
+    spawnSync(TMUX, ["set-option", "-t", tName, "status", "off"], { stdio: "pipe" });
+    spawnSync(TMUX, ["set-option", "-t", tName, "remain-on-exit", "off"], { stdio: "pipe" });
+
+    return { name, command };
+  }
+
+  snapshotRichSession(name: string): string {
+    const eventsPath = join(process.cwd(), "data", "rich", name, "events.ndjson");
+    if (!existsSync(eventsPath)) return "";
+    let content: string;
+    try {
+      content = readFileSync(eventsPath, "utf-8");
+    } catch {
+      return "";
+    }
+    const lines: string[] = [];
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const event = JSON.parse(line);
+        if (event.type === "user") {
+          for (const block of event.message?.content || []) {
+            if (block.type === "text") lines.push(`User: ${block.text}`);
+          }
+        } else if (event.type === "assistant") {
+          for (const block of event.message?.content || []) {
+            if (block.type === "text") lines.push(`Assistant: ${block.text}`);
+            if (block.type === "tool_use") lines.push(`[Tool: ${block.name}]`);
+          }
+        } else if (event.type === "result") {
+          if (event.result) lines.push(`Result: ${event.result}`);
+        }
+      } catch {}
+    }
+    return lines.slice(-50).join("\n");
   }
 
   async summarizeSession(name: string): Promise<string> {

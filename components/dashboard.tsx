@@ -280,9 +280,7 @@ function SessionRow({
   const [previewOpen, setPreviewOpen] = useState(false);
   const summarizeRequested = useRef(false);
 
-  // Skip snapshot and auto-summarize for rich sessions
   useEffect(() => {
-    if (s.mode === "rich") return;
     let cancelled = false;
     fetch(`/api/sessions/${encodeURIComponent(s.name)}/snapshot`)
       .then((r) => r.json())
@@ -296,10 +294,10 @@ function SessionRow({
     return () => { cancelled = true; };
   }, [s.name, s.mode]);
 
-  // Auto-summarize sessions without a meaningful description (skip jobs and rich).
+  // Auto-summarize sessions without a meaningful description (skip jobs).
   // Polls every 10s until a description is obtained.
   useEffect(() => {
-    if (s.job_prompt || s.mode === "rich") return;
+    if (s.job_prompt) return;
 
     function trySum() {
       if (summarizeRequested.current) return;

@@ -5,7 +5,7 @@ import { WebSocketServer } from "ws";
 import { execFileSync, spawnSync } from "child_process";
 import { getSessionManager } from "./lib/sessions";
 import { ExecutorRegistry } from "./lib/executor-registry";
-import { bridgeRichSession } from "./lib/claude-bridge";
+// bridgeRichSession is now called via executor interface
 
 const dev = process.env.NODE_ENV !== "production";
 const EXECUTOR_TOKEN = process.env.EXECUTOR_TOKEN || "";
@@ -85,9 +85,8 @@ app.prepare().then(() => {
     const richMatch = pathname?.match(/^\/ws\/rich\/([^/]+)$/);
     if (richMatch) {
       const sessionName = decodeURIComponent(richMatch[1]);
-      const command = sessionManager.getCommand(sessionName);
       wss.handleUpgrade(req, socket, head, (ws) => {
-        bridgeRichSession(ws, sessionName, command);
+        sessionManager.attachRichSession(sessionName, ws);
       });
       return;
     }

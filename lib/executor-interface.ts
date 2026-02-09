@@ -10,11 +10,13 @@ import type {
   CreateSessionOpts,
   CreateJobOpts,
   ForkSessionOpts,
+  CreateRichSessionOpts,
   SessionLiveness,
   SessionAnalysis,
 } from "../shared/types";
 import { TmuxRunner } from "../executor/tmux-runner";
 import { bridgeSession } from "./pty-bridge";
+import { bridgeRichSession } from "./claude-bridge";
 
 // --- LocalExecutor ---
 
@@ -23,6 +25,10 @@ export class LocalExecutor implements ExecutorInterface {
 
   async createSession(opts: CreateSessionOpts): Promise<{ name: string; command: string }> {
     return this.runner.createSession(opts);
+  }
+
+  async createRichSession(opts: CreateRichSessionOpts): Promise<{ name: string; command: string }> {
+    return this.runner.createRichSession(opts);
   }
 
   async createJob(opts: CreateJobOpts): Promise<{ name: string; command: string }> {
@@ -45,6 +51,10 @@ export class LocalExecutor implements ExecutorInterface {
     return this.runner.snapshotSession(name, lines);
   }
 
+  async snapshotRichSession(name: string): Promise<string> {
+    return this.runner.snapshotRichSession(name);
+  }
+
   async summarizeSession(name: string): Promise<string> {
     return this.runner.summarizeSession(name);
   }
@@ -55,6 +65,10 @@ export class LocalExecutor implements ExecutorInterface {
 
   attachSession(name: string, userWs: WebSocket, cols?: number, rows?: number): void {
     bridgeSession(userWs, name, cols, rows);
+  }
+
+  attachRichSession(name: string, command: string, userWs: WebSocket): void {
+    bridgeRichSession(userWs, name, command);
   }
 
   // Expose runner for direct tmux checks (used by SessionManager)
@@ -86,6 +100,10 @@ export class RemoteExecutor implements ExecutorInterface {
     return this.rpc("create_session", { opts });
   }
 
+  async createRichSession(opts: CreateRichSessionOpts): Promise<{ name: string; command: string }> {
+    return this.rpc("create_rich_session", { opts });
+  }
+
   async createJob(opts: CreateJobOpts): Promise<{ name: string; command: string }> {
     return this.rpc("create_job", { opts });
   }
@@ -104,6 +122,10 @@ export class RemoteExecutor implements ExecutorInterface {
 
   async snapshotSession(name: string, lines?: number): Promise<string> {
     return this.rpc("snapshot_session", { name, lines });
+  }
+
+  async snapshotRichSession(name: string): Promise<string> {
+    return this.rpc("snapshot_rich_session", { name });
   }
 
   async summarizeSession(name: string): Promise<string> {
@@ -164,6 +186,53 @@ export class RemoteExecutor implements ExecutorInterface {
       executorWs.on("error", cleanup);
     }).catch(() => {
       userWs.send("\r\n[error: failed to connect to remote executor]\r\n");
+      userWs.close();
+    });
+  }
+
+  attachRichSession(name: string, command: string, userWs: WebSocket): void {
+    const channelId = rpcId();
+
+    const channelPromise = this.registry.waitForTerminalChannel(channelId, 10000);
+
+    this.registry.sendToExecutor(this.executorId, {
+      type: "attach_rich_session",
+      id: rpcId(),
+      channelId,
+      sessionName: name,
+      command,
+    } as any);
+
+    const pendingMessages: string[] = [];
+    userWs.on("message", (data) => {
+      pendingMessages.push(data.toString());
+    });
+
+    channelPromise.then((executorWs) => {
+      userWs.removeAllListeners("message");
+
+      for (const msg of pendingMessages) {
+        if (executorWs.readyState === executorWs.OPEN) executorWs.send(msg);
+      }
+      pendingMessages.length = 0;
+
+      userWs.on("message", (data) => {
+        if (executorWs.readyState === executorWs.OPEN) executorWs.send(data.toString());
+      });
+      executorWs.on("message", (data) => {
+        if (userWs.readyState === userWs.OPEN) userWs.send(data.toString());
+      });
+
+      const cleanup = () => {
+        try { executorWs.close(); } catch {}
+        try { userWs.close(); } catch {}
+      };
+      userWs.on("close", cleanup);
+      userWs.on("error", cleanup);
+      executorWs.on("close", cleanup);
+      executorWs.on("error", cleanup);
+    }).catch(() => {
+      userWs.send(JSON.stringify({ type: "error", message: "Failed to connect to remote executor" }));
       userWs.close();
     });
   }

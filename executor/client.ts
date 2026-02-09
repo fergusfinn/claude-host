@@ -9,6 +9,7 @@ import path from "path";
 import type { ControlToExecutorMessage } from "../shared/protocol";
 import { TmuxRunner } from "./tmux-runner";
 import { openTerminalChannel } from "./terminal-channel";
+import { openRichChannel } from "./rich-channel";
 
 interface ExecutorClientOpts {
   url: string; // ws://control-plane:3000
@@ -186,6 +187,32 @@ export class ExecutorClient {
             sessionName: msg.sessionName,
           });
           this.send({ type: "response", id, ok: true });
+          break;
+        }
+
+        case "create_rich_session": {
+          const result = this.runner.createRichSession(msg.opts);
+          this.send({ type: "response", id, ok: true, data: result });
+          break;
+        }
+
+        case "attach_rich_session": {
+          // Create the rich tmux session if needed, then open a rich channel
+          this.runner.createRichSession({ name: msg.sessionName, command: msg.command });
+          openRichChannel({
+            baseUrl: this.opts.url,
+            token: this.opts.token,
+            channelId: msg.channelId,
+            sessionName: msg.sessionName,
+            command: msg.command,
+          });
+          this.send({ type: "response", id, ok: true });
+          break;
+        }
+
+        case "snapshot_rich_session": {
+          const snapshot = this.runner.snapshotRichSession(msg.name);
+          this.send({ type: "response", id, ok: true, data: snapshot });
           break;
         }
 

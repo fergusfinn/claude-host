@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync } from "fs";
+import { mkdirSync, existsSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { execFileSync } from "child_process";
 import type { Session, ExecutorInfo, SessionLiveness } from "../shared/types";
@@ -212,13 +212,12 @@ class SessionManager {
     }
 
     if (mode === "rich") {
-      // Rich sessions use tmux via the wrapper — insert DB row and create runtime dir
+      const exec = this.getExecutor(executor);
+      await exec.createRichSession({ name, command: finalCommand });
+
       this.db
         .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode, position) VALUES (?, ?, ?, ?, ?, ?)")
         .run(name, description, finalCommand, executor, "rich", this.nextPosition());
-
-      // Create runtime directory for events file and FIFO
-      mkdirSync(join(process.cwd(), "data", "rich", name), { recursive: true });
 
       return {
         name,
@@ -326,37 +325,56 @@ class SessionManager {
   }
 
   async snapshot(name: string): Promise<string> {
+    const mode = this.getSessionMode(name);
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
+    if (mode === "rich") {
+      if (executor === "local") return this.snapshotRichSession(name);
+      return exec.snapshotRichSession(name);
+    }
     return exec.snapshotSession(name);
   }
 
   async summarize(name: string): Promise<string> {
+    const mode = this.getSessionMode(name);
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
 
-    // Always run summarization on the main host: fetch the snapshot
-    // (possibly via RPC for remote executors), then call claude -p locally.
-    let snapshot: string;
-    try {
-      snapshot = await exec.snapshotSession(name, 200);
-    } catch {
-      return "";
+    let snapshotText: string;
+    if (mode === "rich") {
+      try {
+        snapshotText = executor === "local"
+          ? this.snapshotRichSession(name, 200)
+          : await exec.snapshotRichSession(name);
+      } catch {
+        return "";
+      }
+    } else {
+      const executor = this.getSessionExecutorId(name);
+      const exec = this.getExecutor(executor);
+      try {
+        snapshotText = await exec.snapshotSession(name, 200);
+      } catch {
+        return "";
+      }
     }
-    if (!snapshot.trim()) return "";
+    if (!snapshotText.trim()) return "";
+
+    const prompt = mode === "rich"
+      ? "You are looking at a conversation log from a Claude coding session. " +
+        "Summarize what this session is working on in one brief sentence (max 80 chars). " +
+        "Output ONLY the summary sentence, nothing else."
+      : "You are looking at terminal output from a coding session. " +
+        "Summarize what this session is working on in one brief sentence (max 80 chars). " +
+        "Output ONLY the summary sentence, nothing else.";
 
     const { execFile } = await import("child_process");
     const description = await new Promise<string>((resolve) => {
-      const child = execFile("claude", [
-        "-p",
-        "You are looking at terminal output from a coding session. " +
-          "Summarize what this session is working on in one brief sentence (max 80 chars). " +
-          "Output ONLY the summary sentence, nothing else.",
-      ], { timeout: 60000 }, (err, stdout) => {
+      const child = execFile("claude", ["-p", prompt], { timeout: 60000 }, (err, stdout) => {
         if (err || !stdout) { resolve(""); return; }
         resolve(stdout.trim());
       });
-      child.stdin?.write(snapshot);
+      child.stdin?.write(snapshotText);
       child.stdin?.end();
     });
 
@@ -364,6 +382,44 @@ class SessionManager {
       this.db.prepare("UPDATE sessions SET description = ? WHERE name = ?").run(description, name);
     }
     return description;
+  }
+
+  private getSessionMode(name: string): "terminal" | "rich" {
+    const row = this.db.prepare("SELECT mode FROM sessions WHERE name = ?").get(name) as
+      | { mode?: string }
+      | undefined;
+    return (row?.mode as "terminal" | "rich") || "terminal";
+  }
+
+  private snapshotRichSession(name: string, maxLines = 50): string {
+    const eventsPath = join(process.cwd(), "data", "rich", name, "events.ndjson");
+    if (!existsSync(eventsPath)) return "";
+    let content: string;
+    try {
+      content = readFileSync(eventsPath, "utf-8");
+    } catch {
+      return "";
+    }
+    const lines: string[] = [];
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const event = JSON.parse(line);
+        if (event.type === "user") {
+          for (const block of event.message?.content || []) {
+            if (block.type === "text") lines.push(`User: ${block.text}`);
+          }
+        } else if (event.type === "assistant") {
+          for (const block of event.message?.content || []) {
+            if (block.type === "text") lines.push(`Assistant: ${block.text}`);
+            if (block.type === "tool_use") lines.push(`[Tool: ${block.name}]`);
+          }
+        } else if (event.type === "result") {
+          if (event.result) lines.push(`Result: ${event.result}`);
+        }
+      } catch {}
+    }
+    return lines.slice(-maxLines).join("\n");
   }
 
   /** Get configured fork hooks: command prefix -> hook script path */
@@ -484,6 +540,14 @@ class SessionManager {
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
     exec.attachSession(name, userWs, cols, rows);
+  }
+
+  /** Attach a user's WebSocket to a rich session */
+  attachRichSession(name: string, userWs: import("ws").WebSocket): void {
+    const executor = this.getSessionExecutorId(name);
+    const exec = this.getExecutor(executor);
+    const command = this.getCommand(name);
+    exec.attachRichSession(name, command, userWs);
   }
 
   /** List registered executors */

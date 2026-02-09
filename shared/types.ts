@@ -63,14 +63,22 @@ export interface SessionAnalysis {
   needs_input: boolean;
 }
 
+export interface CreateRichSessionOpts {
+  name: string;
+  command?: string;
+}
+
 export interface ExecutorInterface {
   createSession(opts: CreateSessionOpts): Promise<{ name: string; command: string }>;
+  createRichSession(opts: CreateRichSessionOpts): Promise<{ name: string; command: string }>;
   deleteSession(name: string): Promise<void>;
   forkSession(opts: ForkSessionOpts): Promise<{ name: string; command: string }>;
   listSessions(): Promise<SessionLiveness[]>;
   snapshotSession(name: string, lines?: number): Promise<string>;
+  snapshotRichSession(name: string): Promise<string>;
   summarizeSession(name: string): Promise<string>;
   analyzeSession(name: string): Promise<SessionAnalysis>;
   createJob(opts: CreateJobOpts): Promise<{ name: string; command: string }>;
   attachSession(name: string, userWs: WebSocket, cols?: number, rows?: number): void;
+  attachRichSession(name: string, command: string, userWs: WebSocket): void;
 }
