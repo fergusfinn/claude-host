@@ -126,6 +126,8 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [collapsedTools, setCollapsedTools] = useState<Set<string>>(new Set());
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
+  // Subagent child messages keyed by parent tool_use_id
+  const [subagentMessages, setSubagentMessages] = useState<Map<string, RenderedMessage[]>>(new Map());
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [wasEmpty, setWasEmpty] = useState(true);
 
@@ -388,9 +390,24 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
   }, [sessionName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleEvent(event: ClaudeEvent) {
-    // Skip subagent internal events
-    const parentId = (event as any).parent_tool_use_id;
-    if (parentId != null) return;
+    // Route subagent internal events into the subagentMessages map
+    const parentId = (event as any).parent_tool_use_id as string | undefined;
+    if (parentId != null) {
+      if (event.type === "assistant" || event.type === "user") {
+        const msg = event as MessageEvent;
+        setSubagentMessages((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(parentId) || [];
+          next.set(parentId, [
+            ...existing,
+            { id: `sub-${parentId}-${existing.length}`, role: msg.type, blocks: msg.message.content, timestamp: Date.now() },
+          ]);
+          return next;
+        });
+        scrollToBottom();
+      }
+      return;
+    }
 
     if (event.type === "stream_event") {
       const inner = (event as any).event;
@@ -784,6 +801,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
                             onToggle={() => toggleTool(item.toolUse.id)}
                             resultExpanded={expandedResults.has(item.toolUse.id)}
                             onToggleResult={() => toggleResultExpanded(item.toolUse.id)}
+                            childMessages={subagentMessages.get(item.toolUse.id)}
                           />
                         );
                       case "question":
@@ -889,14 +907,15 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
 // ---- Sub-components ----
 
 function ThinkingIndicator({ startTime, theme }: { startTime: number; theme: TerminalTheme }) {
+  const effectiveStart = startTime || Date.now();
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+      setElapsed(Math.floor((Date.now() - effectiveStart) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, [startTime]);
+  }, [effectiveStart]);
 
   return (
     <div className={styles.streaming}>
