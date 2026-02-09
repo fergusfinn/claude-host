@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, type MutableRefObject } from "react";
-import { generateName } from "@/lib/names";
 import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "./rich-view";
 import styles from "./dashboard.module.css";
 
@@ -106,19 +105,20 @@ export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: stri
     });
   }
 
-  async function handleCreate(name: string, description: string, command: string, executor: string, mode: "terminal" | "rich" = "terminal") {
+  async function handleCreate(description: string, command: string, executor: string, mode: "terminal" | "rich" = "terminal") {
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description, command, executor, mode }),
+      body: JSON.stringify({ description, command, executor, mode }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error || "Failed to create session");
     }
+    const created = await res.json();
     setDialogOpen(false);
     await load();
-    onConnect(name, mode);
+    onConnect(created.name, mode);
   }
 
   async function handleDelete(name: string) {
@@ -126,19 +126,20 @@ export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: stri
     load();
   }
 
-  async function handleCreateJob(name: string, prompt: string, maxIterations: number, executor: string, skipPermissions: boolean) {
+  async function handleCreateJob(prompt: string, maxIterations: number, executor: string, skipPermissions: boolean) {
     const res = await fetch("/api/sessions/job", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, prompt, maxIterations, executor, skipPermissions }),
+      body: JSON.stringify({ prompt, maxIterations, executor, skipPermissions }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error || "Failed to create job");
     }
+    const created = await res.json();
     setJobDialogOpen(false);
     await load();
-    onConnect(name);
+    onConnect(created.name);
   }
 
   return (
@@ -413,10 +414,9 @@ function CreateForm({
   onCancel,
 }: {
   executors: ExecutorInfo[];
-  onSubmit: (name: string, desc: string, cmd: string, executor: string, mode: "terminal" | "rich") => Promise<void>;
+  onSubmit: (desc: string, cmd: string, executor: string, mode: "terminal" | "rich") => Promise<void>;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState(generateName);
   const [desc, setDesc] = useState("");
   const [sessionType, setSessionType] = useState<"claude" | "custom">("claude");
   const [mode, setMode] = useState<"terminal" | "rich">("terminal");
@@ -437,7 +437,6 @@ function CreateForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
     if (sessionType === "custom" && !cmd.trim()) return;
     setSubmitting(true);
     setError("");
@@ -446,7 +445,7 @@ function CreateForm({
       const finalCmd = sessionType === "claude"
         ? (skipPermissions ? "claude --dangerously-skip-permissions" : "claude")
         : cmd.trim();
-      await onSubmit(name.trim(), desc.trim(), finalCmd, executor, finalMode);
+      await onSubmit(desc.trim(), finalCmd, executor, finalMode);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -458,28 +457,6 @@ function CreateForm({
     <form onSubmit={handleSubmit}>
       <div className={styles.dialogHeader}>New session</div>
       <div className={styles.dialogBody}>
-        <div className={styles.nameRow}>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            pattern="[a-zA-Z0-9_-]+"
-            required
-            placeholder="Session name"
-            autoComplete="off"
-            spellCheck={false}
-            autoFocus
-            className={styles.input}
-          />
-          <button
-            type="button"
-            className={styles.rerollBtn}
-            onClick={() => setName(generateName())}
-            title="Generate new name"
-          >
-            &#x21bb;
-          </button>
-        </div>
         <div className={styles.modeToggle}>
           <button
             type="button"
@@ -545,6 +522,7 @@ function CreateForm({
           placeholder="Description (optional)"
           autoComplete="off"
           spellCheck={false}
+          autoFocus
           className={styles.input}
         />
         {onlineExecutors.length > 1 && (
@@ -586,10 +564,9 @@ function CreateJobForm({
   onCancel,
 }: {
   executors: ExecutorInfo[];
-  onSubmit: (name: string, prompt: string, maxIterations: number, executor: string, skipPermissions: boolean) => Promise<void>;
+  onSubmit: (prompt: string, maxIterations: number, executor: string, skipPermissions: boolean) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState(generateName);
   const [prompt, setPrompt] = useState("");
   const [maxIterations, setMaxIterations] = useState("50");
   const [executor, setExecutor] = useState("local");
@@ -611,7 +588,7 @@ function CreateJobForm({
     setSubmitting(true);
     setError("");
     try {
-      await onSubmit(name.trim(), prompt.trim(), parseInt(maxIterations) || 50, executor, skipPermissions);
+      await onSubmit(prompt.trim(), parseInt(maxIterations) || 50, executor, skipPermissions);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -635,27 +612,6 @@ function CreateJobForm({
           className={styles.textarea}
           rows={4}
         />
-        <div className={styles.nameRow}>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            pattern="[a-zA-Z0-9_-]+"
-            required
-            placeholder="Job name"
-            autoComplete="off"
-            spellCheck={false}
-            className={styles.input}
-          />
-          <button
-            type="button"
-            className={styles.rerollBtn}
-            onClick={() => setName(generateName())}
-            title="Generate new name"
-          >
-            &#x21bb;
-          </button>
-        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <label className={styles.label} style={{ margin: 0 }}>Max iterations</label>
           <input

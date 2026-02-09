@@ -218,12 +218,11 @@ func (m DashboardModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m DashboardModel) createAndAttach() tea.Cmd {
 	api := m.api
 	return func() tea.Msg {
-		name := generateName()
-		_, err := api.CreateSession(name, "", "claude")
+		session, err := api.CreateSession("", "claude")
 		if err != nil {
 			return errMsg{err}
 		}
-		return attachMsg(name)
+		return attachMsg(session.Name)
 	}
 }
 

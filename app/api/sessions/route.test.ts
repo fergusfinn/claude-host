@@ -40,30 +40,32 @@ describe("GET /api/sessions", () => {
 
 describe("POST /api/sessions", () => {
   it("creates a session and returns 201", async () => {
-    const created = { name: "new-sess", alive: true };
+    const created = { name: "bold-anvil", alive: true };
     mockCreate.mockReturnValue(created);
 
     const req = new NextRequest("http://localhost/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ name: "new-sess", description: "test", command: "bash" }),
+      body: JSON.stringify({ description: "test", command: "bash" }),
     });
     const res = await POST(req);
 
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual(created);
-    expect(mockCreate).toHaveBeenCalledWith("new-sess", "test", "bash", undefined, undefined);
+    expect(mockCreate).toHaveBeenCalledWith("test", "bash", undefined, undefined);
   });
 
-  it("returns 400 when name is missing", async () => {
+  it("creates a session with no description", async () => {
+    const created = { name: "calm-falcon", alive: true };
+    mockCreate.mockReturnValue(created);
+
     const req = new NextRequest("http://localhost/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ description: "no name" }),
+      body: JSON.stringify({}),
     });
     const res = await POST(req);
 
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toBe("name is required");
+    expect(res.status).toBe(201);
+    expect(mockCreate).toHaveBeenCalledWith(undefined, undefined, undefined, undefined);
   });
 
   it("returns 400 when create throws", async () => {
@@ -73,7 +75,7 @@ describe("POST /api/sessions", () => {
 
     const req = new NextRequest("http://localhost/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ name: "dup" }),
+      body: JSON.stringify({}),
     });
     const res = await POST(req);
 

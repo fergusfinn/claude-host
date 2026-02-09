@@ -17,40 +17,29 @@ beforeEach(() => {
 
 describe("POST /api/sessions/fork", () => {
   it("forks a session and returns 201", async () => {
-    const forked = { name: "fork-1", description: "forked from orig", mode: "terminal", alive: true };
+    const forked = { name: "bold-anvil", description: "forked from orig", mode: "terminal", alive: true };
     mockFork.mockReturnValue(forked);
 
-    const req = new NextRequest("http://localhost/api/sessions/fork", {
-      method: "POST",
-      body: JSON.stringify({ source: "orig", name: "fork-1" }),
-    });
-    const res = await POST(req);
-
-    expect(res.status).toBe(201);
-    expect(await res.json()).toEqual(forked);
-    expect(mockFork).toHaveBeenCalledWith("orig", "fork-1");
-  });
-
-  it("returns 400 when source is missing", async () => {
-    const req = new NextRequest("http://localhost/api/sessions/fork", {
-      method: "POST",
-      body: JSON.stringify({ name: "fork-1" }),
-    });
-    const res = await POST(req);
-
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "source and name are required" });
-  });
-
-  it("returns 400 when name is missing", async () => {
     const req = new NextRequest("http://localhost/api/sessions/fork", {
       method: "POST",
       body: JSON.stringify({ source: "orig" }),
     });
     const res = await POST(req);
 
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual(forked);
+    expect(mockFork).toHaveBeenCalledWith("orig");
+  });
+
+  it("returns 400 when source is missing", async () => {
+    const req = new NextRequest("http://localhost/api/sessions/fork", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    const res = await POST(req);
+
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "source and name are required" });
+    expect(await res.json()).toEqual({ error: "source is required" });
   });
 
   it("returns 400 when fork throws", async () => {
@@ -60,7 +49,7 @@ describe("POST /api/sessions/fork", () => {
 
     const req = new NextRequest("http://localhost/api/sessions/fork", {
       method: "POST",
-      body: JSON.stringify({ source: "orig", name: "fork-1" }),
+      body: JSON.stringify({ source: "orig" }),
     });
     const res = await POST(req);
 
