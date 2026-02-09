@@ -23,6 +23,7 @@ interface Props {
   onSwitchSession: (sessionName: string) => void;
   onOpenFile?: (paneId: string, filePath: string) => void;
   onCloseEditor?: (paneId: string) => void;
+  onSwitchMode?: (sessionName: string) => void;
 }
 
 export function PaneLayout(props: Props) {
@@ -84,6 +85,7 @@ const PaneTerminal = memo(function PaneTerminal({
   onSwitchSession,
   onOpenFile,
   onCloseEditor,
+  onSwitchMode,
   isTabActive,
   isSinglePane,
 }: { leaf: Extract<LayoutNode, { type: "leaf" }> } & Omit<NodeProps, "node">) {
@@ -122,6 +124,7 @@ const PaneTerminal = memo(function PaneTerminal({
           font={font}
           richFont={richFont}
           onOpenFile={onOpenFile ? (fp: string) => onOpenFile(leaf.id, fp) : undefined}
+          onSwitchMode={onSwitchMode ? () => onSwitchMode(leaf.sessionName) : undefined}
         />
       ) : (
         <TerminalView

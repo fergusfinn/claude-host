@@ -6,6 +6,7 @@ import { ExecutorsPage } from "@/components/executors-page";
 import { PaneLayout } from "@/components/pane-layout";
 import { TabBar } from "@/components/tab-bar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
+import { ModeSwitchModal } from "@/components/mode-switch-modal";
 import { getThemeById, DEFAULT_DARK_THEME, type TerminalTheme, getFontById, DEFAULT_FONT_ID, type TerminalFont, ensureFontLoaded, getDefaultThemeForMode, themeToChromeVars } from "@/lib/themes";
 import { generateName } from "@/lib/names";
 import { loadShortcuts, type ShortcutMap } from "@/lib/shortcuts";
@@ -531,6 +532,51 @@ export default function Home() {
     } catch {}
   }
 
+  async function quickCreateRich() {
+    const name = generateName();
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description: "",
+          command: "claude --dangerously-skip-permissions",
+          executor: "local",
+          mode: "rich",
+        }),
+      });
+      if (!res.ok) return;
+      await loadSessions();
+      connectSession(name, "rich");
+    } catch {}
+  }
+
+  const [modeSwitchSession, setModeSwitchSession] = useState<string | null>(null);
+
+  async function handleModeSwitch(newMode: "terminal" | "rich", command: string) {
+    if (!modeSwitchSession) return;
+    const name = modeSwitchSession;
+    setModeSwitchSession(null);
+
+    // If staying on rich mode, nothing to do
+    if (newMode === "rich") return;
+
+    try {
+      // Delete existing rich session, recreate with new mode
+      await fetch(`/api/sessions/${encodeURIComponent(name)}`, { method: "DELETE" });
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description: "", command, executor: "local", mode: newMode }),
+      });
+      if (!res.ok) return;
+      setSessionModes((prev) => ({ ...prev, [name]: newMode }));
+      setRefreshKey((k) => k + 1);
+      await loadSessions();
+    } catch {}
+  }
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -711,7 +757,7 @@ export default function Home() {
         keyMode={keyMode}
         onKeyModeChange={setKeyMode}
         onSelectTab={setActiveTabId}
-        onNew={quickCreate}
+        onNew={quickCreateRich}
         onThemeChange={handleThemeChange}
         onFontChange={handleFontChange}
         onRefresh={() => setRefreshKey((k) => k + 1)}
@@ -765,6 +811,7 @@ export default function Home() {
               onSwitchSession={connectSession}
               onOpenFile={openFileInEditor}
               onCloseEditor={closeEditorPane}
+              onSwitchMode={(sessionName) => setModeSwitchSession(sessionName)}
             />
           </div>
         ))}
@@ -794,6 +841,12 @@ export default function Home() {
           />
         )}
       </dialog>
+
+      <ModeSwitchModal
+        open={modeSwitchSession !== null}
+        onSwitch={handleModeSwitch}
+        onCancel={() => setModeSwitchSession(null)}
+      />
     </div>
   );
 }

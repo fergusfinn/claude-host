@@ -929,6 +929,15 @@
 /* ---- Mobile responsive (≤600px) ---- */
 
 @container (max-width: 600px) {
+  /* Override empty state: pin input to bottom, center welcome above */
+  .rootEmpty {
+    justify-content: flex-end;
+  }
+
+  .rootEmpty .messagesWrap {
+    flex: 1;
+  }
+
   .statusBar {
     padding: 6px 12px;
     font-size: 12px;
@@ -1118,6 +1127,25 @@
   .questionBlock {
     padding: 8px;
   }
+}
+
+/* Switch mode button (rich-view welcome state) */
+
+.switchModeBtn {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 8px;
+  opacity: 0.35;
+  transition: opacity 0.15s;
+}
+
+.switchModeBtn:hover {
+  opacity: 0.7;
 }
 
 /* ---- Touch devices: ensure good tap targets ---- */

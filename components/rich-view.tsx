@@ -47,6 +47,7 @@ interface Props {
   font: TerminalFont;
   richFont?: string;
   onOpenFile?: (filePath: string) => void;
+  onSwitchMode?: () => void;
 }
 
 interface MessageEvent {
@@ -143,7 +144,7 @@ class MessageErrorBoundary extends React.Component<
 
 // ---- Component ----
 
-export function RichView({ sessionName, isActive, theme, font, richFont, onOpenFile }: Props) {
+export function RichView({ sessionName, isActive, theme, font, richFont, onOpenFile, onSwitchMode }: Props) {
   // Ensure the selected rich font is loaded
   useEffect(() => {
     if (richFont) ensureRichFontLoaded(richFont);
@@ -736,6 +737,15 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
                   <span><kbd className={styles.kbd} style={{ background: `${theme.foreground}08`, borderColor: `${theme.foreground}15` }}>Shift+Enter</kbd> newline</span>
                   <span><kbd className={styles.kbd} style={{ background: `${theme.foreground}08`, borderColor: `${theme.foreground}15` }}>Esc</kbd> interrupt</span>
                 </div>
+                {onSwitchMode && (
+                  <button
+                    className={styles.switchModeBtn}
+                    onClick={onSwitchMode}
+                    style={{ color: theme.foreground }}
+                  >
+                    Switch to terminal or custom mode
+                  </button>
+                )}
               </div>
             )}
 
