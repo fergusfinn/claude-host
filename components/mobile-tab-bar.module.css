@@ -11,6 +11,7 @@
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     position: relative;
+    gap: 2px;
   }
 
   .logoBtn {
@@ -18,10 +19,11 @@
     align-items: center;
     justify-content: center;
     width: 36px;
+    margin: 4px 0 4px 2px;
     flex-shrink: 0;
     background: transparent;
     border: none;
-    border-right: 1px solid var(--border);
+    border-radius: 6px;
     cursor: pointer;
   }
   .logoBtn:active { background: var(--bg-2); }
@@ -34,7 +36,7 @@
     width: 7px;
     height: 7px;
     background: var(--accent);
-    border-radius: 2px;
+    border-radius: 4px;
     box-shadow: 0 0 4px var(--accent-dim);
   }
 
@@ -46,6 +48,8 @@
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+    gap: 2px;
+    padding: 0 2px;
   }
   .tabStrip::-webkit-scrollbar { display: none; }
 
@@ -54,12 +58,13 @@
     align-items: center;
     gap: 5px;
     padding: 0 10px;
+    margin: 4px 0;
     font-size: 12px;
     font-family: var(--mono);
     color: var(--text-2);
     background: transparent;
     border: none;
-    border-right: 1px solid var(--border);
+    border-radius: 6px;
     cursor: pointer;
     white-space: nowrap;
     flex-shrink: 0;
@@ -75,11 +80,12 @@
   .tabActive::after {
     content: '';
     position: absolute;
-    bottom: -1px;
-    left: 0;
-    right: 0;
+    bottom: 0;
+    left: 4px;
+    right: 4px;
     height: 2px;
     background: var(--accent);
+    border-radius: 1px;
   }
 
   .dot {
@@ -102,13 +108,12 @@
     align-items: center;
     justify-content: center;
     width: 32px;
+    margin: 4px 0;
     flex-shrink: 0;
-    font-size: 16px;
-    font-family: var(--mono);
     color: var(--text-3);
     background: transparent;
     border: none;
-    border-right: 1px solid var(--border);
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.1s;
   }
@@ -126,10 +131,11 @@
     align-items: center;
     justify-content: center;
     width: 36px;
+    margin: 4px 2px 4px 0;
     flex-shrink: 0;
     background: transparent;
     border: none;
-    border-left: 1px solid var(--border);
+    border-radius: 6px;
     color: var(--text-2);
     cursor: pointer;
     transition: all 0.1s;
@@ -157,9 +163,11 @@
     z-index: 200;
     background: var(--bg-1);
     border: 1px solid var(--border);
+    border-radius: 8px;
     min-width: 240px;
     max-height: 70vh;
     overflow-y: auto;
+    overflow: hidden;
     box-shadow: 0 8px 24px var(--shadow-dropdown);
   }
 
@@ -259,7 +267,7 @@
     letter-spacing: 0.5px;
     color: var(--text-3);
     background: var(--bg-3);
-    border-radius: 2px;
+    border-radius: 4px;
     flex-shrink: 0;
   }
 
