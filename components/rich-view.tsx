@@ -596,23 +596,6 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
         fontFamily: font.fontFamily,
       }}
     >
-      {/* Status bar */}
-      <div className={styles.statusBar}>
-        <div className={styles.statusLeft}>
-          <div className={`${styles.statusDot} ${
-            connectionState === "connected" ? styles.statusConnected :
-            connectionState === "reconnecting" ? styles.statusReconnecting : ""
-          }`} />
-          <span className={styles.statusText}>
-            {connectionState === "connected" ? sessionName :
-             connectionState === "reconnecting" ? "reconnecting\u2026" :
-             connectionState === "connecting" ? "connecting\u2026" :
-             "disconnected"}
-          </span>
-        </div>
-        {error && <span className={styles.statusError}>{error}</span>}
-      </div>
-
       {/* Messages */}
       <div className={styles.messagesWrap}>
         <div className={styles.messages} ref={scrollRef}>

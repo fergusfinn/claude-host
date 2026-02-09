@@ -7,8 +7,12 @@
 }
 
 /* When conversation is empty, center welcome + input as a cohesive unit */
+.rootEmpty {
+  justify-content: center;
+}
+
 .rootEmpty .messagesWrap {
-  flex: 1;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -817,7 +821,8 @@
   font-size: 14px;
   line-height: 1.5;
   resize: none;
-  min-height: 22px;
+  padding: 5px 0 6px;
+  min-height: 0;
   max-height: 200px;
 }
 
