@@ -787,7 +787,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
       </div>
 
       {/* Input */}
-      <div className={styles.inputArea}>
+      <div className={`${styles.inputArea} ${justTransitioned ? styles.inputSettling : ""}`}>
         <div className={styles.inputInner}>
         <textarea
           ref={inputRef}
