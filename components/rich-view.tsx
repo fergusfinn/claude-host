@@ -234,6 +234,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
   }, [messages, resultMap]);
 
   // --- Auto-collapse all tool calls that have completed ---
+  // Auto-collapse non-Edit tools immediately on appearance
   useEffect(() => {
     const newCollapsed = new Set(collapsedTools);
     let changed = false;
@@ -241,21 +242,18 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
       if (!entry.items) continue;
       for (const item of entry.items) {
         if (item.kind === "tool_pair" || item.kind === "subagent") {
-          // Collapse once a result arrives (but keep Edit tools expanded to show diffs)
-          if (item.toolResult !== null && !newCollapsed.has(item.toolUse.id) && item.toolUse.name !== "Edit") {
+          if (!newCollapsed.has(item.toolUse.id) && item.toolUse.name !== "Edit") {
             newCollapsed.add(item.toolUse.id);
             changed = true;
           }
         } else if (item.kind === "tool_group") {
           const groupKey = `group-${item.pairs[0].toolUse.id}`;
-          const allDone = item.pairs.every((p) => p.toolResult !== null);
-          if (allDone && !newCollapsed.has(groupKey)) {
+          if (!newCollapsed.has(groupKey)) {
             newCollapsed.add(groupKey);
             changed = true;
           }
-          // Also collapse individual tools within the group (but keep Edit tools expanded)
           for (const pair of item.pairs) {
-            if (pair.toolResult !== null && !newCollapsed.has(pair.toolUse.id) && pair.toolUse.name !== "Edit") {
+            if (!newCollapsed.has(pair.toolUse.id) && pair.toolUse.name !== "Edit") {
               newCollapsed.add(pair.toolUse.id);
               changed = true;
             }
