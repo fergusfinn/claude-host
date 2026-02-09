@@ -181,6 +181,16 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
     return () => el.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
 
+  // Scroll to bottom when tab becomes active again
+  useEffect(() => {
+    if (!isActive) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    userScrolledUpRef.current = false;
+    setShowJumpToBottom(false);
+    el.scrollTop = el.scrollHeight;
+  }, [isActive]);
+
   // MutationObserver: auto-scroll when DOM content changes (catches rapid updates)
   useEffect(() => {
     const el = scrollRef.current;
