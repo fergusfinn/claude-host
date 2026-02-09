@@ -5,7 +5,8 @@
 
 import WebSocket from "ws";
 import { existsSync, openSync, readSync, fstatSync, closeSync, statSync, watch, writeSync, constants as fsConstants } from "fs";
-import { join, resolve } from "path";
+import { join, resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
 import type { FSWatcher } from "fs";
 
@@ -21,7 +22,10 @@ export function openRichChannel(opts: RichChannelOpts): void {
   const url = `${opts.baseUrl}/ws/executor/terminal/${opts.channelId}?token=${encodeURIComponent(opts.token)}`;
   const ws = new WebSocket(url);
 
-  const repoRoot = resolve(__dirname, "..");
+  const thisDir = typeof __dirname !== "undefined"
+    ? __dirname
+    : dirname(fileURLToPath(import.meta.url));
+  const repoRoot = resolve(thisDir, "..");
   const dataDir = join(repoRoot, "data", "rich", opts.sessionName);
   const eventsFile = join(dataDir, "events.ndjson");
   const fifoPath = join(dataDir, "prompt.fifo");

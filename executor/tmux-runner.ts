@@ -6,12 +6,17 @@
 import { execFileSync, spawnSync, execSync } from "child_process";
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
-import { join, resolve } from "path";
+import { join, resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import type { CreateSessionOpts, CreateJobOpts, ForkSessionOpts, CreateRichSessionOpts, SessionLiveness, SessionAnalysis } from "../shared/types";
 
 // Repo root: resolve from this file's location (executor/tmux-runner.ts -> repo root)
 // This is critical for remote executors that may not run from the repo directory.
-const REPO_ROOT = resolve(__dirname, "..");
+// Use import.meta.url (ESM) with __dirname fallback (CJS/tsx shim).
+const _thisDir = typeof __dirname !== "undefined"
+  ? __dirname
+  : dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(_thisDir, "..");
 
 const TMUX = (() => {
   try {
