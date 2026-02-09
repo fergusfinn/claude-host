@@ -18,6 +18,7 @@ interface Props {
   currentTheme: TerminalTheme;
   currentFont: TerminalFont;
   keyMode: "insert" | "control";
+  activeTabAllRich?: boolean;
   onKeyModeChange: (mode: "insert" | "control") => void;
   onSelectTab: (tabId: string | null) => void;
   onNew: () => void;
@@ -42,6 +43,7 @@ export function MobileTabBar({
   currentTheme,
   currentFont,
   keyMode,
+  activeTabAllRich,
   onKeyModeChange,
   onSelectTab,
   onNew,
@@ -165,28 +167,32 @@ export function MobileTabBar({
                       {mode === "dark" ? "Light mode" : "Dark mode"}
                     </span>
                   </button>
-                  <button
-                    className={styles.menuItem}
-                    onClick={() => {
-                      fonts.forEach(ensureFontLoaded);
-                      setSubMenu("fonts");
-                    }}
-                  >
-                    <span className={styles.menuIcon} style={{ fontWeight: 600, fontSize: 13 }}>A</span>
-                    <span className={styles.menuLabel}>Font</span>
-                    <span className={styles.menuValue}>{currentFont.name}</span>
-                  </button>
-                  <button
-                    className={styles.menuItem}
-                    onClick={() => setSubMenu("themes")}
-                  >
-                    <span
-                      className={styles.themeSwatch}
-                      style={{ background: currentTheme.swatch }}
-                    />
-                    <span className={styles.menuLabel}>Theme</span>
-                    <span className={styles.menuValue}>{currentTheme.name}</span>
-                  </button>
+                  {!activeTabAllRich && (
+                    <button
+                      className={styles.menuItem}
+                      onClick={() => {
+                        fonts.forEach(ensureFontLoaded);
+                        setSubMenu("fonts");
+                      }}
+                    >
+                      <span className={styles.menuIcon} style={{ fontWeight: 600, fontSize: 13 }}>A</span>
+                      <span className={styles.menuLabel}>Font</span>
+                      <span className={styles.menuValue}>{currentFont.name}</span>
+                    </button>
+                  )}
+                  {!activeTabAllRich && (
+                    <button
+                      className={styles.menuItem}
+                      onClick={() => setSubMenu("themes")}
+                    >
+                      <span
+                        className={styles.themeSwatch}
+                        style={{ background: currentTheme.swatch }}
+                      />
+                      <span className={styles.menuLabel}>Theme</span>
+                      <span className={styles.menuValue}>{currentTheme.name}</span>
+                    </button>
+                  )}
                   <div className={styles.menuSep} />
                   <button
                     className={styles.menuItem}

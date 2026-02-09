@@ -88,6 +88,11 @@ export default function Home() {
     ? getAllLeaves(activeTab.layout).find((l) => l.id === activeTab.focusedPaneId)?.sessionName ?? null
     : null;
 
+  // Check if ALL panes in the active tab are rich mode (hide terminal-specific UI)
+  const activeTabAllRich = activeTab
+    ? getAllLeaves(activeTab.layout).every((l) => sessionModes[l.sessionName] === "rich")
+    : false;
+
   // Get all session names across all tab layouts
   function getAllTabSessions(): string[] {
     return tabs.flatMap((t) => getAllLeaves(t.layout).map((l) => l.sessionName));
@@ -625,6 +630,7 @@ export default function Home() {
         currentFont={font}
         keyMode={keyMode}
         showHints={showHints}
+        activeTabAllRich={activeTabAllRich}
         onKeyModeChange={setKeyMode}
         onSelectTab={setActiveTabId}
         onCloseTab={closeTabById}
@@ -649,6 +655,7 @@ export default function Home() {
         currentTheme={theme}
         currentFont={font}
         keyMode={keyMode}
+        activeTabAllRich={activeTabAllRich}
         onKeyModeChange={setKeyMode}
         onSelectTab={setActiveTabId}
         onNew={quickCreate}

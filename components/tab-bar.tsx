@@ -14,6 +14,7 @@ interface Props {
   currentFont: TerminalFont;
   keyMode: "insert" | "control";
   showHints: boolean;
+  activeTabAllRich?: boolean;
   onKeyModeChange: (mode: "insert" | "control") => void;
   onSelectTab: (tabId: string | null) => void;
   onCloseTab: (tabId: string) => void;
@@ -39,7 +40,7 @@ function tabExecutor(tab: TabState, sessionExecutors?: Record<string, string>): 
   return exec && exec !== "local" ? exec : null;
 }
 
-export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, keyMode, showHints, onKeyModeChange, onSelectTab, onCloseTab, onNew, onReorderTab, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
+export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, currentFont, keyMode, showHints, activeTabAllRich, onKeyModeChange, onSelectTab, onCloseTab, onNew, onReorderTab, onThemeChange, onFontChange, onRefresh, mode, onModeChange }: Props) {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -184,79 +185,83 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
         )}
       </button>
 
-      <div className={styles.themePicker} ref={fontPickerRef}>
-        <button
-          className={styles.themeBtn}
-          onClick={() => {
-            if (!fontPickerOpen) fonts.forEach(ensureFontLoaded);
-            setFontPickerOpen(!fontPickerOpen);
-            setThemePickerOpen(false);
-          }}
-          title={`Font: ${currentFont.name}`}
-        >
-          <span className={styles.fontIcon}>A</span>
-          <span className={styles.themeName}>{currentFont.name}</span>
-        </button>
-        {fontPickerOpen && (
-          <div className={styles.themeDropdown}>
-            {fonts.map((f) => (
-              <button
-                key={f.id}
-                className={`${styles.themeOption} ${f.id === currentFont.id ? styles.themeOptionActive : ""}`}
-                onClick={() => {
-                  onFontChange(f.id);
-                  setFontPickerOpen(false);
-                }}
-              >
-                <span className={styles.fontPreviewLabel} style={{ fontFamily: f.fontFamily }}>{f.name}</span>
-                {!f.googleFontsUrl && <span className={styles.fontSystem}>system</span>}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {!activeTabAllRich && (
+        <div className={styles.themePicker} ref={fontPickerRef}>
+          <button
+            className={styles.themeBtn}
+            onClick={() => {
+              if (!fontPickerOpen) fonts.forEach(ensureFontLoaded);
+              setFontPickerOpen(!fontPickerOpen);
+              setThemePickerOpen(false);
+            }}
+            title={`Font: ${currentFont.name}`}
+          >
+            <span className={styles.fontIcon}>A</span>
+            <span className={styles.themeName}>{currentFont.name}</span>
+          </button>
+          {fontPickerOpen && (
+            <div className={styles.themeDropdown}>
+              {fonts.map((f) => (
+                <button
+                  key={f.id}
+                  className={`${styles.themeOption} ${f.id === currentFont.id ? styles.themeOptionActive : ""}`}
+                  onClick={() => {
+                    onFontChange(f.id);
+                    setFontPickerOpen(false);
+                  }}
+                >
+                  <span className={styles.fontPreviewLabel} style={{ fontFamily: f.fontFamily }}>{f.name}</span>
+                  {!f.googleFontsUrl && <span className={styles.fontSystem}>system</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-      <div className={styles.themePicker} ref={themePickerRef}>
-        <button
-          className={styles.themeBtn}
-          onClick={() => { setThemePickerOpen(!themePickerOpen); setFontPickerOpen(false); }}
-          title={`Theme: ${currentTheme.name}`}
-        >
-          <span
-            className={styles.themeSwatch}
-            style={{ background: currentTheme.swatch }}
-          />
-          <span className={styles.themeName}>{currentTheme.name}</span>
-        </button>
-        {themePickerOpen && (
-          <div className={styles.themeDropdown}>
-            {themesForMode(mode).map((t) => (
-              <button
-                key={t.id}
-                className={`${styles.themeOption} ${t.id === currentTheme.id ? styles.themeOptionActive : ""}`}
-                onClick={() => {
-                  onThemeChange(t.id);
-                  setThemePickerOpen(false);
-                }}
-              >
-                <span
-                  className={styles.themeSwatch}
-                  style={{ background: t.swatch }}
-                />
-                <span>{t.name}</span>
-                <div className={styles.themePreview} style={{ background: t.background }}>
-                  <span style={{ color: t.red }}>r</span>
-                  <span style={{ color: t.green }}>g</span>
-                  <span style={{ color: t.blue }}>b</span>
-                  <span style={{ color: t.yellow }}>y</span>
-                  <span style={{ color: t.magenta }}>m</span>
-                  <span style={{ color: t.cyan }}>c</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {!activeTabAllRich && (
+        <div className={styles.themePicker} ref={themePickerRef}>
+          <button
+            className={styles.themeBtn}
+            onClick={() => { setThemePickerOpen(!themePickerOpen); setFontPickerOpen(false); }}
+            title={`Theme: ${currentTheme.name}`}
+          >
+            <span
+              className={styles.themeSwatch}
+              style={{ background: currentTheme.swatch }}
+            />
+            <span className={styles.themeName}>{currentTheme.name}</span>
+          </button>
+          {themePickerOpen && (
+            <div className={styles.themeDropdown}>
+              {themesForMode(mode).map((t) => (
+                <button
+                  key={t.id}
+                  className={`${styles.themeOption} ${t.id === currentTheme.id ? styles.themeOptionActive : ""}`}
+                  onClick={() => {
+                    onThemeChange(t.id);
+                    setThemePickerOpen(false);
+                  }}
+                >
+                  <span
+                    className={styles.themeSwatch}
+                    style={{ background: t.swatch }}
+                  />
+                  <span>{t.name}</span>
+                  <div className={styles.themePreview} style={{ background: t.background }}>
+                    <span style={{ color: t.red }}>r</span>
+                    <span style={{ color: t.green }}>g</span>
+                    <span style={{ color: t.blue }}>b</span>
+                    <span style={{ color: t.yellow }}>y</span>
+                    <span style={{ color: t.magenta }}>m</span>
+                    <span style={{ color: t.cyan }}>c</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className={styles.modeWrap}>
         <button
