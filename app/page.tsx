@@ -718,6 +718,7 @@ export default function Home() {
         mode={mode}
         onModeChange={handleModeChange}
         onOpenExecutors={() => setActiveTabId(activeTabId === "executors" ? null : "executors")}
+        onCloseTab={closeTabById}
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>

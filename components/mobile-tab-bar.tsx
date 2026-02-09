@@ -20,6 +20,7 @@ interface Props {
   keyMode: "insert" | "control";
   onKeyModeChange: (mode: "insert" | "control") => void;
   onSelectTab: (tabId: string | null) => void;
+  onCloseTab: (tabId: string) => void;
   onNew: () => void;
   onThemeChange: (themeId: string) => void;
   onFontChange: (fontId: string) => void;
@@ -44,6 +45,7 @@ export function MobileTabBar({
   keyMode,
   onKeyModeChange,
   onSelectTab,
+  onCloseTab,
   onNew,
   onThemeChange,
   onFontChange,
@@ -55,6 +57,7 @@ export function MobileTabBar({
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [subMenu, setSubMenu] = useState<"none" | "fonts" | "themes">("none");
+  const [confirmCloseId, setConfirmCloseId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const tabStripRef = useRef<HTMLDivElement>(null);
 
@@ -127,13 +130,33 @@ export function MobileTabBar({
               {subMenu === "none" && (
                 <>
                   {activeTabId !== null && activeTabId !== "executors" && (
-                    <button
-                      className={styles.menuItem}
-                      onClick={() => { onRefresh(); setMenuOpen(false); }}
-                    >
-                      <span className={styles.menuIcon}>&#x21bb;</span>
-                      <span className={styles.menuLabel}>Refresh terminal</span>
-                    </button>
+                    <>
+                      <button
+                        className={styles.menuItem}
+                        onClick={() => { onRefresh(); setMenuOpen(false); }}
+                      >
+                        <span className={styles.menuIcon}>&#x21bb;</span>
+                        <span className={styles.menuLabel}>Refresh terminal</span>
+                      </button>
+                      <button
+                        className={`${styles.menuItem} ${confirmCloseId === activeTabId ? styles.menuItemDanger : ""}`}
+                        onClick={() => {
+                          if (confirmCloseId === activeTabId) {
+                            onCloseTab(activeTabId);
+                            setConfirmCloseId(null);
+                            setMenuOpen(false);
+                          } else {
+                            setConfirmCloseId(activeTabId);
+                            setTimeout(() => setConfirmCloseId(null), 2000);
+                          }
+                        }}
+                      >
+                        <span className={styles.menuIcon}>&times;</span>
+                        <span className={styles.menuLabel}>
+                          {confirmCloseId === activeTabId ? "Tap again to close" : "Close tab"}
+                        </span>
+                      </button>
+                    </>
                   )}
                   <button
                     className={styles.menuItem}

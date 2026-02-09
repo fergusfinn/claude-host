@@ -267,4 +267,12 @@
     color: var(--bg-0);
     background: var(--accent);
   }
+
+  .menuItemDanger {
+    color: var(--danger);
+  }
+
+  .menuItemDanger .menuIcon {
+    color: var(--danger);
+  }
 }
