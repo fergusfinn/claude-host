@@ -648,7 +648,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
       style={{
         background: theme.background,
         color: theme.foreground,
-        fontFamily: font.fontFamily,
+        fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
       }}
     >
       {/* Status bar */}
@@ -869,7 +869,6 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
           disabled={!connected}
           rows={1}
           style={{
-            fontFamily: font.fontFamily,
             color: theme.foreground,
           }}
         />
