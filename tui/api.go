@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,12 +10,6 @@ import (
 	"strings"
 	"time"
 )
-
-func generateName() string {
-	b := make([]byte, 3)
-	rand.Read(b)
-	return fmt.Sprintf("s-%x", b)
-}
 
 type Session struct {
 	Name        string `json:"name"`
@@ -61,9 +54,8 @@ func (a *APIClient) ListSessions() ([]Session, error) {
 	return alive, nil
 }
 
-func (a *APIClient) CreateSession(name, description, command string) (*Session, error) {
+func (a *APIClient) CreateSession(description, command string) (*Session, error) {
 	payload, _ := json.Marshal(map[string]string{
-		"name":        name,
 		"description": description,
 		"command":     command,
 	})

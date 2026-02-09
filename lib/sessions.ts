@@ -5,6 +5,7 @@ import { execFileSync } from "child_process";
 import type { Session, ExecutorInfo, SessionLiveness } from "../shared/types";
 import { LocalExecutor } from "./executor-interface";
 import { cleanupRichSession } from "./claude-bridge";
+import { generateName } from "./names";
 
 // Cache local git version at startup
 let localVersion: string | undefined;
@@ -204,7 +205,9 @@ class SessionManager {
     return alive;
   }
 
-  async create(name: string, description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal"): Promise<Session> {
+  async create(description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal"): Promise<Session> {
+    const name = this.uniqueName();
+
     // Inject theme settings for claude commands
     let finalCommand = command;
     if (command.split(/\s+/)[0] === "claude") {
@@ -259,10 +262,8 @@ class SessionManager {
     };
   }
 
-  async createJob(name: string, prompt: string, maxIterations = 50, executor = "local", skipPermissions = true): Promise<Session> {
-    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-      throw new Error("Name must be alphanumeric, hyphens, underscores only");
-    }
+  async createJob(prompt: string, maxIterations = 50, executor = "local", skipPermissions = true): Promise<Session> {
+    const name = this.uniqueName();
 
     let command = skipPermissions ? "claude --dangerously-skip-permissions" : "claude";
     command = `${command} ${this.getClaudeThemeArg()}`;
@@ -440,7 +441,9 @@ class SessionManager {
     this.setConfig("forkHooks", JSON.stringify(hooks));
   }
 
-  async fork(sourceName: string, newName: string): Promise<Session> {
+  async fork(sourceName: string): Promise<Session> {
+    const newName = this.uniqueName();
+
     // Get source session info from DB
     const sourceRow = this.db
       .prepare("SELECT command, executor, mode FROM sessions WHERE name = ?")
@@ -612,6 +615,17 @@ class SessionManager {
   }
 
   // --- Private helpers ---
+
+  /** Generate a unique slug, retrying on collision */
+  private uniqueName(): string {
+    for (let i = 0; i < 10; i++) {
+      const name = generateName();
+      const exists = this.db.prepare("SELECT 1 FROM sessions WHERE name = ?").get(name);
+      if (!exists) return name;
+    }
+    // Fallback: append timestamp
+    return `${generateName()}-${Date.now()}`;
+  }
 
   /** Build --settings flag to set Claude Code's theme to use ANSI palette colors.
    *  Always use dark-ansi: it uses default terminal fg/bg for user messages and

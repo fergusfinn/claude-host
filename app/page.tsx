@@ -8,7 +8,6 @@ import { TabBar } from "@/components/tab-bar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ModeSwitchModal } from "@/components/mode-switch-modal";
 import { getThemeById, DEFAULT_DARK_THEME, type TerminalTheme, getFontById, DEFAULT_FONT_ID, type TerminalFont, ensureFontLoaded, getDefaultThemeForMode, themeToChromeVars } from "@/lib/themes";
-import { generateName } from "@/lib/names";
 import { loadShortcuts, type ShortcutMap } from "@/lib/shortcuts";
 import {
   makeLeaf,
@@ -383,7 +382,6 @@ export default function Home() {
 
   async function splitActivePane(direction: "h" | "v", fork = true) {
     if (!activeTab) return;
-    const name = generateName();
 
     // Find the focused pane's session name to use as fork source
     const focusedLeaf = getAllLeaves(activeTab.layout).find(
@@ -398,7 +396,7 @@ export default function Home() {
         res = await fetch("/api/sessions/fork", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source: sourceSession, name }),
+          body: JSON.stringify({ source: sourceSession }),
         });
       } else {
         // Fresh session
@@ -406,12 +404,13 @@ export default function Home() {
         res = await fetch("/api/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, description: "", command }),
+          body: JSON.stringify({ description: "", command }),
         });
       }
       if (!res.ok) return;
-      // Read the created session's mode so the pane renders correctly
+      // Read the created session's name (server-generated slug) and mode
       const created = await res.json();
+      const name = created.name;
       if (created.mode) {
         setSessionModes((prev) => ({ ...prev, [name]: created.mode }));
       }
@@ -519,16 +518,16 @@ export default function Home() {
     );
     if (!focusedLeaf) return quickCreate();
 
-    const name = generateName();
     try {
       const res = await fetch("/api/sessions/fork", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: focusedLeaf.sessionName, name }),
+        body: JSON.stringify({ source: focusedLeaf.sessionName }),
       });
       if (!res.ok) return;
+      const created = await res.json();
       await loadSessions();
-      connectSession(name);
+      connectSession(created.name);
     } catch {}
   }
 
@@ -553,13 +552,11 @@ export default function Home() {
   }
 
   async function doCreateRich(executor: string) {
-    const name = generateName();
     try {
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
           description: "",
           command: "claude --dangerously-skip-permissions",
           executor,
@@ -571,8 +568,9 @@ export default function Home() {
         console.error("Failed to create rich session:", body);
         return;
       }
+      const created = await res.json();
       await loadSessions();
-      connectSession(name, "rich");
+      connectSession(created.name, "rich");
     } catch (err) {
       console.error("Failed to create rich session:", err);
     }
@@ -582,24 +580,26 @@ export default function Home() {
 
   async function handleModeSwitch(newMode: "terminal" | "rich", command: string) {
     if (!modeSwitchSession) return;
-    const name = modeSwitchSession;
+    const oldName = modeSwitchSession;
     setModeSwitchSession(null);
 
     // If staying on rich mode, nothing to do
     if (newMode === "rich") return;
 
     try {
-      // Delete existing rich session, recreate with new mode
-      await fetch(`/api/sessions/${encodeURIComponent(name)}`, { method: "DELETE" });
+      // Delete existing rich session, recreate with new mode (server generates new slug)
+      await fetch(`/api/sessions/${encodeURIComponent(oldName)}`, { method: "DELETE" });
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description: "", command, executor: "local", mode: newMode }),
+        body: JSON.stringify({ description: "", command, executor: "local", mode: newMode }),
       });
       if (!res.ok) return;
-      setSessionModes((prev) => ({ ...prev, [name]: newMode }));
+      const created = await res.json();
+      setSessionModes((prev) => ({ ...prev, [created.name]: newMode }));
       setRefreshKey((k) => k + 1);
       await loadSessions();
+      connectSession(created.name, newMode);
     } catch {}
   }
 

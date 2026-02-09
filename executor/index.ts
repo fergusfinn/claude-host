@@ -12,7 +12,10 @@ import { ExecutorClient } from "./client";
 
 let VERSION: string;
 try {
-  VERSION = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+  VERSION = execSync("git rev-parse --short HEAD", {
+    encoding: "utf-8",
+    cwd: path.resolve(__dirname, ".."),
+  }).trim();
 } catch {
   VERSION = "unknown";
 }
