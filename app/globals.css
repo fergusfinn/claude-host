@@ -88,29 +88,29 @@ button {
 .btn-accent {
   background: var(--accent);
   color: var(--bg-0);
-  padding: 7px 12px;
+  padding: 8px 16px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border-radius: 3px;
+  border-radius: 8px;
 }
 .btn-accent:hover { background: var(--accent-hover); }
-.btn-accent:disabled { opacity: 0.5; cursor: default; }
+.btn-accent:disabled { background: var(--bg-3); color: var(--text-3); cursor: default; }
 .btn-accent kbd {
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 500;
   background: rgba(0,0,0,0.2);
   padding: 2px 5px;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
 .btn-ghost {
   background: transparent;
   color: var(--text-2);
-  padding: 6px 10px;
-  border-radius: 3px;
+  padding: 8px 16px;
+  border-radius: 8px;
 }
 .btn-ghost:hover { color: var(--text-1); background: var(--bg-3); }
 
@@ -175,12 +175,13 @@ button {
 .settings-dialog {
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 12px;
   color: var(--text-0);
   padding: 0;
   width: min(420px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;
+  overflow: hidden;
   font-family: var(--mono);
   box-shadow: 0 16px 64px var(--shadow-dialog);
   position: fixed;
