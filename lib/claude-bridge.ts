@@ -279,9 +279,6 @@ function processEventChunk(name: string, state: RichState, chunk: string): void 
         state.sessionId = event.session_id;
       }
 
-      // Skip subagent internal events
-      if (event.parent_tool_use_id != null) continue;
-
       // Dedup user events echoed by claude that we already wrote to the events file
       if (event.type === "user" && state.lastPromptText) {
         const content = event.message?.content;
@@ -343,9 +340,6 @@ function replayEventsFromFile(state: RichState, ws: WebSocket): void {
     if (!trimmed) continue;
     try {
       const event = JSON.parse(trimmed);
-
-      // Skip subagent events
-      if (event.parent_tool_use_id != null) continue;
 
       // Skip stream deltas on replay
       if (event.type === "stream_event") continue;

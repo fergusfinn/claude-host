@@ -239,7 +239,7 @@ describe("claude-bridge (tmux-backed)", () => {
       expect(sendKeysCalls.length).toBeGreaterThanOrEqual(1);
     });
 
-    it("skips subagent events during replay", () => {
+    it("forwards subagent events during replay", () => {
       const events = [
         { type: "assistant", message: { role: "assistant", content: [] } },
         { type: "assistant", parent_tool_use_id: "tool-1", message: { role: "assistant", content: [] } },
@@ -257,7 +257,7 @@ describe("claude-bridge (tmux-backed)", () => {
 
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const eventMessages = calls.filter((c: any) => c.type === "event");
-      expect(eventMessages).toHaveLength(1);
+      expect(eventMessages).toHaveLength(2);
     });
 
     it("skips duplicate init events during replay", () => {
