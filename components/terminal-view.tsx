@@ -146,9 +146,10 @@ export function TerminalView({ sessionName, isActive, theme, font, onClose, onSw
     };
   }, [sessionName]);
 
-  // Re-focus terminal when this tab becomes active
+  // Re-focus terminal when this tab becomes active (skip on touch
+  // devices to avoid opening the virtual keyboard on tab switch)
   useEffect(() => {
-    if (isActive) {
+    if (isActive && !matchMedia("(pointer: coarse)").matches) {
       termRef.current?.focus();
     }
   }, [isActive]);

@@ -122,6 +122,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
   const [inputValue, setInputValue] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
+  const [processAlive, setProcessAlive] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [collapsedTools, setCollapsedTools] = useState<Set<string>>(new Set());
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
@@ -140,6 +141,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
   const msgIdCounter = useRef(0);
   const userScrolledUpRef = useRef(false);
   const isStreamingRef = useRef(false);
+  const streamingStartRef = useRef(0);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   isStreamingRef.current = isStreaming;
@@ -335,8 +337,13 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
           handleEvent(msg.event);
         } else if (msg.type === "turn_complete") {
           setIsStreaming(false);
+          streamingStartRef.current = 0;
         } else if (msg.type === "session_state") {
-          if (msg.streaming) setIsStreaming(true);
+          if (msg.streaming) {
+            setIsStreaming(true);
+            if (!streamingStartRef.current) streamingStartRef.current = Date.now();
+          }
+          if (msg.process_alive !== undefined) setProcessAlive(msg.process_alive);
         } else if (msg.type === "error") {
           setError(msg.message);
           setIsStreaming(false);
@@ -515,6 +522,18 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
             timestamp: Date.now(),
           },
         ]);
+      } else if (sys.subtype === "restart") {
+        setIsStreaming(false);
+        streamingStartRef.current = 0;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: "system",
+            blocks: [{ type: "text", text: (sys as any).message || "Claude process restarted" }],
+            timestamp: Date.now(),
+          },
+        ]);
       }
     }
   }
@@ -582,9 +601,10 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
     });
   }
 
-  // Auto-focus input when active
+  // Auto-focus input when active (skip on touch devices to avoid
+  // opening the virtual keyboard on tab switch)
   useEffect(() => {
-    if (isActive && !isStreaming) {
+    if (isActive && !isStreaming && !matchMedia("(pointer: coarse)").matches) {
       inputRef.current?.focus();
     }
   }, [isActive, isStreaming]);
@@ -614,6 +634,35 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
         fontFamily: font.fontFamily,
       }}
     >
+      {/* Status bar */}
+      {!isEmpty && (
+        <div className={styles.statusBar}>
+          <div className={styles.statusLeft}>
+            <span
+              className={`${styles.statusDot} ${
+                connectionState === "connected" && processAlive !== false
+                  ? styles.statusConnected
+                  : connectionState === "reconnecting"
+                    ? styles.statusReconnecting
+                    : ""
+              }`}
+            />
+            <span className={styles.statusText}>
+              {connectionState === "connected"
+                ? processAlive === false
+                  ? "Process exited"
+                  : "Connected"
+                : connectionState === "connecting"
+                  ? "Connecting\u2026"
+                  : connectionState === "reconnecting"
+                    ? "Reconnecting\u2026"
+                    : "Disconnected"}
+            </span>
+          </div>
+          {error && <span className={styles.statusError}>{error}</span>}
+        </div>
+      )}
+
       {/* Messages */}
       <div className={styles.messagesWrap}>
         <div className={styles.messages} ref={scrollRef}>
@@ -644,7 +693,17 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
 
               // System/result: render as before
               if (items === null) {
-                if (msg.role === "result") return null;
+                if (msg.role === "result") {
+                  const r = msg.result;
+                  const secs = r?.duration_ms ? Math.round(r.duration_ms / 1000) : null;
+                  const turns = r?.num_turns && r.num_turns > 1 ? `${r.num_turns} turns` : null;
+                  const parts = [secs !== null ? `${secs}s` : null, turns].filter(Boolean);
+                  return (
+                    <div key={msg.id} className={`${styles.message} ${styles.role_system} ${styles.messageEnter}`}>
+                      Turn complete{parts.length > 0 ? ` \u2014 ${parts.join(", ")}` : ""}
+                    </div>
+                  );
+                }
                 if (msg.role === "system") {
                   return (
                     <div key={msg.id} className={`${styles.message} ${styles.role_system} ${styles.messageEnter}`}>
@@ -754,10 +813,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
                   <StreamingMarkdown text={streamingText} theme={theme} />
                 </div>
               ) : (
-                <div className={styles.streaming}>
-                  <span className={styles.streamingDot} style={{ background: theme.cursor }} />
-                  <span>{"thinking\u2026"}</span>
-                </div>
+                <ThinkingIndicator startTime={streamingStartRef.current} theme={theme} />
               )
             )}
           </MessageErrorBoundary>
@@ -831,6 +887,29 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
 }
 
 // ---- Sub-components ----
+
+function ThinkingIndicator({ startTime, theme }: { startTime: number; theme: TerminalTheme }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [startTime]);
+
+  return (
+    <div className={styles.streaming}>
+      <span className={styles.streamingDot} style={{ background: theme.cursor }} />
+      <span>
+        {"thinking\u2026"}
+        {elapsed >= 3 && (
+          <span style={{ marginLeft: 6, opacity: 0.5 }}>{elapsed}s</span>
+        )}
+      </span>
+    </div>
+  );
+}
 
 function StreamingMarkdown({ text, theme }: { text: string; theme: TerminalTheme }) {
   const [renderedText, setRenderedText] = useState(text);

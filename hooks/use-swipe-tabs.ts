@@ -30,67 +30,58 @@ export function useSwipeTabs({
     let startY = 0;
     let startTime = 0;
     let tracking = false;
-    let decided = false;
-    let isSwiping = false;
 
-    const DECISION_DISTANCE = 10;
+    // Edge swipe: only initiate from within 24px of screen edges.
+    // This avoids conflicting with xterm.js touch scrolling and
+    // rich-view interactions, since those happen in the middle of
+    // the screen.
+    const EDGE_ZONE = 24;
     const SWIPE_THRESHOLD = 50;
-    const SWIPE_MAX_TIME = 400;
-    const ANGLE_RATIO = 1.5;
+    const SWIPE_MAX_TIME = 500;
 
     function onTouchStart(e: TouchEvent) {
       if (e.touches.length !== 1) return;
       const touch = e.touches[0];
+      const screenWidth = window.innerWidth;
+
+      // Only track touches starting near screen edges
+      if (touch.clientX > EDGE_ZONE && touch.clientX < screenWidth - EDGE_ZONE) return;
+
       startX = touch.clientX;
       startY = touch.clientY;
       startTime = Date.now();
       tracking = true;
-      decided = false;
-      isSwiping = false;
     }
 
     function onTouchMove(e: TouchEvent) {
       if (!tracking || e.touches.length !== 1) return;
       const touch = e.touches[0];
-      const deltaX = touch.clientX - startX;
-      const deltaY = touch.clientY - startY;
-      const absDX = Math.abs(deltaX);
-      const absDY = Math.abs(deltaY);
+      const absDX = Math.abs(touch.clientX - startX);
+      const absDY = Math.abs(touch.clientY - startY);
 
-      if (!decided) {
-        const totalMove = Math.sqrt(absDX * absDX + absDY * absDY);
-        if (totalMove < DECISION_DISTANCE) return;
-
-        decided = true;
-        if (absDX > absDY * ANGLE_RATIO) {
-          isSwiping = true;
-        } else {
-          tracking = false;
-          return;
-        }
-      }
-
-      if (isSwiping) {
+      // If it's clearly a horizontal swipe from the edge, prevent
+      // default to stop the browser/xterm from also handling it
+      if (absDX > 10 && absDX > absDY * 1.5) {
         e.preventDefault();
-        e.stopPropagation();
+      } else if (absDY > absDX) {
+        // Vertical gesture — stop tracking
+        tracking = false;
       }
     }
 
     function onTouchEnd(e: TouchEvent) {
-      if (!tracking || !isSwiping) {
-        tracking = false;
-        return;
-      }
+      if (!tracking) return;
 
       const touch = e.changedTouches[0];
       const deltaX = touch.clientX - startX;
+      const absDY = Math.abs(touch.clientY - startY);
       const elapsed = Date.now() - startTime;
 
       tracking = false;
-      isSwiping = false;
 
       if (Math.abs(deltaX) < SWIPE_THRESHOLD) return;
       if (elapsed > SWIPE_MAX_TIME) return;
+      if (absDY > Math.abs(deltaX)) return;
 
       const { tabs: currentTabs, activeTabId: currentActive } = stateRef.current;
       const allIds: (string | null)[] = [null, ...currentTabs.map((t) => t.id)];
@@ -103,14 +94,12 @@ export function useSwipeTabs({
         // Swipe right -> previous tab
         setActiveTabId(allIds[(idx - 1 + allIds.length) % allIds.length]);
       }
-
-      e.preventDefault();
-      e.stopPropagation();
     }
 
+    // Use capture phase to fire before xterm's listeners
     container.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
     container.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
-    container.addEventListener("touchend", onTouchEnd, { capture: true, passive: false });
+    container.addEventListener("touchend", onTouchEnd, { capture: true, passive: true });
 
     return () => {
       container.removeEventListener("touchstart", onTouchStart, true);
