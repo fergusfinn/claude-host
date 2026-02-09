@@ -81,7 +81,7 @@ ExecStart=${NVM_NODE_DIR}/npx tsx server.ts
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
-Environment=AUTH_DISABLED=1
+Environment=ADMIN_EMAIL=fergus.finn@doubleword.ai
 Environment=EXECUTOR_TOKEN=$(cat /home/fergus/.claude-host-executor-token 2>/dev/null)
 Environment=PATH=${NVM_NODE_DIR}:/home/fergus/.local/bin:/usr/local/bin:/usr/bin:/bin
 
