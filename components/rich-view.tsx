@@ -888,24 +888,9 @@ function StreamingMarkdown({ text, theme }: { text: string; theme: TerminalTheme
 }
 
 function TextBlock({ text, theme }: { text: string; theme: TerminalTheme }) {
-  const isLong = text.length > 3000 || text.split("\n").length > 40;
-  const [expanded, setExpanded] = useState(!isLong);
-  const displayText = expanded
-    ? text
-    : text.slice(0, 1500).replace(/\n[^\n]*$/, "") + "\n\u2026";
-
   return (
     <div className={styles.textBlock}>
-      <MemoizedMarkdown text={displayText} theme={theme} />
-      {isLong && (
-        <button
-          className={styles.expandBtn}
-          onClick={() => setExpanded(!expanded)}
-          style={{ color: theme.cyan }}
-        >
-          {expanded ? "show less" : "show all"}
-        </button>
-      )}
+      <MemoizedMarkdown text={text} theme={theme} />
     </div>
   );
 }
