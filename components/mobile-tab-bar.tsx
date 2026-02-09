@@ -92,7 +92,6 @@ export function MobileTabBar({
             className={`${styles.tab} ${activeTabId === tab.id ? styles.tabActive : ""}`}
             onClick={() => { onSelectTab(tab.id); setMenuOpen(false); }}
           >
-            <span className={styles.dot} />
             <span className={styles.tabName}>{tabLabel(tab)}</span>
           </button>
         ))}

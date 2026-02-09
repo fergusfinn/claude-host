@@ -12,6 +12,7 @@
     flex-shrink: 0;
     position: relative;
     gap: 2px;
+    padding: 0 2px;
   }
 
   .logoBtn {
@@ -19,12 +20,13 @@
     align-items: center;
     justify-content: center;
     width: 36px;
-    margin: 4px 0 4px 2px;
+    margin: 5px 0;
     flex-shrink: 0;
     background: transparent;
     border: none;
     border-radius: 6px;
     cursor: pointer;
+    transition: background 0.15s;
   }
   .logoBtn:active { background: var(--bg-2); }
 
@@ -33,10 +35,11 @@
   }
 
   .logoMark {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     background: var(--accent);
-    border-radius: 4px;
+    border-radius: 50%;
+    flex-shrink: 0;
     box-shadow: 0 0 4px var(--accent-dim);
   }
 
@@ -49,18 +52,17 @@
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     gap: 2px;
-    padding: 0 2px;
   }
   .tabStrip::-webkit-scrollbar { display: none; }
 
   .tab {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 0 10px;
-    margin: 4px 0;
-    font-size: 12px;
-    font-family: var(--mono);
+    gap: 6px;
+    padding: 0 12px;
+    margin: 5px 0;
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     color: var(--text-2);
     background: transparent;
     border: none;
@@ -68,33 +70,14 @@
     cursor: pointer;
     white-space: nowrap;
     flex-shrink: 0;
-    position: relative;
-    transition: all 0.1s;
+    transition: background 0.15s, color 0.15s;
   }
   .tab:active { background: var(--bg-2); }
 
   .tabActive {
     color: var(--text-0);
     background: var(--bg-0);
-  }
-  .tabActive::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 4px;
-    right: 4px;
-    height: 2px;
-    background: var(--accent);
-    border-radius: 1px;
-  }
-
-  .dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--accent);
-    flex-shrink: 0;
-    box-shadow: 0 0 4px var(--accent-dim);
+    font-weight: 500;
   }
 
   .tabName {
@@ -107,15 +90,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    margin: 4px 0;
+    width: 30px;
+    margin: 5px 0;
     flex-shrink: 0;
     color: var(--text-3);
     background: transparent;
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    transition: all 0.1s;
+    transition: background 0.15s, color 0.15s;
   }
   .newBtn:active { color: var(--text-0); background: var(--bg-2); }
 
@@ -131,14 +114,14 @@
     align-items: center;
     justify-content: center;
     width: 36px;
-    margin: 4px 2px 4px 0;
+    margin: 5px 0;
     flex-shrink: 0;
     background: transparent;
     border: none;
     border-radius: 6px;
     color: var(--text-2);
     cursor: pointer;
-    transition: all 0.1s;
+    transition: background 0.15s, color 0.15s;
   }
   .overflowBtn:active { color: var(--text-0); background: var(--bg-2); }
 
@@ -158,7 +141,7 @@
 
   .overflowMenu {
     position: absolute;
-    top: calc(100% + 1px);
+    top: calc(100% + 4px);
     right: 0;
     z-index: 200;
     background: var(--bg-1);
@@ -169,6 +152,7 @@
     overflow-y: auto;
     overflow: hidden;
     box-shadow: 0 8px 24px var(--shadow-dropdown);
+    padding: 4px;
   }
 
   .menuItem {
@@ -176,20 +160,19 @@
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 0 14px;
+    padding: 0 10px;
     font-size: 13px;
-    font-family: var(--mono);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     color: var(--text-1);
     background: transparent;
     border: none;
-    border-bottom: 1px solid var(--border);
+    border-radius: 6px;
     cursor: pointer;
     min-height: 44px;
     text-align: left;
     transition: background 0.1s;
   }
   .menuItem:active { background: var(--bg-3); }
-  .menuItem:last-child { border-bottom: none; }
 
   .menuItemActive {
     color: var(--text-0);
@@ -217,6 +200,7 @@
   .menuSep {
     height: 1px;
     background: var(--border);
+    margin: 4px 0;
   }
 
   /* Sub-menu items (font list, theme list) */
@@ -225,7 +209,6 @@
     color: var(--text-2);
     font-size: 12px;
     min-height: 38px;
-    border-bottom: 1px solid var(--border);
     font-weight: 600;
   }
 
@@ -242,6 +225,7 @@
     display: flex;
     gap: 2px;
     padding: 2px 4px;
+    border-radius: 4px;
     font-size: 11px;
     font-family: var(--mono);
     font-weight: 600;
@@ -267,7 +251,7 @@
     letter-spacing: 0.5px;
     color: var(--text-3);
     background: var(--bg-3);
-    border-radius: 4px;
+    border-radius: 6px;
     flex-shrink: 0;
   }
 

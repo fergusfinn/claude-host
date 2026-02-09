@@ -1,22 +1,22 @@
 .wrapper {
   display: flex;
-  align-items: stretch;
-  height: 36px;
+  align-items: center;
+  height: 40px;
   background: var(--bg-1);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  padding: 0 6px;
   gap: 2px;
 }
 
 .bar {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   flex: 1;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   gap: 2px;
-  padding: 0 2px;
 }
 
 .bar::-webkit-scrollbar { display: none; }
@@ -25,10 +25,10 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 10px;
-  margin: 4px 0;
-  font-size: 12px;
-  font-family: var(--mono);
+  padding: 0 12px;
+  height: 30px;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   color: var(--text-2);
   background: transparent;
   border: none;
@@ -36,7 +36,7 @@
   cursor: pointer;
   white-space: nowrap;
   position: relative;
-  transition: all 0.1s;
+  transition: background 0.15s, color 0.15s;
   flex-shrink: 0;
 }
 
@@ -60,31 +60,14 @@
 .active {
   color: var(--text-0);
   background: var(--bg-0);
-}
-.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 4px;
-  right: 4px;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 1px;
+  font-weight: 500;
 }
 
 .logoMark {
   width: 6px;
   height: 6px;
   background: var(--accent);
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.dot {
-  width: 5px;
-  height: 5px;
   border-radius: 50%;
-  background: var(--accent);
   flex-shrink: 0;
   box-shadow: 0 0 4px var(--accent-dim);
 }
@@ -97,9 +80,10 @@
 
 .executorBadge {
   font-size: 9px;
+  font-family: var(--mono);
   color: var(--accent);
   background: var(--accent-dim);
-  padding: 0 4px;
+  padding: 1px 5px;
   border-radius: 4px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -114,16 +98,16 @@
 }
 
 .closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: none;
   color: var(--text-3);
-  font-size: 14px;
-  line-height: 1;
-  padding: 0 2px;
+  padding: 2px;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.1s;
-  font-family: var(--mono);
+  transition: opacity 0.1s, background 0.1s;
   border-radius: 4px;
 }
 .closeBtn:hover { color: var(--text-0); background: var(--bg-4); }
@@ -132,15 +116,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  margin: 4px 0;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   color: var(--text-3);
   background: transparent;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.1s;
+  transition: background 0.15s, color 0.15s;
 }
 .newBtn:hover { color: var(--text-0); background: var(--bg-2); }
 
@@ -157,9 +141,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 70px;
+  height: 24px;
   padding: 0 10px;
-  margin: 4px 2px;
   font-size: 10px;
   font-weight: 600;
   color: var(--text-3);
@@ -169,7 +152,7 @@
   font-family: var(--mono);
   letter-spacing: 0.5px;
   cursor: pointer;
-  transition: all 0.1s;
+  transition: background 0.15s, color 0.15s;
 }
 .modeIndicator:hover { color: var(--text-1); background: var(--bg-2); }
 
@@ -180,7 +163,7 @@
 
 .controlDropdown {
   position: absolute;
-  top: calc(100% + 1px);
+  top: calc(100% + 4px);
   right: 0;
   z-index: 100;
   background: var(--bg-1);
@@ -198,6 +181,7 @@
   padding: 4px 6px;
   font-size: 12px;
   color: var(--text-1);
+  border-radius: 4px;
 }
 
 .controlRow kbd {
@@ -239,15 +223,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  margin: 4px 0;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   color: var(--text-2);
   background: transparent;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.1s;
+  transition: background 0.15s, color 0.15s;
 }
 .refreshBtn:hover { color: var(--text-0); background: var(--bg-2); }
 .refreshBtn:active { transform: rotate(180deg); }
@@ -258,15 +242,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  margin: 4px 0;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   color: var(--text-2);
   background: transparent;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.1s;
+  transition: background 0.15s, color 0.15s;
 }
 .modeBtn:hover { color: var(--text-0); background: var(--bg-2); }
 
@@ -284,16 +268,16 @@
   align-items: center;
   gap: 6px;
   padding: 0 10px;
-  margin: 4px 0;
+  height: 30px;
   font-size: 11px;
-  font-family: var(--mono);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   color: var(--text-2);
   background: transparent;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.1s;
+  transition: background 0.15s, color 0.15s;
 }
 .themeBtn:hover { color: var(--text-1); background: var(--bg-2); }
 
@@ -313,7 +297,7 @@
 
 .themeDropdown {
   position: absolute;
-  top: calc(100% + 1px);
+  top: calc(100% + 4px);
   right: 0;
   z-index: 100;
   background: var(--bg-1);
@@ -331,7 +315,7 @@
   width: 100%;
   padding: 6px 8px;
   font-size: 12px;
-  font-family: var(--mono);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   color: var(--text-1);
   background: transparent;
   border: none;
@@ -390,7 +374,7 @@
 
   .tab {
     padding: 0 8px;
-    font-size: 11px;
+    font-size: 12px;
     gap: 4px;
   }
 
@@ -403,11 +387,11 @@
   }
 
   .newBtn {
-    width: 24px;
+    width: 26px;
+    height: 26px;
   }
 
   .modeIndicator {
-    width: 56px;
     font-size: 9px;
     padding: 0 6px;
   }
@@ -422,11 +406,13 @@
   }
 
   .refreshBtn {
-    width: 28px;
+    width: 26px;
+    height: 26px;
   }
 
   .modeBtn {
-    width: 28px;
+    width: 26px;
+    height: 26px;
   }
 
   .controlDropdown {
@@ -442,7 +428,7 @@
 @media (max-width: 380px) {
   .tab {
     padding: 0 6px;
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .tabName {
@@ -461,6 +447,6 @@
 @media (pointer: coarse) {
   .closeBtn {
     opacity: 1;
-    padding: 0 4px;
+    padding: 2px 4px;
   }
 }

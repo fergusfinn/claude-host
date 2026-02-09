@@ -121,7 +121,6 @@ export function TabBar({ tabs, activeTabId, sessionExecutors, currentTheme, curr
             title={`${tabLabel(tab)}${exec ? ` (${exec})` : ""} (^A ${i + 1})`}
           >
             {dragOverIndex === i && <div className={styles.dropIndicator} />}
-            <div className={styles.dot} />
             <span className={styles.tabName}>{tabLabel(tab)}</span>
             {exec && <span className={styles.executorBadge}>{exec}</span>}
             {i < 9 && <kbd className={styles.kbd}>^A {i + 1}</kbd>}
