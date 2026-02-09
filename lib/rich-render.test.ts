@@ -208,7 +208,7 @@ describe("truncateAtWord", () => {
 
   it("truncates at word boundary", () => {
     const result = truncateAtWord("hello beautiful world", 15);
-    expect(result).toContain("\u2026");
+    expect(result).toContain("…");
     expect(result.length).toBeLessThanOrEqual(16); // 15 + ellipsis
   });
 
@@ -218,7 +218,7 @@ describe("truncateAtWord", () => {
 
   it("handles strings with no spaces", () => {
     const result = truncateAtWord("abcdefghijklmnop", 10);
-    expect(result.endsWith("\u2026")).toBe(true);
+    expect(result.endsWith("…")).toBe(true);
   });
 });
 

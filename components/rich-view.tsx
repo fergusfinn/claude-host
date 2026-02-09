@@ -369,6 +369,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
         } else if (msg.type === "turn_complete") {
           setIsStreaming(false);
           streamingStartRef.current = 0;
+          lastInterruptRef.current = 0;
         } else if (msg.type === "session_state") {
           if (msg.streaming) {
             setIsStreaming(true);
@@ -607,7 +608,11 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
     });
   }
 
+  const lastInterruptRef = useRef(0);
   function sendInterrupt() {
+    const now = Date.now();
+    if (now - lastInterruptRef.current < 2000) return;
+    lastInterruptRef.current = now;
     wsRef.current?.send(JSON.stringify({ type: "interrupt" }));
   }
 
@@ -703,9 +708,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
                   ? "Process exited"
                   : "Connected"
                 : connectionState === "connecting"
-                  ? "Connecting\u2026"
+                  ? "Connecting…"
                   : connectionState === "reconnecting"
-                    ? "Reconnecting\u2026"
+                    ? "Reconnecting…"
                     : "Disconnected"}
             </span>
             {connectionState === "connected" && processAlive === false && (
@@ -910,7 +915,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
             autoResize(e.target);
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message\u2026"
+          placeholder="Type a message…"
           disabled={!connected}
           rows={1}
           style={{
@@ -964,7 +969,7 @@ function ThinkingIndicator({ startTime, theme }: { startTime: number; theme: Ter
     <div className={styles.streaming}>
       <span className={styles.streamingDot} style={{ background: theme.cursor }} />
       <span>
-        {"thinking\u2026"}
+        {"thinking…"}
         {elapsed >= 3 && (
           <span style={{ marginLeft: 6, opacity: 0.5 }}>{elapsed}s</span>
         )}
@@ -1072,7 +1077,7 @@ function ToolPairBlock({
   const displayResult = resultContent
     ? isExpanded
       ? resultContent
-      : resultLines.slice(0, 12).join("\n") + "\n\u2026"
+      : resultLines.slice(0, 12).join("\n") + "\n…"
     : null;
 
   // Done hint for collapsed state
@@ -1142,7 +1147,7 @@ function ToolPairBlock({
           {toolResult === null ? (
             <div className={styles.toolPairRunning} style={{ color: toolColor }}>
               <span className={styles.toolPendingDot} style={{ background: toolColor }} />
-              <span>{"running\u2026"}</span>
+              <span>{"running…"}</span>
             </div>
           ) : resultContent && resultContent.trim() ? (
             <div className={styles.toolPairResult}>
@@ -1351,7 +1356,7 @@ function SubagentBlock({
   const displayResult = resultContent
     ? isExpanded
       ? resultContent
-      : resultLines.slice(0, 12).join("\n") + "\n\u2026"
+      : resultLines.slice(0, 12).join("\n") + "\n…"
     : null;
 
   // Build result map and render items for child messages

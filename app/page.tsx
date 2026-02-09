@@ -687,6 +687,13 @@ export default function Home() {
             const next = [...prev];
             const [moved] = next.splice(fromIndex, 1);
             next.splice(toIndex, 0, moved);
+            // Persist the new order to the database
+            const names = next.flatMap((t) => getAllLeaves(t.layout).map((l) => l.sessionName));
+            fetch("/api/sessions/reorder", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ names }),
+            }).catch(() => {});
             return next;
           });
         }}

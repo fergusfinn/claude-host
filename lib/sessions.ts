@@ -79,6 +79,18 @@ class SessionManager {
     } catch {
       // Column already exists
     }
+    // Migration: add position column for stable tab ordering
+    try {
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN position INTEGER DEFAULT 0`);
+      // Backfill existing sessions: assign positions based on created_at DESC
+      this.db.exec(`
+        UPDATE sessions SET position = (
+          SELECT COUNT(*) FROM sessions s2 WHERE s2.created_at > sessions.created_at
+        )
+      `);
+    } catch {
+      // Column already exists
+    }
   }
 
   /** Set the executor registry (called by server.ts after startup) */
@@ -92,7 +104,7 @@ class SessionManager {
 
   list(): Session[] {
     const rows = this.db
-      .prepare("SELECT * FROM sessions ORDER BY created_at DESC")
+      .prepare("SELECT * FROM sessions ORDER BY position ASC, created_at DESC")
       .all() as any[];
     const alive: Session[] = [];
     const deadNames: string[] = [];
@@ -202,8 +214,8 @@ class SessionManager {
     if (mode === "rich") {
       // Rich sessions use tmux via the wrapper — insert DB row and create runtime dir
       this.db
-        .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode) VALUES (?, ?, ?, ?, ?)")
-        .run(name, description, finalCommand, executor, "rich");
+        .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode, position) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(name, description, finalCommand, executor, "rich", this.nextPosition());
 
       // Create runtime directory for events file and FIFO
       mkdirSync(join(process.cwd(), "data", "rich", name), { recursive: true });
@@ -229,8 +241,8 @@ class SessionManager {
     const result = await exec.createSession({ name, description, command: finalCommand });
 
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor) VALUES (?, ?, ?, ?)")
-      .run(name, description, result.command, executor);
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, position) VALUES (?, ?, ?, ?, ?)")
+      .run(name, description, result.command, executor, this.nextPosition());
 
     return {
       name,
@@ -261,8 +273,8 @@ class SessionManager {
 
     // Insert into DB with job fields
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, job_prompt, job_max_iterations) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(name, prompt.slice(0, 200), command, executor, prompt, maxIterations);
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, job_prompt, job_max_iterations, position) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(name, prompt.slice(0, 200), command, executor, prompt, maxIterations, this.nextPosition());
 
     return {
       name,
@@ -404,8 +416,8 @@ class SessionManager {
     });
 
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(newName, `forked from ${sourceName}`, result.command, sourceName, sourceExecutor, "terminal");
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode, position) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(newName, `forked from ${sourceName}`, result.command, sourceName, sourceExecutor, "terminal", this.nextPosition());
 
     return {
       name: newName,
@@ -448,8 +460,8 @@ class SessionManager {
     mkdirSync(join(process.cwd(), "data", "rich", newName), { recursive: true });
 
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(newName, `forked from ${sourceName}`, forkCommand, sourceName, sourceExecutor, "rich");
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode, position) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(newName, `forked from ${sourceName}`, forkCommand, sourceName, sourceExecutor, "rich", this.nextPosition());
 
     return {
       name: newName,
@@ -497,11 +509,28 @@ class SessionManager {
   /** Adopt sessions reported by a remote executor that don't exist in the DB */
   adoptOrphanedSessions(executorId: string, sessions: SessionLiveness[]): void {
     const insert = this.db.prepare(
-      "INSERT OR IGNORE INTO sessions (name, description, command, executor) VALUES (?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO sessions (name, description, command, executor, position) VALUES (?, ?, ?, ?, ?)"
     );
     for (const s of sessions) {
-      insert.run(s.name, "", "claude", executorId);
+      insert.run(s.name, "", "claude", executorId, this.nextPosition());
     }
+  }
+
+  /** Reorder sessions: accepts an ordered array of session names */
+  reorder(names: string[]): void {
+    const stmt = this.db.prepare("UPDATE sessions SET position = ? WHERE name = ?");
+    const tx = this.db.transaction(() => {
+      for (let i = 0; i < names.length; i++) {
+        stmt.run(i, names[i]);
+      }
+    });
+    tx();
+  }
+
+  /** Get the next position value for a new session */
+  private nextPosition(): number {
+    const row = this.db.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS pos FROM sessions").get() as { pos: number };
+    return row.pos;
   }
 
   getMode(name: string): "terminal" | "rich" {
@@ -547,7 +576,7 @@ class SessionManager {
 }
 
 // Singleton — survives Next.js hot reloads in dev
-const SCHEMA_VERSION = 7; // bump to force re-creation after class changes
+const SCHEMA_VERSION = 8; // bump to force re-creation after class changes
 const globalForSessions = globalThis as unknown as {
   __sessions?: SessionManager;
   __sessionsVersion?: number;

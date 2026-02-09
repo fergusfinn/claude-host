@@ -54,6 +54,8 @@ interface RichState {
   pollTimer: ReturnType<typeof setInterval> | null;
   lineBuffer: string; // partial line from last read
   lastPromptText: string | null; // dedup user events echoed by claude
+  // Interrupt debounce
+  lastInterruptTime: number;
   // Health check
   healthCheckTimer: ReturnType<typeof setInterval> | null;
   lastProcessAlive: boolean;
@@ -144,6 +146,7 @@ function getOrCreate(name: string, command = "claude"): RichState {
       pollTimer: null,
       lineBuffer: "",
       lastPromptText: null,
+      lastInterruptTime: 0,
       healthCheckTimer: null,
       lastProcessAlive: false,
     };
@@ -315,6 +318,7 @@ function processEventChunk(name: string, state: RichState, chunk: string): void 
       // Handle turn completion
       if (event.type === "result") {
         state.turning = false;
+        state.lastInterruptTime = 0;
         broadcast(state, { type: "event", event });
         broadcast(state, { type: "turn_complete" });
         // Persist offset at turn boundaries
@@ -503,7 +507,9 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
     }
 
     if (parsed.type === "interrupt") {
-      if (state.turning && tmuxExists(sessionName)) {
+      const now = Date.now();
+      if (state.turning && tmuxExists(sessionName) && now - state.lastInterruptTime > 2000) {
+        state.lastInterruptTime = now;
         sendInterrupt(sessionName);
       }
       return;
@@ -540,6 +546,14 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
       // Ensure we're tailing (may not have started if tmux was just created)
       if (!state.pollTimer) {
         startTailing(sessionName, state);
+      }
+
+      // Broadcast process_alive: true now that tmux is running (fixes race
+      // where initial session_state sent process_alive: false before the
+      // first prompt spawned the tmux session)
+      if (!state.lastProcessAlive) {
+        state.lastProcessAlive = true;
+        broadcast(state, { type: "session_state", streaming: state.turning, process_alive: true });
       }
 
       const userMsg = {

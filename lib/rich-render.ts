@@ -133,7 +133,7 @@ export function truncateAtWord(s: string, max: number): string {
   if (s.length <= max) return s;
   const truncated = s.slice(0, max);
   const lastSpace = truncated.lastIndexOf(" ");
-  return (lastSpace > max * 0.5 ? truncated.slice(0, lastSpace) : truncated) + "\u2026";
+  return (lastSpace > max * 0.5 ? truncated.slice(0, lastSpace) : truncated) + "…";
 }
 
 export function getToolSummary(name: string, input: Record<string, any>): string {
@@ -175,7 +175,7 @@ export function formatToolInput(name: string, input: Record<string, any>): strin
       const content = input.content as string;
       const lines = content.split("\n");
       if (lines.length > 30) {
-        parts.push(lines.slice(0, 25).join("\n") + `\n\u2026 (${lines.length} lines total)`);
+        parts.push(lines.slice(0, 25).join("\n") + `\n… (${lines.length} lines total)`);
       } else {
         parts.push(content);
       }
@@ -190,7 +190,7 @@ export function formatToolInput(name: string, input: Record<string, any>): strin
       const prompt = input.prompt as string;
       const lines = prompt.split("\n");
       if (lines.length > 20) {
-        parts.push(lines.slice(0, 15).join("\n") + `\n\u2026 (${lines.length} lines total)`);
+        parts.push(lines.slice(0, 15).join("\n") + `\n… (${lines.length} lines total)`);
       } else {
         parts.push(prompt);
       }
