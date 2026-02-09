@@ -20,7 +20,8 @@ touch "$EVENTS_FILE"
 
 SESSION_ID=""
 
-trap 'kill $CLAUDE_PID 2>/dev/null; exit 0' TERM INT
+trap 'kill $CLAUDE_PID 2>/dev/null; exit 0' TERM
+trap 'kill -INT $CLAUDE_PID 2>/dev/null' INT
 
 while true; do
   # Build command — add --resume if we have a session ID from a previous run
@@ -40,7 +41,8 @@ while true; do
   CLAUDE_PID=$!
 
   # Wait for claude to exit (crash, context exhaustion, etc.)
-  wait $CLAUDE_PID 2>/dev/null
+  # If interrupted by INT trap, re-wait so claude can flush its result event.
+  wait $CLAUDE_PID 2>/dev/null || wait $CLAUDE_PID 2>/dev/null
 
   # Close fd 3
   exec 3>&-

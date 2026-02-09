@@ -1266,7 +1266,7 @@ function SubagentBlock({
   onToggleResult?: () => void;
   childMessages?: RenderedMessage[];
 }) {
-  const agentColor = theme.brightMagenta;
+  const agentColor = theme.mode === "light" ? theme.magenta : theme.brightMagenta;
   const subagentType = toolUse.input.subagent_type as string | undefined;
   const description = toolUse.input.description as string | undefined;
 
@@ -1624,6 +1624,8 @@ function QuestionBlock({
 // ---- Helpers (component-local) ----
 
 function getToolColor(name: string, theme: TerminalTheme): string {
+  // For light themes, use standard (darker) ANSI colors; for dark themes, bright variants are fine
+  const isLight = theme.mode === "light";
   const map: Record<string, keyof TerminalTheme> = {
     Read: "blue",
     Edit: "yellow",
@@ -1631,9 +1633,9 @@ function getToolColor(name: string, theme: TerminalTheme): string {
     Bash: "red",
     Glob: "cyan",
     Grep: "magenta",
-    Task: "brightMagenta",
-    WebFetch: "brightCyan",
-    WebSearch: "brightCyan",
+    Task: isLight ? "magenta" : "brightMagenta",
+    WebFetch: isLight ? "cyan" : "brightCyan",
+    WebSearch: isLight ? "cyan" : "brightCyan",
   };
   const key = map[name];
   return key ? (theme[key] as string) : theme.cyan;
