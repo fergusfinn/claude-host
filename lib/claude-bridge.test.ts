@@ -129,14 +129,16 @@ describe("claude-bridge (tmux-backed)", () => {
       expect(sessionState).toEqual({ type: "session_state", streaming: false });
     });
 
-    it("closes previous client on reconnect", () => {
+    it("supports multiple simultaneous clients", () => {
       const ws1 = createMockWs();
       bridgeRichSession(ws1, "test-session");
 
       const ws2 = createMockWs();
       bridgeRichSession(ws2, "test-session");
 
-      expect(ws1.close).toHaveBeenCalled();
+      // Both clients should stay connected (no disconnect)
+      expect(ws1.close).not.toHaveBeenCalled();
+      expect(ws2.close).not.toHaveBeenCalled();
     });
 
     it("replays events from file on reconnect", () => {

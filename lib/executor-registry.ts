@@ -27,8 +27,16 @@ interface PendingRpc {
   timer: ReturnType<typeof setTimeout>;
 }
 
+export interface ExecutorLogEntry {
+  timestamp: number;
+  executorId: string;
+  event: string;
+  detail?: string;
+}
+
 const RPC_TIMEOUT = 30000; // 30s
 const HEARTBEAT_TIMEOUT = 45000; // 45s — mark offline after this
+const MAX_LOG_ENTRIES = 200;
 
 export class ExecutorRegistry {
   private executors = new Map<string, ConnectedExecutor>();
@@ -39,6 +47,7 @@ export class ExecutorRegistry {
     timer: ReturnType<typeof setTimeout>;
   }>();
   private healthCheckInterval: ReturnType<typeof setInterval>;
+  private logs: ExecutorLogEntry[] = [];
 
   constructor(private onExecutorChange?: (id: string, status: "online" | "offline") => void) {
     // Periodically check for stale executors
@@ -165,6 +174,7 @@ export class ExecutorRegistry {
   upgradeExecutor(executorId: string, opts?: { reason?: string }): void {
     const msg: UpgradeMessage = { type: "upgrade", reason: opts?.reason };
     this.sendToExecutor(executorId, msg);
+    this.log(executorId, "upgrade_sent", opts?.reason);
   }
 
   /** Send upgrade signal to all online executors, returns IDs signalled */
@@ -179,6 +189,25 @@ export class ExecutorRegistry {
       }
     }
     return ids;
+  }
+
+  /** Get recent log entries */
+  getLogs(since?: number): ExecutorLogEntry[] {
+    if (since) return this.logs.filter((l) => l.timestamp > since);
+    return [...this.logs];
+  }
+
+  private log(executorId: string, event: string, detail?: string): void {
+    const entry: ExecutorLogEntry = {
+      timestamp: Date.now(),
+      executorId,
+      event,
+      detail,
+    };
+    this.logs.push(entry);
+    if (this.logs.length > MAX_LOG_ENTRIES) {
+      this.logs = this.logs.slice(-MAX_LOG_ENTRIES);
+    }
   }
 
   /** Get cached session liveness for a specific session on an executor */
@@ -204,6 +233,7 @@ export class ExecutorRegistry {
       sessions: [],
     });
     this.onExecutorChange?.(id, "online");
+    this.log(id, "registered", `${msg.name}${msg.version ? ` v${msg.version}` : ""}`);
     console.log(`Executor registered: ${msg.name} (${id})${msg.version ? ` v${msg.version}` : ""}`);
   }
 
@@ -234,6 +264,7 @@ export class ExecutorRegistry {
     if (executor) {
       executor.info.status = "offline";
       this.onExecutorChange?.(executorId, "offline");
+      this.log(executorId, "disconnected", executor.info.name);
       console.log(`Executor disconnected: ${executor.info.name} (${executorId})`);
     }
     this.executors.delete(executorId);
@@ -243,6 +274,7 @@ export class ExecutorRegistry {
     const now = Math.floor(Date.now() / 1000);
     for (const [id, executor] of this.executors) {
       if (now - executor.info.last_seen > HEARTBEAT_TIMEOUT / 1000) {
+        this.log(id, "timed_out", executor.info.name);
         console.log(`Executor timed out: ${executor.info.name} (${id})`);
         this.handleDisconnect(id);
         try { executor.ws.close(); } catch {}

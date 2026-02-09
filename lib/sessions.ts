@@ -1,9 +1,18 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "fs";
 import { dirname, join } from "path";
+import { execFileSync } from "child_process";
 import type { Session, ExecutorInfo } from "../shared/types";
 import { LocalExecutor } from "./executor-interface";
 import { cleanupRichSession } from "./claude-bridge";
+
+// Cache local git version at startup
+let localVersion: string | undefined;
+try {
+  localVersion = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf-8" }).trim();
+} catch {
+  // Not a git repo or git not available
+}
 
 export type { Session };
 
@@ -413,7 +422,7 @@ class SessionManager {
   listExecutors(): ExecutorInfo[] {
     const executors: ExecutorInfo[] = [];
     if (this.localExecutor) {
-      executors.push({ id: "local", name: "local", labels: [], status: "online", last_seen: Math.floor(Date.now() / 1000) });
+      executors.push({ id: "local", name: "local", labels: [], status: "online", last_seen: Math.floor(Date.now() / 1000), version: localVersion });
     }
     if (this._registry) {
       executors.push(...this._registry.listExecutors());

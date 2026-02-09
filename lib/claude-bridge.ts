@@ -45,7 +45,7 @@ interface RichState {
   eventsFilePath: string;
   fifoPath: string;
   byteOffset: number;
-  ws: WebSocket | null;
+  clients: Set<WebSocket>;
   turning: boolean;
   initReceived: boolean;
   command: string;
@@ -132,7 +132,7 @@ function getOrCreate(name: string, command = "claude"): RichState {
       eventsFilePath: join(dir, "events.ndjson"),
       fifoPath: join(dir, "prompt.fifo"),
       byteOffset: saved?.byteOffset ?? 0,
-      ws: null,
+      clients: new Set(),
       turning: false,
       initReceived: false,
       command,
@@ -163,6 +163,13 @@ function getOrCreate(name: string, command = "claude"): RichState {
 function send(ws: WebSocket, msg: object) {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(msg));
+  }
+}
+
+function broadcast(state: RichState, msg: object) {
+  const json = JSON.stringify(msg);
+  for (const ws of state.clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(json);
   }
 }
 
@@ -271,18 +278,15 @@ function processEventChunk(name: string, state: RichState, chunk: string): void 
       // Handle turn completion
       if (event.type === "result") {
         state.turning = false;
-        if (state.ws) {
-          send(state.ws, { type: "event", event });
-          send(state.ws, { type: "turn_complete" });
-        }
+        broadcast(state, { type: "event", event });
+        broadcast(state, { type: "turn_complete" });
         // Persist offset at turn boundaries
         saveState(name, state.sessionId, state.byteOffset);
         continue;
       }
 
-      // Forward event to WS client (skip ephemeral stream deltas from persistence,
-      // but still relay them to the client for live streaming)
-      if (state.ws) send(state.ws, { type: "event", event });
+      // Forward event to all WS clients
+      broadcast(state, { type: "event", event });
     } catch {
       // Non-JSON line — skip
     }
@@ -407,32 +411,27 @@ function sendInterrupt(name: string): void {
 export function bridgeRichSession(ws: WebSocket, sessionName: string, command = "claude"): void {
   const state = getOrCreate(sessionName, command);
 
-  // Disconnect previous client if any
-  if (state.ws && state.ws !== ws && state.ws.readyState === WebSocket.OPEN) {
-    console.log(`[rich:${sessionName}] Disconnecting previous WS client`);
-    state.ws.close();
-  }
+  // Add this client to the set
+  state.clients.add(ws);
 
-  state.ws = ws;
-  state.initReceived = false; // Reset for replay dedup
-
-  // Replay events from the file (source of truth)
+  // Replay events from the file to this new client
   replayEventsFromFile(state, ws);
 
-  // Update byte offset to end of file so tailing picks up from here
-  if (existsSync(state.eventsFilePath)) {
-    try {
-      state.byteOffset = statSync(state.eventsFilePath).size;
-    } catch {}
+  // If this is the first client, start tailing from current file position
+  if (state.clients.size === 1) {
+    if (existsSync(state.eventsFilePath)) {
+      try {
+        state.byteOffset = statSync(state.eventsFilePath).size;
+      } catch {}
+    }
+    state.initReceived = false;
+    startTailing(sessionName, state);
   }
 
-  // Start tailing for live events
-  startTailing(sessionName, state);
-
-  // Tell client whether a turn is currently in progress
+  // Tell this client whether a turn is currently in progress
   send(ws, { type: "session_state", streaming: state.turning });
 
-  console.log(`[rich:${sessionName}] WS client connected (tmux=${tmuxExists(sessionName)}, turning=${state.turning})`);
+  console.log(`[rich:${sessionName}] WS client connected (clients=${state.clients.size}, tmux=${tmuxExists(sessionName)}, turning=${state.turning})`);
 
   // Handle incoming messages
   ws.on("message", (msg: Buffer | string) => {
@@ -500,10 +499,10 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
   });
 
   const cleanup = (reason?: string) => {
-    if (state.ws === ws) {
-      console.log(`[rich:${sessionName}] WS client disconnected (reason=${reason ?? "unknown"}, turning=${state.turning})`);
-      state.ws = null;
-      // Stop tailing when no client is connected (saves resources).
+    state.clients.delete(ws);
+    console.log(`[rich:${sessionName}] WS client disconnected (reason=${reason ?? "unknown"}, remaining=${state.clients.size})`);
+    if (state.clients.size === 0) {
+      // Stop tailing when no clients are connected (saves resources).
       // Events are still captured by the wrapper in the file.
       stopTailing(state);
       // Persist current offset
@@ -520,9 +519,10 @@ export function cleanupRichSession(name: string): void {
   const state = sessions.get(name);
   if (state) {
     stopTailing(state);
-    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-      state.ws.close();
+    for (const ws of state.clients) {
+      if (ws.readyState === WebSocket.OPEN) ws.close();
     }
+    state.clients.clear();
     sessions.delete(name);
   }
 

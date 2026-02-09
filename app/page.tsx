@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Dashboard, SettingsForm } from "@/components/dashboard";
+import { ExecutorsPage } from "@/components/executors-page";
 import { PaneLayout } from "@/components/pane-layout";
 import { TabBar } from "@/components/tab-bar";
 import { getThemeById, DEFAULT_DARK_THEME, type TerminalTheme, getFontById, DEFAULT_FONT_ID, type TerminalFont, ensureFontLoaded, getDefaultThemeForMode, themeToChromeVars } from "@/lib/themes";
@@ -44,7 +45,7 @@ function createTab(sessionName: string): TabState {
 
 export default function Home() {
   const [tabs, setTabs] = useState<TabState[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null); // null=dashboard, "executors"=executors page, else tab ID
   const [hydrated, setHydrated] = useState(false);
 
   // Read session from URL after hydration to avoid SSR/client mismatch
@@ -233,9 +234,9 @@ export default function Home() {
     });
   }, [liveSessions]);
 
-  // If active tab got removed, switch to another
+  // If active tab got removed, switch to another (skip special pages)
   useEffect(() => {
-    if (activeTabId !== null && !tabs.some((t) => t.id === activeTabId)) {
+    if (activeTabId !== null && activeTabId !== "executors" && !tabs.some((t) => t.id === activeTabId)) {
       setActiveTabId(tabs.length > 0 ? tabs[tabs.length - 1].id : null);
     }
   }, [tabs, activeTabId]);
@@ -256,7 +257,7 @@ export default function Home() {
         }
       }
     }
-  }, [activeTab]);
+  }, [activeTab, activeTabId]);
 
   function connectSession(name: string, mode?: "terminal" | "rich") {
     // Eagerly update sessionModes so the pane renders the right view immediately
@@ -504,12 +505,14 @@ export default function Home() {
         setActiveTabId(null);
       } else if (keyLower === sc.closeTab && activeTab !== null) {
         closePane();
-      } else if (keyLower === sc.nextTab) {
-        const allIds: (string | null)[] = [null, ...tabs.map((t) => t.id)];
+      } else if (keyLower === "e") {
+        setActiveTabId("executors");
+      } else if (keyLower === sc.nextTab || key === "ArrowRight") {
+        const allIds: (string | null)[] = [null, ...tabs.map((t) => t.id), "executors"];
         const idx = allIds.indexOf(activeTabId);
         setActiveTabId(allIds[(idx + 1) % allIds.length]);
-      } else if (keyLower === sc.prevTab) {
-        const allIds: (string | null)[] = [null, ...tabs.map((t) => t.id)];
+      } else if (keyLower === sc.prevTab || key === "ArrowLeft") {
+        const allIds: (string | null)[] = [null, ...tabs.map((t) => t.id), "executors"];
         const idx = allIds.indexOf(activeTabId);
         setActiveTabId(allIds[(idx - 1 + allIds.length) % allIds.length]);
       } else if (keyLower === sc.refresh && activeTab !== null) {
@@ -627,6 +630,13 @@ export default function Home() {
           flexDirection: "column",
         }}>
           <Dashboard onConnect={connectSession} openCreateRef={openCreateRef} />
+        </div>
+        <div style={{
+          position: "absolute", inset: 0,
+          display: activeTabId === "executors" ? "flex" : "none",
+          flexDirection: "column",
+        }}>
+          <ExecutorsPage />
         </div>
         {tabs.map((tab) => (
           <div
