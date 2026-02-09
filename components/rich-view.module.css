@@ -572,6 +572,21 @@
   40% { opacity: 1; }
 }
 
+/* Nested subagent content */
+
+.subagentContent {
+  border-left: 2px solid;
+  margin: 4px 0 8px 6px;
+  padding-left: 10px;
+  font-size: 12px;
+}
+
+.subagentText {
+  padding: 2px 0;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
 /* Question block (AskUserQuestion) */
 
 .questionBlock {

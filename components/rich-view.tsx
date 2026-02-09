@@ -1255,6 +1255,7 @@ function SubagentBlock({
   onToggle,
   resultExpanded,
   onToggleResult,
+  childMessages,
 }: {
   toolUse: ContentBlockToolUse;
   toolResult: ContentBlockToolResult | null;
@@ -1263,6 +1264,7 @@ function SubagentBlock({
   onToggle: () => void;
   resultExpanded?: boolean;
   onToggleResult?: () => void;
+  childMessages?: RenderedMessage[];
 }) {
   const agentColor = theme.brightMagenta;
   const subagentType = toolUse.input.subagent_type as string | undefined;
@@ -1282,6 +1284,82 @@ function SubagentBlock({
       ? resultContent
       : resultLines.slice(0, 12).join("\n") + "\n\u2026"
     : null;
+
+  // Build result map and render items for child messages
+  const childResultMap = useMemo(() => {
+    const map = new Map<string, ContentBlockToolResult>();
+    if (!childMessages) return map;
+    for (const msg of childMessages) {
+      if (msg.role !== "user") continue;
+      for (const block of msg.blocks) {
+        if (block.type === "tool_result") map.set(block.tool_use_id, block);
+      }
+    }
+    return map;
+  }, [childMessages]);
+
+  const childRenderItems = useMemo(() => {
+    if (!childMessages) return [];
+    return childMessages
+      .filter((msg) => msg.role === "assistant")
+      .map((msg) => ({
+        msg,
+        items: buildRenderItems(msg.blocks, childResultMap),
+      }));
+  }, [childMessages, childResultMap]);
+
+  // All tool calls in nested view are collapsed by default
+  const [nestedCollapsed, setNestedCollapsed] = useState<Set<string>>(new Set());
+  const [nestedExpandedResults, setNestedExpandedResults] = useState<Set<string>>(new Set());
+
+  // Auto-collapse nested tool calls
+  useEffect(() => {
+    const newCollapsed = new Set(nestedCollapsed);
+    let changed = false;
+    for (const { items } of childRenderItems) {
+      for (const item of items) {
+        if (item.kind === "tool_pair" || item.kind === "subagent") {
+          if (!newCollapsed.has(item.toolUse.id)) {
+            newCollapsed.add(item.toolUse.id);
+            changed = true;
+          }
+        } else if (item.kind === "tool_group") {
+          const groupKey = `group-${item.pairs[0].toolUse.id}`;
+          if (!newCollapsed.has(groupKey)) {
+            newCollapsed.add(groupKey);
+            changed = true;
+          }
+          for (const pair of item.pairs) {
+            if (!newCollapsed.has(pair.toolUse.id)) {
+              newCollapsed.add(pair.toolUse.id);
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+    if (changed) setNestedCollapsed(newCollapsed);
+  }, [childRenderItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleNestedTool = (id: string) => {
+    setNestedCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleNestedResult = (id: string) => {
+    setNestedExpandedResults((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const hasChildContent = childRenderItems.some(({ items }) => items.length > 0);
 
   return (
     <div
@@ -1319,21 +1397,86 @@ function SubagentBlock({
             </div>
           )}
 
-          {toolResult === null ? (
+          {/* Nested subagent content */}
+          {hasChildContent && (
+            <div className={styles.subagentContent} style={{ borderColor: `${agentColor}30` }}>
+              {childRenderItems.map(({ msg, items }) => {
+                if (items.length === 0) return null;
+                return (
+                  <div key={msg.id}>
+                    {items.map((item, i) => {
+                      const key = `${msg.id}-${i}`;
+                      switch (item.kind) {
+                        case "text":
+                          return (
+                            <div key={key} className={styles.subagentText}>
+                              <MemoizedMarkdown text={item.block.text} theme={theme} />
+                            </div>
+                          );
+                        case "tool_pair":
+                          return (
+                            <ToolPairBlock
+                              key={key}
+                              toolUse={item.toolUse}
+                              toolResult={item.toolResult}
+                              theme={theme}
+                              collapsed={nestedCollapsed.has(item.toolUse.id)}
+                              onToggle={() => toggleNestedTool(item.toolUse.id)}
+                              resultExpanded={nestedExpandedResults.has(item.toolUse.id)}
+                              onToggleResult={() => toggleNestedResult(item.toolUse.id)}
+                              compact
+                            />
+                          );
+                        case "tool_group":
+                          return (
+                            <ToolGroupBlock
+                              key={key}
+                              name={item.name}
+                              pairs={item.pairs}
+                              theme={theme}
+                              collapsedTools={nestedCollapsed}
+                              onToggle={toggleNestedTool}
+                              expandedResults={nestedExpandedResults}
+                              onToggleResult={toggleNestedResult}
+                            />
+                          );
+                        default:
+                          return null;
+                      }
+                    })}
+                  </div>
+                );
+              })}
+              {toolResult === null && (
+                <div className={styles.subagentWorkingInline} style={{ color: agentColor }}>
+                  <span className={styles.subagentDots}>
+                    <span>.</span><span>.</span><span>.</span>
+                  </span>
+                  <span>agent working</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Fallback: no child content yet */}
+          {!hasChildContent && toolResult === null && (
             <div className={styles.subagentWorkingInline} style={{ color: agentColor }}>
               <span className={styles.subagentDots}>
                 <span>.</span><span>.</span><span>.</span>
               </span>
               <span>agent working</span>
             </div>
-          ) : resultContent && resultContent.trim() ? (
+          )}
+
+          {/* Final result */}
+          {resultContent && resultContent.trim() ? (
             <div className={styles.toolPairResult}>
               <pre
-                className={`${styles.toolResultContent} ${toolResult.is_error ? styles.toolResultError : ""}`}
+                className={`${styles.toolResultContent} ${toolResult!.is_error ? styles.toolResultError : ""}`}
                 style={{
-                  background: toolResult.is_error ? `${theme.red}10` : `${theme.foreground}05`,
-                  color: toolResult.is_error ? theme.red : `${theme.foreground}90`,
-                  borderColor: toolResult.is_error ? `${theme.red}25` : `${theme.foreground}10`,
+                  background: toolResult!.is_error ? `${theme.red}10` : `${theme.foreground}05`,
+                  color: toolResult!.is_error ? theme.red : `${theme.foreground}90`,
+                  borderColor: toolResult!.is_error ? `${theme.red}25` : `${theme.foreground}10`,
                 }}
               >
                 {displayResult}
