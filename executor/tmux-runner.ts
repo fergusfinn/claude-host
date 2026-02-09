@@ -9,6 +9,10 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, resolve } from "path";
 import type { CreateSessionOpts, CreateJobOpts, ForkSessionOpts, CreateRichSessionOpts, SessionLiveness, SessionAnalysis } from "../shared/types";
 
+// Repo root: resolve from this file's location (executor/tmux-runner.ts -> repo root)
+// This is critical for remote executors that may not run from the repo directory.
+const REPO_ROOT = resolve(__dirname, "..");
+
 const TMUX = (() => {
   try {
     return execFileSync("which", ["tmux"], { encoding: "utf-8" }).trim();
@@ -216,12 +220,12 @@ export class TmuxRunner {
       return { name, command };
     }
 
-    const dataDir = join(process.cwd(), "data", "rich", name);
+    const dataDir = join(REPO_ROOT, "data", "rich", name);
     mkdirSync(dataDir, { recursive: true });
 
     const eventsFile = join(dataDir, "events.ndjson");
     const fifoPath = join(dataDir, "prompt.fifo");
-    const wrapperScript = join(process.cwd(), "scripts", "rich-wrapper.sh");
+    const wrapperScript = join(REPO_ROOT, "scripts", "rich-wrapper.sh");
 
     // Build claude args
     const claudeArgs = ["-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose"];
@@ -233,16 +237,11 @@ export class TmuxRunner {
       claudeArgs.push("--settings", settingsMatch[1]);
     }
 
-    console.log(`[rich:${name}] Creating tmux session ${tName}`);
-    console.log(`[rich:${name}]   cwd: ${process.cwd()}`);
-    console.log(`[rich:${name}]   wrapper: ${wrapperScript} (exists: ${existsSync(wrapperScript)})`);
-    console.log(`[rich:${name}]   events: ${eventsFile}`);
-    console.log(`[rich:${name}]   fifo: ${fifoPath}`);
-    console.log(`[rich:${name}]   claudeArgs: ${JSON.stringify(claudeArgs)}`);
+    console.log(`[rich:${name}] Creating tmux session ${tName} (repoRoot=${REPO_ROOT})`);
 
     const r = spawnSync(TMUX, [
       "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
-      "-c", process.cwd(),
+      "-c", REPO_ROOT,
       "bash", wrapperScript, eventsFile, fifoPath, ...claudeArgs,
     ], { stdio: "pipe" });
 
@@ -251,18 +250,17 @@ export class TmuxRunner {
     }
 
     spawnSync(TMUX, ["set-option", "-t", tName, "status", "off"], { stdio: "pipe" });
-    // Keep remain-on-exit ON so we can diagnose crashes
-    spawnSync(TMUX, ["set-option", "-t", tName, "remain-on-exit", "on"], { stdio: "pipe" });
+    spawnSync(TMUX, ["set-option", "-t", tName, "remain-on-exit", "off"], { stdio: "pipe" });
 
     return { name, command };
   }
 
   diagnoseRichSession(name: string): Record<string, unknown> {
     const tName = `rich-${name}`;
-    const dataDir = join(process.cwd(), "data", "rich", name);
+    const dataDir = join(REPO_ROOT, "data", "rich", name);
     const eventsFile = join(dataDir, "events.ndjson");
     const fifoPath = join(dataDir, "prompt.fifo");
-    const wrapperScript = join(process.cwd(), "scripts", "rich-wrapper.sh");
+    const wrapperScript = join(REPO_ROOT, "scripts", "rich-wrapper.sh");
 
     const tmuxAlive = spawnSync(TMUX, ["has-session", "-t", tName], { stdio: "pipe" }).status === 0;
     let paneContent = "";
@@ -283,7 +281,7 @@ export class TmuxRunner {
     try { claudePath = spawnSync("which", ["claude"], { encoding: "utf-8", timeout: 2000 }).stdout?.trim() || "not found"; } catch {}
 
     return {
-      cwd: process.cwd(),
+      repoRoot: REPO_ROOT,
       tmuxAlive,
       paneContent,
       eventsExists: existsSync(eventsFile),
@@ -296,7 +294,7 @@ export class TmuxRunner {
   }
 
   snapshotRichSession(name: string): string {
-    const eventsPath = join(process.cwd(), "data", "rich", name, "events.ndjson");
+    const eventsPath = join(REPO_ROOT, "data", "rich", name, "events.ndjson");
     if (!existsSync(eventsPath)) return "";
     let content: string;
     try {
