@@ -461,11 +461,13 @@ class SessionManager {
 
   // --- Private helpers ---
 
-  /** Build --settings flag to set Claude Code's theme based on dark/light mode */
+  /** Build --settings flag to set Claude Code's theme to use ANSI palette colors.
+   *  Always use dark-ansi: it uses default terminal fg/bg for user messages and
+   *  ANSI palette colors for syntax/diffs, so it adapts to both dark and light
+   *  terminal themes. light-ansi uses \e[30m\e[40m for user messages (black on
+   *  black) which creates jarring dark bubbles on light backgrounds. */
   private getClaudeThemeArg(): string {
-    const mode = this.getConfig("mode");
-    const theme = mode === "light" ? "light-ansi" : "dark-ansi";
-    return `--settings '{"theme":"${theme}"}'`;
+    return `--settings '{"theme":"dark-ansi"}'`;
   }
 
   private getSessionExecutorId(name: string): string {

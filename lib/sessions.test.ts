@@ -169,11 +169,11 @@ describe("SessionManager", () => {
       expect(s.command).toContain("dark-ansi");
     });
 
-    it("uses light-ansi theme when mode is light", async () => {
+    it("uses dark-ansi theme even when mode is light", async () => {
       const m = mgr();
       m.setConfig("mode", "light");
       const s = await m.create("light-cmd", "");
-      expect(s.command).toContain("light-ansi");
+      expect(s.command).toContain("dark-ansi");
     });
   });
 
