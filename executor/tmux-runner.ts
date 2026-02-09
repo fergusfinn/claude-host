@@ -52,7 +52,7 @@ export class TmuxRunner {
   }
 
   createSession(opts: CreateSessionOpts): { name: string; command: string } {
-    const { name, command = "claude", defaultCwd } = opts;
+    const { name, command = "claude" } = opts;
 
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
       throw new Error("Name must be alphanumeric, hyphens, underscores only");
@@ -63,8 +63,7 @@ export class TmuxRunner {
     }
 
     const tmuxArgs = ["new-session", "-d", "-s", name, "-x", "200", "-y", "50"];
-    const cwd = defaultCwd || process.cwd();
-    mkdirSync(cwd, { recursive: true });
+    const cwd = process.cwd();
     tmuxArgs.push("-c", cwd);
 
     const r = spawnSync(TMUX, tmuxArgs, { stdio: "pipe" });
@@ -92,7 +91,7 @@ export class TmuxRunner {
   }
 
   createJob(opts: CreateJobOpts): { name: string; command: string } {
-    const { name, prompt, maxIterations, defaultCwd } = opts;
+    const { name, prompt, maxIterations } = opts;
 
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
       throw new Error("Name must be alphanumeric, hyphens, underscores only");
@@ -102,8 +101,7 @@ export class TmuxRunner {
       throw new Error(`Session "${name}" already exists`);
     }
 
-    const cwd = defaultCwd || join(process.env.HOME || "/tmp", "workspace");
-    mkdirSync(cwd, { recursive: true });
+    const cwd = process.cwd();
 
     // Create tmux session
     const r = spawnSync(TMUX, ["new-session", "-d", "-s", name, "-x", "200", "-y", "50", "-c", cwd], { stdio: "pipe" });

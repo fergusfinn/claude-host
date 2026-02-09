@@ -21,14 +21,12 @@ export interface CreateSessionOpts {
   name: string;
   description?: string;
   command?: string;
-  defaultCwd?: string;
 }
 
 export interface CreateJobOpts {
   name: string;
   prompt: string;
   maxIterations: number;
-  defaultCwd?: string;
 }
 
 export interface ForkSessionOpts {

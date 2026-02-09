@@ -91,19 +91,24 @@ class SessionManager {
       const executor = row.executor || "local";
       const mode = row.mode || "terminal";
       if (executor === "local") {
-        // Rich sessions have no tmux — always alive
+        // Rich sessions have no tmux — check if bridge process exists
         if (mode === "rich") {
-          alive.push({
-            ...row,
-            mode,
-            parent: row.parent || null,
-            executor: "local",
-            last_activity: Math.floor(Date.now() / 1000),
-            alive: true,
-            job_prompt: row.job_prompt || null,
-            job_max_iterations: row.job_max_iterations || null,
-            needs_input: false,
-          });
+          const isAlive = richSessionExists(row.name);
+          if (isAlive) {
+            alive.push({
+              ...row,
+              mode,
+              parent: row.parent || null,
+              executor: "local",
+              last_activity: row.last_activity || Math.floor(new Date(row.created_at).getTime() / 1000),
+              alive: true,
+              job_prompt: row.job_prompt || null,
+              job_max_iterations: row.job_max_iterations || null,
+              needs_input: false,
+            });
+          } else {
+            deadNames.push(row.name);
+          }
           continue;
         }
         if (!this.localExecutor) { deadNames.push(row.name); continue; }
@@ -207,10 +212,8 @@ class SessionManager {
     }
 
     const exec = this.getExecutor(executor);
-    // Only pass defaultCwd for local executor — remote executors use their own default
-    const defaultCwd = executor === "local" ? (this.getConfig("defaultCwd") || undefined) : undefined;
 
-    const result = await exec.createSession({ name, description, command, defaultCwd });
+    const result = await exec.createSession({ name, description, command });
 
     this.db
       .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor) VALUES (?, ?, ?, ?)")
@@ -238,11 +241,8 @@ class SessionManager {
     }
 
     const exec = this.getExecutor(executor);
-    const defaultCwd = executor === "local"
-      ? (this.getConfig("defaultCwd") || join(process.env.HOME || "/tmp", "workspace"))
-      : undefined;
 
-    await exec.createJob({ name, prompt, maxIterations, defaultCwd });
+    await exec.createJob({ name, prompt, maxIterations });
 
     // Insert into DB with job fields
     this.db
@@ -307,7 +307,32 @@ class SessionManager {
   async summarize(name: string): Promise<string> {
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
-    const description = await exec.summarizeSession(name);
+
+    // Always run summarization on the main host: fetch the snapshot
+    // (possibly via RPC for remote executors), then call claude -p locally.
+    let snapshot: string;
+    try {
+      snapshot = await exec.snapshotSession(name, 200);
+    } catch {
+      return "";
+    }
+    if (!snapshot.trim()) return "";
+
+    const { execFile } = await import("child_process");
+    const description = await new Promise<string>((resolve) => {
+      const child = execFile("claude", [
+        "-p",
+        "You are looking at terminal output from a coding session. " +
+          "Summarize what this session is working on in one brief sentence (max 80 chars). " +
+          "Output ONLY the summary sentence, nothing else.",
+      ], { timeout: 60000 }, (err, stdout) => {
+        if (err || !stdout) { resolve(""); return; }
+        resolve(stdout.trim());
+      });
+      child.stdin?.write(snapshot);
+      child.stdin?.end();
+    });
+
     if (description) {
       this.db.prepare("UPDATE sessions SET description = ? WHERE name = ?").run(description, name);
     }

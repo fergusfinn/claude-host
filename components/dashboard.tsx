@@ -299,21 +299,31 @@ function SessionRow({
     return () => { cancelled = true; };
   }, [s.name, s.mode]);
 
-  // Auto-summarize sessions without a meaningful description (skip jobs and rich)
+  // Auto-summarize sessions without a meaningful description (skip jobs and rich).
+  // Polls every 10s until a description is obtained.
   useEffect(() => {
     if (s.job_prompt || s.mode === "rich") return;
-    const hasDesc = s.description && !s.description.startsWith("forked from");
-    if (hasDesc || summarizeRequested.current) return;
-    // Wait a bit for the session to produce output
-    const timer = setTimeout(() => {
+
+    function trySum() {
+      if (summarizeRequested.current) return;
       summarizeRequested.current = true;
       fetch(`/api/sessions/${encodeURIComponent(s.name)}/summarize`, { method: "POST" })
         .then((r) => r.json())
-        .then(({ description: desc }) => { if (desc) setDescription(desc); })
-        .catch(() => {});
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [s.name, s.description, s.mode]);
+        .then(({ description: desc }) => {
+          if (desc) setDescription(desc);
+          summarizeRequested.current = false;
+        })
+        .catch(() => { summarizeRequested.current = false; });
+    }
+
+    const interval = setInterval(() => {
+      const hasDesc = description && !description.startsWith("forked from");
+      if (hasDesc) return;
+      trySum();
+    }, 10_000);
+
+    return () => clearInterval(interval);
+  }, [s.name, s.mode, s.job_prompt, description]);
 
   function handleDelete(e: React.MouseEvent) {
     e.stopPropagation();
@@ -679,7 +689,6 @@ export function SettingsForm({
   onCancel: () => void;
 }) {
   const [defaultCommand, setDefaultCommand] = useState(config.defaultCommand || "claude");
-  const [defaultCwd, setDefaultCwd] = useState(config.defaultCwd || "");
   const [prefixTimeout, setPrefixTimeout] = useState(config.prefixTimeout || "800");
   const [showHints, setShowHints] = useState(config.showHints !== "false");
   const [saving, setSaving] = useState(false);
@@ -717,7 +726,6 @@ export function SettingsForm({
       }
       await onSave({
         defaultCommand: defaultCommand.trim() || "claude",
-        defaultCwd: defaultCwd.trim(),
         prefixTimeout: String(parseInt(prefixTimeout) || 800),
         forkHooks: JSON.stringify(forkHooks),
         showHints: String(showHints),
@@ -744,20 +752,6 @@ export function SettingsForm({
         />
         <div className={styles.hint}>
           Command to run when creating new sessions
-        </div>
-
-        <label className={styles.label} style={{ marginTop: 12 }}>Working directory</label>
-        <input
-          type="text"
-          value={defaultCwd}
-          onChange={(e) => setDefaultCwd(e.target.value)}
-          placeholder="(server working directory)"
-          autoComplete="off"
-          spellCheck={false}
-          className={styles.input}
-        />
-        <div className={styles.hint}>
-          Starting directory for new sessions (leave empty for server default)
         </div>
 
         <label className={styles.label} style={{ marginTop: 12 }}>Prefix timeout (ms)</label>

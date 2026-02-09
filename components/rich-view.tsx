@@ -549,9 +549,11 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
   const connected = connectionState === "connected";
   const streamingText = streamingTextRef.current;
 
+  const isEmpty = messages.length === 0 && !isStreaming;
+
   return (
     <div
-      className={styles.root}
+      className={`${styles.root} ${isEmpty ? styles.rootEmpty : ""}`}
       style={{
         background: theme.background,
         color: theme.foreground,
