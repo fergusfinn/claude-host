@@ -6,37 +6,35 @@
   container-type: inline-size;
 }
 
-/* When conversation is empty, center welcome + input vertically */
+/* When conversation is empty, center welcome + input as a cohesive unit */
 .rootEmpty {
-  justify-content: center;
+  /* No changes to root flex — status bar stays at top */
 }
 
 .rootEmpty .messagesWrap {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .rootEmpty .messages {
   position: static;
   overflow: visible;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 0;
+  flex: 0;
 }
 
 .rootEmpty .inputArea {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  transform: translateY(28px);
   background: transparent;
-  z-index: 1;
-  animation: emptyInputIn 0.3s ease-out both;
+  width: 100%;
+  animation: emptyInputIn 0.4s ease-out 0.1s both;
 }
 
 @keyframes emptyInputIn {
-  from { opacity: 0; transform: translateY(38px); }
-  to { opacity: 1; transform: translateY(28px); }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Status bar */
