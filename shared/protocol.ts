@@ -104,6 +104,12 @@ export interface SnapshotRichSessionRpc {
   name: string;
 }
 
+export interface DiagnoseRichSessionRpc {
+  type: "diagnose_rich_session";
+  id: string;
+  name: string;
+}
+
 export interface PingMessage {
   type: "ping";
   id: string;
@@ -127,6 +133,7 @@ export type ControlToExecutorMessage =
   | CreateRichSessionRpc
   | AttachRichSessionRpc
   | SnapshotRichSessionRpc
+  | DiagnoseRichSessionRpc
   | PingMessage
   | UpgradeMessage;
 

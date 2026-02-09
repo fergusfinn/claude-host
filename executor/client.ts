@@ -216,6 +216,12 @@ export class ExecutorClient {
           break;
         }
 
+        case "diagnose_rich_session": {
+          const diag = this.runner.diagnoseRichSession((msg as any).name);
+          this.send({ type: "response", id, ok: true, data: diag });
+          break;
+        }
+
         case "upgrade": {
           if (this.opts.noUpgrade) {
             console.log(`Upgrade requested but --no-upgrade is set, ignoring`);

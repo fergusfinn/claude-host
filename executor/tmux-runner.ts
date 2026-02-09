@@ -254,22 +254,45 @@ export class TmuxRunner {
     // Keep remain-on-exit ON so we can diagnose crashes
     spawnSync(TMUX, ["set-option", "-t", tName, "remain-on-exit", "on"], { stdio: "pipe" });
 
-    // Check if session is still alive after a brief delay
-    setTimeout(() => {
-      const alive = spawnSync(TMUX, ["has-session", "-t", tName], { stdio: "pipe" }).status === 0;
-      console.log(`[rich:${name}] Post-create check: tmux alive=${alive}`);
-      if (alive) {
-        const capture = spawnSync(TMUX, ["capture-pane", "-t", tName, "-p", "-S", "-20"], {
-          encoding: "utf-8", timeout: 2000,
-        });
-        const paneContent = (capture.stdout || "").trim();
-        if (paneContent) {
-          console.log(`[rich:${name}] Pane content:\n${paneContent}`);
-        }
-      }
-    }, 3000);
-
     return { name, command };
+  }
+
+  diagnoseRichSession(name: string): Record<string, unknown> {
+    const tName = `rich-${name}`;
+    const dataDir = join(process.cwd(), "data", "rich", name);
+    const eventsFile = join(dataDir, "events.ndjson");
+    const fifoPath = join(dataDir, "prompt.fifo");
+    const wrapperScript = join(process.cwd(), "scripts", "rich-wrapper.sh");
+
+    const tmuxAlive = spawnSync(TMUX, ["has-session", "-t", tName], { stdio: "pipe" }).status === 0;
+    let paneContent = "";
+    if (tmuxAlive) {
+      const capture = spawnSync(TMUX, ["capture-pane", "-t", tName, "-p", "-S", "-30"], {
+        encoding: "utf-8", timeout: 2000,
+      });
+      paneContent = (capture.stdout || "").trim();
+    }
+
+    let eventsContent = "";
+    if (existsSync(eventsFile)) {
+      try { eventsContent = readFileSync(eventsFile, "utf-8").slice(-2000); } catch {}
+    }
+
+    // Check claude availability
+    let claudePath = "";
+    try { claudePath = spawnSync("which", ["claude"], { encoding: "utf-8", timeout: 2000 }).stdout?.trim() || "not found"; } catch {}
+
+    return {
+      cwd: process.cwd(),
+      tmuxAlive,
+      paneContent,
+      eventsExists: existsSync(eventsFile),
+      eventsContent,
+      fifoExists: existsSync(fifoPath),
+      wrapperExists: existsSync(wrapperScript),
+      claudePath,
+      dataDir,
+    };
   }
 
   snapshotRichSession(name: string): string {
