@@ -118,12 +118,13 @@ export function ExecutorsPage() {
   }
 
   const remoteOnline = executors.filter((e) => e.status === "online" && e.id !== "local");
+  const hostVersion = executors.find((e) => e.id === "local")?.version;
 
   return (
     <div className={styles.root}>
       <div className={styles.panel}>
         <div className={styles.header}>
-          <span className={styles.title}>Executors</span>
+          <span className={styles.title}>Executors{hostVersion && <span className={styles.hostVersion}>host {hostVersion}</span>}</span>
           {remoteOnline.length > 0 && (
             <button className={styles.upgradeBtn} onClick={handleUpgradeAll}>
               Upgrade all remote
@@ -173,7 +174,7 @@ export function ExecutorsPage() {
 
       <div className={styles.logPanel}>
         <div className={styles.header}>
-          <span className={styles.title}>Log</span>
+          <span className={styles.title}>Remote executor log</span>
           {logs.length > 0 && (
             <button
               className={styles.clearBtn}
@@ -185,7 +186,7 @@ export function ExecutorsPage() {
         </div>
         <div className={styles.logScroll}>
           {logs.length === 0 && (
-            <div className={styles.emptyMsg}>No executor events yet</div>
+            <div className={styles.emptyMsg}>No remote executor events yet</div>
           )}
           {logs.map((entry, i) => (
             <div key={i} className={styles.logEntry}>

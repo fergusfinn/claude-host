@@ -23,6 +23,20 @@
   color: var(--text-2);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hostVersion {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-3);
+  text-transform: none;
+  letter-spacing: 0;
+  background: var(--bg-0);
+  padding: 1px 5px;
+  border-radius: 3px;
 }
 
 .list {

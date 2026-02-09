@@ -51,7 +51,9 @@ export default function Home() {
   // Read session from URL after hydration to avoid SSR/client mismatch
   useEffect(() => {
     const path = window.location.pathname;
-    if (path !== "/") {
+    if (path === "/executors") {
+      setActiveTabId("executors");
+    } else if (path !== "/") {
       const session = decodeURIComponent(path.slice(1));
       const tab = createTab(session);
       setTabs([tab]);
@@ -243,7 +245,11 @@ export default function Home() {
 
   // Sync URL when active tab changes
   useEffect(() => {
-    if (activeTab === null) {
+    if (activeTabId === "executors") {
+      if (window.location.pathname !== "/executors") {
+        window.history.replaceState(null, "", "/executors");
+      }
+    } else if (activeTab === null) {
       if (window.location.pathname !== "/") {
         window.history.replaceState(null, "", "/");
       }

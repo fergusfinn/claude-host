@@ -422,7 +422,8 @@ class SessionManager {
   listExecutors(): ExecutorInfo[] {
     const executors: ExecutorInfo[] = [];
     if (this.localExecutor) {
-      executors.push({ id: "local", name: "local", labels: [], status: "online", last_seen: Math.floor(Date.now() / 1000), version: localVersion });
+      const localCount = (this.db.prepare("SELECT COUNT(*) as c FROM sessions WHERE executor = 'local'").get() as any).c;
+      executors.push({ id: "local", name: "local", labels: [], status: "online", last_seen: Math.floor(Date.now() / 1000), version: localVersion, sessionCount: localCount });
     }
     if (this._registry) {
       executors.push(...this._registry.listExecutors());
