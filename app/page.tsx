@@ -505,14 +505,12 @@ export default function Home() {
         setActiveTabId(null);
       } else if (keyLower === sc.closeTab && activeTab !== null) {
         closePane();
-      } else if (keyLower === "e") {
-        setActiveTabId("executors");
       } else if (keyLower === sc.nextTab || key === "ArrowRight") {
-        const allIds: (string | null)[] = [null, ...tabs.map((t) => t.id), "executors"];
+        const allIds: (string | null)[] = [null, ...tabs.map((t) => t.id)];
         const idx = allIds.indexOf(activeTabId);
         setActiveTabId(allIds[(idx + 1) % allIds.length]);
       } else if (keyLower === sc.prevTab || key === "ArrowLeft") {
-        const allIds: (string | null)[] = [null, ...tabs.map((t) => t.id), "executors"];
+        const allIds: (string | null)[] = [null, ...tabs.map((t) => t.id)];
         const idx = allIds.indexOf(activeTabId);
         setActiveTabId(allIds[(idx - 1 + allIds.length) % allIds.length]);
       } else if (keyLower === sc.refresh && activeTab !== null) {
@@ -585,6 +583,18 @@ export default function Home() {
           </span>
         </div>
         <div className="app-header-right">
+          <button
+            className={`app-header-settings ${activeTabId === "executors" ? "app-header-settings-active" : ""}`}
+            onClick={() => setActiveTabId(activeTabId === "executors" ? null : "executors")}
+            title="Executors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+              <line x1="6" y1="6" x2="6.01" y2="6" />
+              <line x1="6" y1="18" x2="6.01" y2="18" />
+            </svg>
+          </button>
           <button
             className="app-header-settings"
             onClick={() => setSettingsOpen(true)}

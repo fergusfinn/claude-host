@@ -143,19 +143,6 @@
 
 .spacer { flex: 1; }
 
-.executorsTab {
-  border-right: none;
-  border-left: 1px solid var(--border);
-  gap: 5px;
-}
-.executorsTab svg {
-  flex-shrink: 0;
-  opacity: 0.6;
-}
-.executorsTab:hover svg {
-  opacity: 1;
-}
-
 .modeWrap {
   position: relative;
   display: flex;

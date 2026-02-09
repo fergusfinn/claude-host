@@ -164,6 +164,8 @@ button {
   align-items: center;
 }
 .app-header-settings:hover { color: var(--text-1); background: var(--bg-3); }
+.app-header-settings-active { color: var(--accent); }
+.app-header-settings-active:hover { color: var(--accent); }
 
 /* ---- Settings dialog (from page.tsx) ---- */
 
