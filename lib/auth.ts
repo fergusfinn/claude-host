@@ -22,7 +22,8 @@ const hasGitHub = AUTH_METHODS.includes("github") &&
 const hasCredentials = AUTH_METHODS.includes("credentials");
 
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL || undefined,
+  secret: process.env.BETTER_AUTH_SECRET || "dev-placeholder-secret-change-in-production",
+  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   database: new Database(join(process.cwd(), "data", "auth.db")),
   trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS
     ? process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(",").map((o) => o.trim())
