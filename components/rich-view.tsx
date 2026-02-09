@@ -5,7 +5,6 @@ import { type TerminalTheme, type TerminalFont } from "@/lib/themes";
 import { renderMarkdown, MemoizedMarkdown } from "@/lib/markdown";
 import {
   buildRenderItems,
-  formatDuration,
   truncateAtWord,
   getToolSummary,
   formatToolInput,
@@ -448,6 +447,27 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
           }
         }
 
+        // Check if this message supersedes the last assistant message
+        // (e.g. text-only message followed by text+tool_use with same text)
+        if (!isToolOnly && prev.length > 0) {
+          const lastIdx = prev.length - 1;
+          const last = prev[lastIdx];
+          if (last.role === "assistant") {
+            const lastTexts = last.blocks.filter((b) => b.type === "text");
+            const newTexts = blocks.filter((b) => b.type === "text");
+            const lastHasTools = last.blocks.some((b) => b.type === "tool_use");
+            const newHasTools = blocks.some((b) => b.type === "tool_use");
+            // Replace if: previous was text-only, new has same text + tools
+            if (!lastHasTools && newHasTools && lastTexts.length === newTexts.length &&
+                lastTexts.every((lt, i) => lt.type === "text" && newTexts[i].type === "text" &&
+                  (lt as ContentBlockText).text === (newTexts[i] as ContentBlockText).text)) {
+              const updated = [...prev];
+              updated[lastIdx] = { ...last, blocks };
+              return updated;
+            }
+          }
+        }
+
         return [
           ...prev,
           { id: nextId(), role: "assistant" as const, blocks, timestamp: Date.now() },
@@ -624,13 +644,7 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
 
               // System/result: render as before
               if (items === null) {
-                if (msg.role === "result" && msg.result) {
-                  return (
-                    <div key={msg.id} className={`${styles.message} ${styles.role_result} ${styles.messageEnter}`}>
-                      <ResultBlock result={msg.result} theme={theme} />
-                    </div>
-                  );
-                }
+                if (msg.role === "result") return null;
                 if (msg.role === "system") {
                   return (
                     <div key={msg.id} className={`${styles.message} ${styles.role_system} ${styles.messageEnter}`}>
@@ -1377,38 +1391,6 @@ function QuestionBlock({
           {"\u2713"} answered
         </div>
       )}
-    </div>
-  );
-}
-
-function ResultBlock({ result, theme }: { result: ResultEvent; theme: TerminalTheme }) {
-  return (
-    <div className={styles.resultBlock} style={{ borderColor: `${theme.foreground}15` }}>
-      {result.is_error && (
-        <div className={styles.resultError} style={{ color: theme.red }}>
-          {result.result}
-        </div>
-      )}
-      <div className={styles.resultMeta}>
-        {result.total_cost_usd != null && (
-          <div className={styles.resultMetaItem}>
-            <span className={styles.resultMetaLabel} style={{ color: `${theme.foreground}40` }}>cost</span>
-            <span style={{ color: theme.yellow }}>${result.total_cost_usd.toFixed(4)}</span>
-          </div>
-        )}
-        {result.duration_ms != null && (
-          <div className={styles.resultMetaItem}>
-            <span className={styles.resultMetaLabel} style={{ color: `${theme.foreground}40` }}>time</span>
-            <span style={{ color: `${theme.foreground}70` }}>{formatDuration(result.duration_ms)}</span>
-          </div>
-        )}
-        {result.num_turns != null && (
-          <div className={styles.resultMetaItem}>
-            <span className={styles.resultMetaLabel} style={{ color: `${theme.foreground}40` }}>turns</span>
-            <span style={{ color: `${theme.foreground}70` }}>{result.num_turns}</span>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

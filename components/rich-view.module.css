@@ -199,7 +199,7 @@
 .message {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   max-width: 100%;
   min-width: 0;
 }
@@ -236,7 +236,7 @@
 }
 
 .role_assistant {
-  margin-top: 20px;
+  margin-top: 12px;
 }
 
 .role_system {
@@ -245,9 +245,6 @@
   padding: 4px 0;
 }
 
-.role_result {
-  padding: 4px 0;
-}
 
 /* Text blocks */
 
@@ -270,7 +267,7 @@
 /* Tool pair (paired tool_use + inline result) */
 
 .toolPair {
-  margin: 4px 0;
+  margin: 2px 0;
   min-width: 0;
   border-radius: 6px;
 }
@@ -451,7 +448,7 @@
 /* Tool group (2+ same-name tool calls) */
 
 .toolGroup {
-  margin: 4px 0;
+  margin: 2px 0;
   min-width: 0;
   border-radius: 6px;
 }
@@ -673,41 +670,6 @@
   font-size: 12px;
 }
 
-/* Result block (end of turn) */
-
-.resultBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 0;
-  border-top: 1px solid;
-  margin-top: 12px;
-}
-
-.resultError {
-  font-size: 13px;
-  font-weight: 500;
-  word-break: break-word;
-}
-
-.resultMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px 20px;
-  font-size: 12px;
-}
-
-.resultMetaItem {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.resultMetaLabel {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
 
 /* Streaming indicator */
 
@@ -1029,15 +991,6 @@
 
   .welcomeTitle {
     font-size: 18px;
-  }
-
-  .resultMeta {
-    gap: 12px 16px;
-  }
-
-  .resultBlock {
-    padding: 8px 0;
-    margin-top: 8px;
   }
 
   .jumpToBottom {
