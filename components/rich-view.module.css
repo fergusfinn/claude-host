@@ -222,7 +222,7 @@
 }
 
 .role_user {
-  margin-top: 16px;
+  margin-top: 24px;
   margin-bottom: 4px;
   padding-left: 12px;
 }
@@ -236,8 +236,7 @@
 }
 
 .role_assistant {
-  margin-top: 12px;
-  padding-left: 12px;
+  margin-top: 20px;
 }
 
 .role_system {
@@ -271,9 +270,9 @@
 /* Tool pair (paired tool_use + inline result) */
 
 .toolPair {
-  border-left: 2px solid;
   margin: 4px 0;
   min-width: 0;
+  border-radius: 6px;
 }
 
 .toolPairCompact {
@@ -341,6 +340,7 @@
 
 .toolHeader:hover {
   background: var(--bg-2);
+  border-radius: 6px;
 }
 
 .toolChevron {
@@ -391,7 +391,6 @@
   padding: 6px 12px 6px 28px;
   font-size: 12px;
   line-height: 1.4;
-  border-left: 2px solid;
   max-height: 300px;
   overflow-y: auto;
   overflow-x: auto;
@@ -452,9 +451,9 @@
 /* Tool group (2+ same-name tool calls) */
 
 .toolGroup {
-  border-left: 2px solid;
   margin: 4px 0;
   min-width: 0;
+  border-radius: 6px;
 }
 
 .toolGroupHeader {
@@ -474,6 +473,7 @@
 
 .toolGroupHeader:hover {
   background: var(--bg-2);
+  border-radius: 6px;
 }
 
 .toolGroupCount {
@@ -488,9 +488,8 @@
 /* Subagent (Task tool) */
 
 .subagent {
-  border-left: 3px solid;
   margin: 8px 0;
-  border-radius: 0;
+  border-radius: 6px;
   min-width: 0;
 }
 
@@ -512,6 +511,7 @@
 
 .subagentHeader:hover {
   background: var(--bg-2);
+  border-radius: 6px;
 }
 
 .subagentBadge {
@@ -571,9 +571,9 @@
 /* Question block (AskUserQuestion) */
 
 .questionBlock {
-  border-left: 2px solid;
   margin: 8px 0;
   padding: 12px 16px;
+  border-radius: 6px;
 }
 
 .questionItem {
@@ -906,8 +906,7 @@
   }
 
   .role_assistant {
-    padding-left: 6px;
-    margin-top: 10px;
+    margin-top: 14px;
   }
 
   .textBlock {
@@ -1059,7 +1058,7 @@
   }
 
   .role_assistant {
-    padding-left: 4px;
+    /* no padding-left needed — card style */
   }
 
   .role_user > .textBlock {

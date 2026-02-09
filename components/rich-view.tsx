@@ -668,7 +668,6 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
                 <div
                   key={msg.id}
                   className={`${styles.message} ${styles.role_assistant} ${styles.messageEnter}`}
-                  style={{ borderLeft: `2px solid ${theme.cursor}33` }}
                 >
                   {items.map((item, i) => {
                     const key = `${msg.id}-${i}`;
@@ -737,7 +736,6 @@ export function RichView({ sessionName, isActive, theme, font }: Props) {
               streamingText ? (
                 <div
                   className={`${styles.message} ${styles.role_assistant}`}
-                  style={{ borderLeft: `2px solid ${theme.cursor}33` }}
                 >
                   <StreamingMarkdown text={streamingText} theme={theme} />
                 </div>
@@ -947,7 +945,7 @@ function ToolPairBlock({
   return (
     <div
       className={`${styles.toolPair} ${compact ? styles.toolPairCompact : ""}`}
-      style={{ borderColor: `${toolColor}30` }}
+      style={{ background: `${toolColor}08` }}
     >
       <button className={styles.toolHeader} onClick={onToggle} style={{ color: toolColor }}>
         <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
@@ -1112,7 +1110,7 @@ function ToolGroupBlock({
   const isCollapsed = collapsedTools.has(groupKey);
 
   return (
-    <div className={styles.toolGroup} style={{ borderColor: `${toolColor}30` }}>
+    <div className={styles.toolGroup} style={{ background: `${toolColor}08` }}>
       <button
         className={styles.toolGroupHeader}
         onClick={() => onToggle(groupKey)}
@@ -1192,7 +1190,6 @@ function SubagentBlock({
     <div
       className={styles.subagent}
       style={{
-        borderColor: agentColor,
         background: `${agentColor}0d`,
       }}
     >
@@ -1319,7 +1316,7 @@ function QuestionBlock({
   };
 
   return (
-    <div className={styles.questionBlock} style={{ borderColor: `${theme.green}40` }}>
+    <div className={styles.questionBlock} style={{ background: `${theme.green}0a` }}>
       {questions.map((q, qIdx) => (
         <div key={qIdx} className={styles.questionItem}>
           <div className={styles.questionHeader}>
