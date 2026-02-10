@@ -8,7 +8,6 @@ import { getAuthUser } from "./lib/auth";
 
 const dev = process.env.NODE_ENV !== "production";
 const AUTH_DISABLED = process.env.AUTH_DISABLED === "1";
-const EXECUTOR_TOKEN = process.env.EXECUTOR_TOKEN || "";
 const VALID_SESSION_NAME = /^[a-zA-Z0-9_-]+$/;
 
 // Preflight: check auth secret (skip if auth is disabled entirely)
@@ -38,9 +37,14 @@ try {
   process.exit(1);
 }
 
-function validateExecutorToken(req: { headers: Record<string, string | string[] | undefined> }): boolean {
-  if (!EXECUTOR_TOKEN) return false; // fail closed — no token configured means no executor access
-  return req.headers["x-executor-token"] === EXECUTOR_TOKEN;
+function validateExecutorToken(req: { headers: Record<string, string | string[] | undefined> }): { valid: boolean; userId?: string; keyId?: string } {
+  const token = req.headers["x-executor-token"];
+  if (!token || typeof token !== "string") return { valid: false };
+
+  const result = getSessionManager().validateExecutorKey(token);
+  if (result) return { valid: true, userId: result.userId, keyId: result.keyId };
+
+  return { valid: false };
 }
 
 const app = next({ dev, dir: process.cwd() });
@@ -54,8 +58,8 @@ app.prepare().then(() => {
   // Wire up executor registry to session manager
   const sessionManager = getSessionManager();
   const registry = new ExecutorRegistry(
-    (id, status) => {
-      sessionManager.upsertExecutor({ id, name: id, labels: [], status });
+    (id, status, userId) => {
+      sessionManager.upsertExecutor({ id, name: id, labels: [], status, userId });
     },
     (executorId, sessions) => {
       sessionManager.adoptOrphanedSessions(executorId, sessions);
@@ -101,14 +105,15 @@ app.prepare().then(() => {
 
     // --- Executor control channel: /ws/executor/control ---
     if (pathname === "/ws/executor/control") {
-      if (!validateExecutorToken(req)) {
+      const authResult = validateExecutorToken(req);
+      if (!authResult.valid) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
       }
 
       wss.handleUpgrade(req, socket, head, (ws) => {
-        registry.handleControlConnection(ws, EXECUTOR_TOKEN);
+        registry.handleControlConnection(ws, authResult.userId!);
       });
       return;
     }
@@ -116,7 +121,8 @@ app.prepare().then(() => {
     // --- Executor terminal channel: /ws/executor/terminal/<channelId> ---
     const termChannelMatch = pathname?.match(/^\/ws\/executor\/terminal\/([^/]+)$/);
     if (termChannelMatch) {
-      if (!validateExecutorToken(req)) {
+      const authResult = validateExecutorToken(req);
+      if (!authResult.valid) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
@@ -139,8 +145,6 @@ app.prepare().then(() => {
   server.listen(port, () => {
     console.log(`Using ${tmuxVersion}`);
     console.log(`Claude Host running at http://localhost:${port}`);
-    if (EXECUTOR_TOKEN) {
-      console.log(`Executor connections enabled (token configured)`);
-    }
+    console.log(`Executor connections via per-user keys`);
   });
 });

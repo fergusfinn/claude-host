@@ -19,6 +19,7 @@ interface ExecutorClientOpts {
   labels: string[];
   version: string;
   noUpgrade?: boolean;
+  e2eKey?: string;
 }
 
 export class ExecutorClient {
@@ -66,6 +67,7 @@ export class ExecutorClient {
         name: this.opts.name,
         labels: this.opts.labels,
         version: this.opts.version,
+        e2e: !!this.opts.e2eKey,
       });
 
       // Start heartbeat

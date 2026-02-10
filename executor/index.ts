@@ -20,7 +20,7 @@ try {
   VERSION = "unknown";
 }
 
-function parseArgs(): { url: string; token: string; id: string; name: string; labels: string[]; noUpgrade: boolean } {
+function parseArgs(): { url: string; token: string; id: string; name: string; labels: string[]; noUpgrade: boolean; e2eKey?: string } {
   const args = process.argv.slice(2);
   let url = "";
   let token = "";
@@ -28,6 +28,7 @@ function parseArgs(): { url: string; token: string; id: string; name: string; la
   let name = "";
   let labels: string[] = [];
   let noUpgrade = false;
+  let e2eKey = "";
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -46,11 +47,14 @@ function parseArgs(): { url: string; token: string; id: string; name: string; la
       case "--labels":
         labels = (args[++i] || "").split(",").filter(Boolean);
         break;
+      case "--e2e-key":
+        e2eKey = args[++i] || "";
+        break;
       case "--no-upgrade":
         noUpgrade = true;
         break;
       case "--help":
-        console.log(`Usage: tsx executor/index.ts --url <ws://host:port> --token <token> --id <id> --name <name> [--labels a,b,c] [--no-upgrade]`);
+        console.log(`Usage: tsx executor/index.ts --url <ws://host:port> --token <token> --id <id> --name <name> [--labels a,b,c] [--e2e-key <key>] [--no-upgrade]`);
         process.exit(0);
     }
   }
@@ -60,13 +64,14 @@ function parseArgs(): { url: string; token: string; id: string; name: string; la
   token = token || process.env.EXECUTOR_TOKEN || "";
   id = id || process.env.EXECUTOR_ID || require("os").hostname();
   name = name || process.env.EXECUTOR_NAME || id;
+  e2eKey = e2eKey || process.env.EXECUTOR_E2E_KEY || "";
 
   if (!url) {
     console.error("Error: --url or EXECUTOR_URL is required");
     process.exit(1);
   }
 
-  return { url, token, id, name, labels, noUpgrade };
+  return { url, token, id, name, labels, noUpgrade, e2eKey: e2eKey || undefined };
 }
 
 const opts = parseArgs();
@@ -74,6 +79,7 @@ console.log(`Starting executor "${opts.name}" (${opts.id}) v${VERSION}`);
 console.log(`Control plane: ${opts.url}`);
 
 if (opts.noUpgrade) console.log("Auto-upgrade disabled (--no-upgrade)");
+if (opts.e2eKey) console.log("E2E encryption key provided");
 const client = new ExecutorClient({ ...opts, version: VERSION });
 client.start();
 

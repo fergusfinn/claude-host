@@ -215,6 +215,46 @@
   cursor: default;
 }
 
+/* Terminal/custom mode create area */
+.createActions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.createBtn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.createBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.checkLabel input[type="checkbox"] {
+  margin: 0;
+}
+
 /* Mobile overrides */
 @media (max-width: 600px) {
   .welcomeArea {

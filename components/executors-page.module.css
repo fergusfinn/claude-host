@@ -168,6 +168,262 @@
   text-align: center;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.addBtn {
+  background: transparent;
+  color: var(--accent);
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: all 0.1s;
+}
+.addBtn:hover {
+  background: var(--accent-dim);
+}
+
+/* Keys panel */
+
+.keysPanel {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+
+.keyTable {
+  font-size: 11px;
+}
+
+.keyTableHeader {
+  display: flex;
+  align-items: center;
+  padding: 4px 20px;
+  color: var(--text-3);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+
+.keyRow {
+  display: flex;
+  align-items: center;
+  padding: 6px 20px;
+}
+
+.keyRow + .keyRow {
+  border-top: 1px solid var(--border);
+}
+
+.keyRowRevoked {
+  opacity: 0.4;
+}
+
+.keyCol {
+  flex: 0 0 90px;
+  color: var(--text-2);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.keyColWide {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-1);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.keyColAction {
+  flex: 0 0 60px;
+  text-align: right;
+}
+
+.keyPrefix {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-2);
+}
+
+.keyName {
+  color: var(--text-0);
+  font-weight: 500;
+}
+
+.revokeBtn {
+  background: transparent;
+  color: var(--danger);
+  padding: 2px 6px;
+  font-size: 10px;
+  border: 1px solid var(--danger);
+  border-radius: 3px;
+  opacity: 0.6;
+  transition: opacity 0.1s;
+}
+.revokeBtn:hover {
+  opacity: 1;
+}
+
+.revokedLabel {
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+/* Add executor dialog */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  width: 480px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.dialogTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-0);
+  margin-bottom: 16px;
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 12px;
+}
+
+.input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  background: var(--bg-0);
+  color: var(--text-0);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  box-sizing: border-box;
+}
+.input:focus {
+  border-color: var(--accent);
+}
+
+.select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  background: var(--bg-0);
+  color: var(--text-0);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.cancelBtn {
+  background: transparent;
+  color: var(--text-2);
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  transition: all 0.1s;
+}
+.cancelBtn:hover {
+  color: var(--text-0);
+  border-color: var(--text-2);
+}
+
+.generateBtn {
+  background: var(--accent);
+  color: var(--bg-0);
+  padding: 6px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: opacity 0.1s;
+}
+.generateBtn:hover {
+  opacity: 0.9;
+}
+.generateBtn:disabled {
+  opacity: 0.5;
+}
+
+.warning {
+  font-size: 12px;
+  color: var(--danger);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.codeBlock {
+  position: relative;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-1);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.copyBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--bg-1);
+  color: var(--text-2);
+  padding: 3px 8px;
+  font-size: 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  transition: all 0.1s;
+}
+.copyBtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* Log panel */
 
 .logPanel {
@@ -255,5 +511,27 @@
   .logEntry {
     padding: 2px 12px;
     font-size: 10px;
+  }
+
+  .keyTableHeader {
+    padding: 4px 12px;
+  }
+
+  .keyRow {
+    padding: 6px 12px;
+  }
+
+  .keyCol {
+    flex: 0 0 70px;
+    font-size: 10px;
+  }
+
+  .keyColWide {
+    font-size: 10px;
+  }
+
+  .dialog {
+    margin: 12px;
+    padding: 16px;
   }
 }
