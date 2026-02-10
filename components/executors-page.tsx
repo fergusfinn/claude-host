@@ -362,7 +362,7 @@ export function ExecutorsPage() {
                   />
                 </label>
                 <label className={styles.fieldLabel}>
-                  Expires
+                  Key expiry
                   <select
                     className={styles.select}
                     value={newKeyExpiry ?? ""}
