@@ -34,7 +34,7 @@ export const MemoizedMarkdown = React.memo(function MemoizedMarkdown({
 // Block-level types
 // ---------------------------------------------------------------------------
 
-type Block =
+export type Block =
   | { type: "code"; lang: string; content: string }
   | { type: "heading"; level: number; inline: InlineNode[] }
   | { type: "blockquote"; inline: InlineNode[] }
@@ -45,7 +45,7 @@ type Block =
   | { type: "paragraph"; inline: InlineNode[] };
 
 // Inline types
-type InlineNode =
+export type InlineNode =
   | { type: "text"; text: string }
   | { type: "bold"; children: InlineNode[] }
   | { type: "italic"; children: InlineNode[] }
@@ -58,7 +58,7 @@ type InlineNode =
 // Block-level parsing
 // ---------------------------------------------------------------------------
 
-function parseBlocks(text: string): Block[] {
+export function parseBlocks(text: string): Block[] {
   const blocks: Block[] = [];
   const lines = text.split("\n");
   let i = 0;
@@ -211,7 +211,7 @@ function parseBlocks(text: string): Block[] {
 // Inline parsing
 // ---------------------------------------------------------------------------
 
-function parseInline(text: string): InlineNode[] {
+export function parseInline(text: string): InlineNode[] {
   const nodes: InlineNode[] = [];
   const pattern =
     /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;

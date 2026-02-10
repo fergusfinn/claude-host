@@ -37,6 +37,7 @@ export function openRichChannel(opts: RichChannelOpts): void {
   let watcher: FSWatcher | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let destroyed = false;
+  let initReceived = false;
 
   function readNewEvents(): void {
     if (!existsSync(eventsFile) || destroyed) return;
@@ -67,8 +68,24 @@ export function openRichChannel(opts: RichChannelOpts): void {
         try {
           const event = JSON.parse(trimmed);
           if (event.type === "stream_event") continue;
+
+          // Reset init flag on restart so the next init goes through
+          if (event.type === "system" && event.subtype === "restart") {
+            initReceived = false;
+          }
+
+          // Skip duplicate init events (only allow first per restart cycle)
+          if (event.type === "system" && event.subtype === "init") {
+            if (initReceived) continue;
+            initReceived = true;
+          }
+
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "event", event }));
+            // Send turn_complete after result events (mirrors local bridge)
+            if (event.type === "result") {
+              ws.send(JSON.stringify({ type: "turn_complete" }));
+            }
           }
         } catch (e) { console.debug("failed to send event to ws", e); }
       }
@@ -101,6 +118,9 @@ export function openRichChannel(opts: RichChannelOpts): void {
         try {
           const event = JSON.parse(trimmed);
           if (event.type === "stream_event") continue;
+          if (event.type === "system" && event.subtype === "restart") {
+            initSeen = false;
+          }
           if (event.type === "system" && event.subtype === "init") {
             if (initSeen) continue;
             initSeen = true;
@@ -110,6 +130,8 @@ export function openRichChannel(opts: RichChannelOpts): void {
           }
         } catch (e) { console.debug("failed to send event to ws", e); }
       }
+      // Carry init state into live tailing
+      initReceived = initSeen;
     } finally {
       closeSync(fd);
     }
