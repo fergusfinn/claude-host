@@ -9,9 +9,11 @@
     "executor": "tsx executor/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts"
   },
   "dependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.57.1",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/addon-webgl": "^0.18.0",
