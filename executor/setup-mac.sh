@@ -2,32 +2,44 @@
 set -euo pipefail
 
 # Setup script for running claude-host-executor as a launchd service on macOS.
-# Usage: ./executor/setup-mac.sh --url <ws://host:port> --token <chk_...> --name "My Executor"
+# Can be run directly: curl -fsSL https://raw.githubusercontent.com/.../setup-mac.sh | bash -s -- --url ... --token ...
+# Or from a cloned repo: ./executor/setup-mac.sh --url ... --token ...
 
 URL=""
 TOKEN=""
 NAME="Claude Host Executor"
+INSTALL_DIR="$HOME/claude-host-executor"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --url) URL="$2"; shift 2 ;;
     --token) TOKEN="$2"; shift 2 ;;
     --name) NAME="$2"; shift 2 ;;
+    --dir) INSTALL_DIR="$2"; shift 2 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
 
 if [ -z "$URL" ] || [ -z "$TOKEN" ]; then
-  echo "Usage: $0 --url <ws://host:port> --token <chk_...> [--name <name>]"
+  echo "Usage: $0 --url <ws://host:port> --token <chk_...> [--name <name>] [--dir <install-dir>]"
   exit 1
 fi
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Clone or update the repo
+if [ -d "$INSTALL_DIR/.git" ]; then
+  echo "==> Updating existing clone in $INSTALL_DIR"
+  git -C "$INSTALL_DIR" pull --ff-only
+else
+  echo "==> Cloning claude-host into $INSTALL_DIR"
+  git clone https://github.com/fergusfinn/claude-host.git "$INSTALL_DIR"
+fi
+
+echo "==> Installing dependencies"
+cd "$INSTALL_DIR" && npm install --omit=dev
 
 # Find npx
 NPX_PATH="$(command -v npx 2>/dev/null || true)"
 if [ -z "$NPX_PATH" ]; then
-  # Try sourcing nvm
   export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   NPX_PATH="$(command -v npx 2>/dev/null || true)"
@@ -52,7 +64,7 @@ cat > "$PLIST_FILE" << EOF
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.claude-host.executor</string>
-  <key>WorkingDirectory</key><string>${REPO_DIR}</string>
+  <key>WorkingDirectory</key><string>${INSTALL_DIR}</string>
   <key>ProgramArguments</key>
   <array>
     <string>${NPX_PATH}</string>
@@ -74,15 +86,19 @@ cat > "$PLIST_FILE" << EOF
 </plist>
 EOF
 
-echo "Created $PLIST_FILE"
+echo "==> Created $PLIST_FILE"
 
 launchctl load "$PLIST_FILE"
 
 echo ""
 sleep 1
 if launchctl list | grep -q com.claude-host.executor; then
-  echo "Executor is running. View logs with: tail -f /tmp/claude-host-executor.log"
+  echo "==> Executor is running!"
+  echo "    Logs:    tail -f /tmp/claude-host-executor.log"
+  echo "    Stop:    launchctl unload $PLIST_FILE"
+  echo "    Update:  git -C $INSTALL_DIR pull && launchctl unload $PLIST_FILE && launchctl load $PLIST_FILE"
 else
-  echo "Service may have failed to start. Check: launchctl list | grep claude-host"
-  echo "Logs: cat /tmp/claude-host-executor.log"
+  echo "==> Service may have failed to start."
+  echo "    Check: launchctl list | grep claude-host"
+  echo "    Logs:  cat /tmp/claude-host-executor.log"
 fi

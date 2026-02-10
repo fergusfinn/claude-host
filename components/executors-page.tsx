@@ -193,12 +193,9 @@ export function ExecutorsPage() {
     const token = newKeyResult!.token;
     const url = `${proto}://${host}`;
     const script = platform === "mac" ? "setup-mac.sh" : "setup-linux.sh";
+    const rawUrl = `https://raw.githubusercontent.com/fergusfinn/claude-host/main/executor/${script}`;
 
-    return [
-      `git clone https://github.com/fergusfinn/claude-host.git ~/claude-host-executor`,
-      `cd ~/claude-host-executor && npm install --omit=dev`,
-      `./executor/${script} --url ${url} --token ${token} --name "${name}"`,
-    ].join("\n");
+    return `curl -fsSL ${rawUrl} | bash -s -- \\\n  --url ${url} \\\n  --token ${token} \\\n  --name "${name}"`;
   }
 
   async function handleCopy() {
