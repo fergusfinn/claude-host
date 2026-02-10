@@ -30,7 +30,7 @@ export function ExecutorsPage() {
     try {
       const res = await fetch("/api/executors");
       setExecutors(await res.json());
-    } catch {}
+    } catch (e) { console.warn("failed to load executors", e); }
   }, []);
 
   const loadLogs = useCallback(async () => {
@@ -44,7 +44,7 @@ export function ExecutorsPage() {
         logSinceRef.current = newLogs[newLogs.length - 1].timestamp;
         setLogs((prev) => [...prev, ...newLogs].slice(-200));
       }
-    } catch {}
+    } catch (e) { console.warn("failed to load executor logs", e); }
   }, []);
 
   useEffect(() => {
@@ -114,7 +114,7 @@ export function ExecutorsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-    } catch {}
+    } catch (e) { console.warn("failed to trigger reconnect", e); }
   }
 
   const remoteOnline = executors.filter((e) => e.status === "online" && e.id !== "local");

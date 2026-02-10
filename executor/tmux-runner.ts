@@ -277,12 +277,12 @@ export class TmuxRunner {
 
     let eventsContent = "";
     if (existsSync(eventsFile)) {
-      try { eventsContent = readFileSync(eventsFile, "utf-8").slice(-2000); } catch {}
+      try { eventsContent = readFileSync(eventsFile, "utf-8").slice(-2000); } catch (e) { console.warn("failed to read events file", e); }
     }
 
     // Check claude availability
     let claudePath = "";
-    try { claudePath = spawnSync("which", ["claude"], { encoding: "utf-8", timeout: 2000 }).stdout?.trim() || "not found"; } catch {}
+    try { claudePath = spawnSync("which", ["claude"], { encoding: "utf-8", timeout: 2000 }).stdout?.trim() || "not found"; } catch (e) { console.warn("failed to find claude binary", e); }
 
     return {
       repoRoot: REPO_ROOT,
@@ -323,7 +323,7 @@ export class TmuxRunner {
         } else if (event.type === "result") {
           if (event.result) lines.push(`Result: ${event.result}`);
         }
-      } catch {}
+      } catch (e) { console.debug("skipping malformed event line", e); }
     }
     return lines.slice(-50).join("\n");
   }
@@ -497,7 +497,7 @@ export class TmuxRunner {
       if (match && match[1]) {
         return `claude --resume ${match[1]} --fork-session`;
       }
-    } catch {}
+    } catch (e) { console.warn("failed to read fork source command", e); }
     return sourceCommand;
   }
 

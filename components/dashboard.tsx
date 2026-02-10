@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, type MutableRefObject } from "react";
 import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "./rich-view";
+import { activityAgo } from "@/lib/ui-utils";
 import styles from "./dashboard.module.css";
 
 interface Session {
@@ -56,7 +57,7 @@ export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: stri
       ]);
       setSessions(await sessRes.json());
       setExecutors(await execRes.json());
-    } catch {}
+    } catch (e) { console.warn("failed to load sessions/executors", e); }
   }, []);
 
   useEffect(() => {
@@ -844,14 +845,7 @@ export function SettingsForm({
   );
 }
 
-function activityAgo(unixTs: number): string {
-  const diff = Math.floor(Date.now() / 1000 - unixTs);
-  if (diff < 5) return "active";
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
+
 
 /** Build session groups: root sessions with their fork children, sorted by most recent activity */
 function buildGroups(sessions: Session[]): SessionGroup[] {

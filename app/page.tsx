@@ -184,7 +184,7 @@ export default function Home() {
         if (s.mode) modes[s.name] = s.mode;
       }
       setSessionModes(modes);
-    } catch {}
+    } catch (e) { console.warn("failed to load sessions", e); }
   }, []);
 
   useEffect(() => {
@@ -384,7 +384,7 @@ export default function Home() {
           return { ...t, layout: root, focusedPaneId: newPaneId };
         })
       );
-    } catch {}
+    } catch (e) { console.warn("failed to split pane", e); }
   }
 
   function breakPane() {
@@ -484,7 +484,7 @@ export default function Home() {
       const created = await res.json();
       await loadSessions();
       connectSession(created.name);
-    } catch {}
+    } catch (e) { console.warn("failed to fork session", e); }
   }
 
   const [executorPickerOptions, setExecutorPickerOptions] = useState<Array<{ id: string; name: string }> | null>(null);
@@ -496,7 +496,7 @@ export default function Home() {
       const execRes = await fetch("/api/executors");
       const executors: Array<{ id: string; name: string; status: string }> = await execRes.json();
       onlineExecutors = executors.filter((e) => e.status === "online");
-    } catch {}
+    } catch (e) { console.warn("failed to load executors", e); }
 
     if (onlineExecutors.length > 1) {
       setExecutorPickerOptions(onlineExecutors);
@@ -568,7 +568,7 @@ export default function Home() {
       setRefreshKey((k) => k + 1);
       await loadSessions();
       connectSession(created.name, newMode);
-    } catch {}
+    } catch (e) { console.warn("failed to create session", e); }
   }
 
   // Keyboard shortcuts

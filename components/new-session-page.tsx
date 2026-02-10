@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { ArrowUp, Sparkles, GitFork, ChevronDown } from "lucide-react";
 import type { TerminalTheme } from "@/lib/themes";
 import { getRichFontFamily, ensureRichFontLoaded } from "./rich-view";
+import { activityAgo } from "@/lib/ui-utils";
 import styles from "./new-session-page.module.css";
 
 interface SessionInfo {
@@ -25,15 +26,6 @@ interface Props {
   richFont?: string;
   onSessionCreated: (name: string, mode: "rich", initialPrompt: string) => void;
   onCancel: () => void;
-}
-
-function activityAgo(unixTs: number): string {
-  const diff = Math.floor(Date.now() / 1000 - unixTs);
-  if (diff < 5) return "active";
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: Props) {
@@ -65,7 +57,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
         setExecutors(online);
         if (online.length > 0) setExecutor(online[0].id);
       })
-      .catch(() => {});
+      .catch((e) => { console.warn("failed to load sessions/executors", e); });
   }, []);
 
   // Close dropdowns on outside click
@@ -133,7 +125,8 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
       }
 
       onSessionCreated(createdName, "rich", text);
-    } catch {
+    } catch (e) {
+      console.warn("failed to create session", e);
       setSubmitting(false);
     }
   }, [inputValue, submitting, forkSource, executor, onSessionCreated]);

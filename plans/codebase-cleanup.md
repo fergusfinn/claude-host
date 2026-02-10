@@ -97,8 +97,8 @@ Nearly identical implementations exist in `lib/sessions.ts:439` and `executor/tm
 - `tabLabel()` is identical in `components/tab-bar.tsx` and `components/mobile-tab-bar.tsx`. Extract to a shared utility (e.g., `lib/ui-utils.ts` or similar).
 - `activityAgo()` is identical in `components/dashboard.tsx` and `components/new-session-page.tsx`. Extract to the same shared file.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 11. Fix `require()` in ES module
 
@@ -118,8 +118,8 @@ Nearly identical implementations exist in `lib/sessions.ts:439` and `executor/tm
 
 `lib/sessions.ts:622` — Sessions adopted from remote executors are inserted without a `user_id`, making them invisible to authenticated users. Decide on a strategy: assign to the admin user, or add an "unclaimed sessions" UI. At minimum, set `user_id` to a known value so they show up somewhere.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 14. Fix rich session deletion ignoring executor
 
@@ -147,8 +147,8 @@ Go through the codebase and add at minimum `console.error` (or `console.warn` fo
 - `components/rich-view.tsx`
 - `components/dashboard.tsx`
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 17. Move `tsx` to production dependencies
 

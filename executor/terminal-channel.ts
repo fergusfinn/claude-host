@@ -45,12 +45,12 @@ export function openTerminalChannel(opts: TerminalChannelOpts): void {
           if (cols > 0 && rows > 0) term.resize(cols, rows);
           return;
         }
-      } catch {}
+      } catch (e) { console.debug("failed to parse client message", e); }
       term.write(str);
     });
 
     const cleanup = () => {
-      try { term.kill(); } catch {}
+      try { term.kill(); } catch (e) { console.warn("failed to kill pty", e); }
     };
 
     ws.on("close", cleanup);

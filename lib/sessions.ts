@@ -457,7 +457,7 @@ class SessionManager {
         } else if (event.type === "result") {
           if (event.result) lines.push(`Result: ${event.result}`);
         }
-      } catch {}
+      } catch (e) { console.debug("skipping malformed event line", e); }
     }
     return lines.slice(-maxLines).join("\n");
   }
@@ -630,11 +630,19 @@ class SessionManager {
 
   /** Adopt sessions reported by a remote executor that don't exist in the DB */
   adoptOrphanedSessions(executorId: string, sessions: SessionLiveness[]): void {
+    // Assign to the user who already owns sessions on this executor (i.e. the
+    // admin who set it up).  When auth is disabled the owner will be "local".
+    // If no match yet (first heartbeat before any sessions created), leave NULL
+    // — adoptUnownedResources() will assign them on the admin's next login.
+    const ownerRow = this.db.prepare(
+      "SELECT user_id FROM sessions WHERE executor = ? AND user_id IS NOT NULL LIMIT 1"
+    ).get(executorId) as { user_id: string } | undefined;
+
     const insert = this.db.prepare(
-      "INSERT OR IGNORE INTO sessions (name, description, command, executor, position) VALUES (?, ?, ?, ?, ?)"
+      "INSERT OR IGNORE INTO sessions (name, description, command, executor, position, user_id) VALUES (?, ?, ?, ?, ?, ?)"
     );
     for (const s of sessions) {
-      insert.run(s.name, "", "claude", executorId, this.nextPosition());
+      insert.run(s.name, "", "claude", executorId, this.nextPosition(), ownerRow?.user_id ?? null);
     }
   }
 

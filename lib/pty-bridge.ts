@@ -96,7 +96,7 @@ export function bridgeSession(ws: WebSocket, sessionName: string, initialCols?: 
         }
         return;
       }
-    } catch {}
+    } catch (e) { console.debug("failed to parse client message", e); }
     sess.term.write(str);
   });
 
@@ -104,7 +104,7 @@ export function bridgeSession(ws: WebSocket, sessionName: string, initialCols?: 
     sess.clients.delete(ws);
     if (sess.clients.size === 0) {
       // Last client disconnected — kill the PTY
-      try { sess.term.kill(); } catch {}
+      try { sess.term.kill(); } catch (e) { console.warn("failed to kill pty", e); }
       sessions.delete(sessionName);
     } else {
       // Recalculate size without this client

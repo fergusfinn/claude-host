@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { themesForMode, fonts, type TerminalTheme, type TerminalFont, ensureFontLoaded } from "@/lib/themes";
 import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "@/components/rich-view";
 import { getAllLeaves } from "@/lib/layout";
+import { tabLabel } from "@/lib/ui-utils";
 import type { TabState } from "@/app/page";
 import { Plus, RotateCw, Sun, Moon, X, LogOut } from "lucide-react";
 import styles from "./tab-bar.module.css";
@@ -30,12 +31,6 @@ interface Props {
   onRefresh: () => void;
   mode: "dark" | "light";
   onModeChange: (mode: "dark" | "light") => void;
-}
-
-function tabLabel(tab: TabState): string {
-  const leaves = getAllLeaves(tab.layout);
-  if (leaves.length === 1) return leaves[0].sessionName;
-  return `${leaves[0].sessionName} +${leaves.length - 1}`;
 }
 
 function tabExecutor(tab: TabState, sessionExecutors?: Record<string, string>): string | null {

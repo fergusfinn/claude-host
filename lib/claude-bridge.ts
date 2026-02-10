@@ -98,7 +98,7 @@ function loadState(name: string): { sessionId: string | null; byteOffset: number
     | undefined;
   if (!row) return null;
   let events: object[] = [];
-  try { events = JSON.parse(row.events); } catch {}
+  try { events = JSON.parse(row.events); } catch (e) { console.warn("failed to parse cached events", e); }
   return { sessionId: row.session_id, byteOffset: row.byte_offset ?? 0, events };
 }
 
@@ -413,7 +413,7 @@ function startTailing(name: string, state: RichState): void {
 /** Stop tailing the events file */
 function stopTailing(state: RichState): void {
   if (state.tailWatcher) {
-    try { state.tailWatcher.close(); } catch {}
+    try { state.tailWatcher.close(); } catch (e) { console.warn("failed to close tail watcher", e); }
     state.tailWatcher = null;
   }
   if (state.pollTimer) {
@@ -495,7 +495,7 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
     if (existsSync(state.eventsFilePath)) {
       try {
         state.byteOffset = statSync(state.eventsFilePath).size;
-      } catch {}
+      } catch (e) { console.warn("failed to stat events file", e); }
     }
     state.initReceived = false;
     startTailing(sessionName, state);
@@ -646,7 +646,7 @@ export function cleanupRichSession(name: string): void {
   // Remove runtime files
   const dir = sessionDir(name);
   if (existsSync(dir)) {
-    try { rmSync(dir, { recursive: true, force: true }); } catch {}
+    try { rmSync(dir, { recursive: true, force: true }); } catch (e) { console.warn("failed to remove session dir", e); }
   }
 
   deleteState(name);

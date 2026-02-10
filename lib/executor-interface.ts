@@ -177,8 +177,8 @@ export class RemoteExecutor implements ExecutorInterface {
       });
 
       const cleanup = () => {
-        try { executorWs.close(); } catch {}
-        try { userWs.close(); } catch {}
+        try { executorWs.close(); } catch (e) { console.warn("failed to close executor ws", e); }
+        try { userWs.close(); } catch (e) { console.warn("failed to close user ws", e); }
       };
       userWs.on("close", cleanup);
       userWs.on("error", cleanup);
@@ -224,8 +224,8 @@ export class RemoteExecutor implements ExecutorInterface {
       });
 
       const cleanup = () => {
-        try { executorWs.close(); } catch {}
-        try { userWs.close(); } catch {}
+        try { executorWs.close(); } catch (e) { console.warn("failed to close executor ws", e); }
+        try { userWs.close(); } catch (e) { console.warn("failed to close user ws", e); }
       };
       userWs.on("close", cleanup);
       userWs.on("error", cleanup);

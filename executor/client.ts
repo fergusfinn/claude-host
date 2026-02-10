@@ -43,7 +43,7 @@ export class ExecutorClient {
     this.destroyed = true;
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     if (this.ws) {
-      try { this.ws.close(); } catch {}
+      try { this.ws.close(); } catch (e) { console.warn("failed to close ws", e); }
     }
   }
 
@@ -245,7 +245,7 @@ export class ExecutorClient {
           }
 
           if (this.ws) {
-            try { this.ws.close(); } catch {}
+            try { this.ws.close(); } catch (e) { console.warn("failed to close ws", e); }
           }
           process.exit(42);
           break;

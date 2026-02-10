@@ -55,7 +55,7 @@ export function TerminalView({ sessionName, isActive, theme, font, onClose }: Pr
         if (!b64 || b64 === "?") return true;
         try {
           navigator.clipboard.writeText(atob(b64)).catch(() => {});
-        } catch {}
+        } catch (e) { console.debug("clipboard write failed", e); }
         return true;
       });
 
@@ -101,7 +101,7 @@ export function TerminalView({ sessionName, isActive, theme, font, onClose }: Pr
       try {
         const { WebglAddon } = await import("@xterm/addon-webgl");
         term.loadAddon(new WebglAddon());
-      } catch {}
+      } catch (e) { console.debug("webgl addon not available", e); }
 
       const { WebLinksAddon } = await import("@xterm/addon-web-links");
       term.loadAddon(new WebLinksAddon());

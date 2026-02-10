@@ -188,7 +188,7 @@ export class ExecutorRegistry {
         try {
           this.upgradeExecutor(id, opts);
           ids.push(id);
-        } catch {}
+        } catch (e) { console.warn("failed to upgrade executor", e); }
       }
     }
     return ids;
@@ -281,7 +281,7 @@ export class ExecutorRegistry {
         this.log(id, "timed_out", executor.info.name);
         console.log(`Executor timed out: ${executor.info.name} (${id})`);
         this.handleDisconnect(id);
-        try { executor.ws.close(); } catch {}
+        try { executor.ws.close(); } catch (e) { console.warn("failed to close executor ws", e); }
       }
     }
   }

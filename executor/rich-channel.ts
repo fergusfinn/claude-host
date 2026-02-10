@@ -68,7 +68,7 @@ export function openRichChannel(opts: RichChannelOpts): void {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "event", event }));
           }
-        } catch {}
+        } catch (e) { console.debug("failed to send event to ws", e); }
       }
     } finally {
       closeSync(fd);
@@ -106,7 +106,7 @@ export function openRichChannel(opts: RichChannelOpts): void {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "event", event }));
           }
-        } catch {}
+        } catch (e) { console.debug("failed to send event to ws", e); }
       }
     } finally {
       closeSync(fd);
@@ -118,7 +118,7 @@ export function openRichChannel(opts: RichChannelOpts): void {
     if (existsSync(eventsFile)) {
       try {
         watcher = watch(eventsFile, () => readNewEvents());
-      } catch {}
+      } catch (e) { console.warn("failed to watch events file", e); }
     }
   }
 
@@ -167,9 +167,9 @@ export function openRichChannel(opts: RichChannelOpts): void {
 
   function cleanup(): void {
     destroyed = true;
-    if (watcher) { try { watcher.close(); } catch {} }
+    if (watcher) { try { watcher.close(); } catch (e) { console.warn("failed to close watcher", e); } }
     if (pollTimer) clearInterval(pollTimer);
-    try { ws.close(); } catch {}
+    try { ws.close(); } catch (e) { console.warn("failed to close ws", e); }
   }
 
   ws.on("open", () => {

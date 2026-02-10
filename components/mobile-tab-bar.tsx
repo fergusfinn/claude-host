@@ -10,6 +10,7 @@ import {
 } from "@/lib/themes";
 import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "@/components/rich-view";
 import { getAllLeaves } from "@/lib/layout";
+import { tabLabel } from "@/lib/ui-utils";
 import type { TabState } from "@/app/page";
 import { Plus, RotateCw, Sun, Moon, X, EllipsisVertical, Server, Settings, RefreshCw, LogOut } from "lucide-react";
 import styles from "./mobile-tab-bar.module.css";
@@ -35,12 +36,6 @@ interface Props {
   onOpenSettings: () => void;
   userName?: string | null;
   onSignOut?: () => void;
-}
-
-function tabLabel(tab: TabState): string {
-  const leaves = getAllLeaves(tab.layout);
-  if (leaves.length === 1) return leaves[0].sessionName;
-  return `${leaves[0].sessionName} +${leaves.length - 1}`;
 }
 
 export function MobileTabBar({
