@@ -652,14 +652,3 @@ export function cleanupRichSession(name: string): void {
   deleteState(name);
 }
 
-/** Check if a rich session has state (for alive status) */
-export function richSessionExists(name: string): boolean {
-  if (sessions.has(name)) return true;
-  // Check DB for persisted sessions that survived a restart
-  return loadState(name) !== null;
-}
-
-/** Check if the rich session's tmux process is actively running */
-export function richSessionTmuxAlive(name: string): boolean {
-  return tmuxExists(name);
-}

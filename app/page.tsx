@@ -95,11 +95,6 @@ export default function Home() {
     ? getAllLeaves(activeTab.layout).find((l) => l.id === activeTab.focusedPaneId)?.sessionName ?? null
     : null;
 
-  // Get all session names across all tab layouts
-  function getAllTabSessions(): string[] {
-    return tabs.flatMap((t) => getAllLeaves(t.layout).map((l) => l.sessionName));
-  }
-
   // Restore saved preferences from server config
   useEffect(() => {
     fetch("/api/config")

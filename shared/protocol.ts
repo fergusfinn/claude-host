@@ -145,10 +145,3 @@ export function rpcId(): string {
   return `rpc_${Date.now()}_${++_counter}`;
 }
 
-export function parseMessage(raw: string): ExecutorToControlMessage | ControlToExecutorMessage | null {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}

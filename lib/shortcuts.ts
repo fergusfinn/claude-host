@@ -47,8 +47,3 @@ export function loadShortcuts(json: string | undefined): ShortcutMap {
   }
 }
 
-/** Format a single key for display */
-export function formatKey(key: string): string {
-  if (!key) return "";
-  return key.toUpperCase();
-}

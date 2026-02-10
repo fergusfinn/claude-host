@@ -121,14 +121,6 @@ export function buildRenderItems(
 
 // ---- Helpers ----
 
-export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  return `${m}m ${s}s`;
-}
-
 export function truncateAtWord(s: string, max: number): string {
   if (s.length <= max) return s;
   const truncated = s.slice(0, max);
@@ -201,17 +193,3 @@ export function formatToolInput(name: string, input: Record<string, any>): strin
   return JSON.stringify(input, null, 2);
 }
 
-export function getToolIcon(name: string): string {
-  const map: Record<string, string> = {
-    Read: "\u25C7",
-    Edit: "\u25B3",
-    Write: "\u25A1",
-    Bash: "$",
-    Glob: "\u22A1",
-    Grep: "/",
-    Task: "\u229E",
-    WebFetch: "\u21E3",
-    WebSearch: "?",
-  };
-  return map[name] || "\u25C6";
-}

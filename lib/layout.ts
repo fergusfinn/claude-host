@@ -4,7 +4,6 @@ export interface PaneLeaf {
   type: "leaf";
   id: string;
   sessionName: string;
-  editor?: { filePath: string };
 }
 
 export interface PaneSplit {
@@ -186,34 +185,6 @@ export function findNeighbor(
   }
 
   return best;
-}
-
-/** Create a leaf pane that renders a file viewer instead of a terminal */
-export function makeEditorLeaf(sessionName: string, filePath: string): PaneLeaf {
-  return { type: "leaf", id: uid(), sessionName, editor: { filePath } };
-}
-
-/** Find the first editor leaf in the tree */
-export function findEditorLeaf(root: LayoutNode): PaneLeaf | null {
-  if (root.type === "leaf") return root.editor ? root : null;
-  return findEditorLeaf(root.children[0]) ?? findEditorLeaf(root.children[1]);
-}
-
-/** Update the file path of an editor leaf */
-export function updateEditorFile(root: LayoutNode, paneId: string, filePath: string): LayoutNode {
-  return replaceNode(root, paneId, (node) =>
-    node.type === "leaf" ? { ...node, editor: { filePath } } : node,
-  );
-}
-
-/** Split a pane, inserting an arbitrary leaf (for editor panes) */
-export function splitPaneWithLeaf(
-  root: LayoutNode,
-  paneId: string,
-  direction: "h" | "v",
-  newLeaf: PaneLeaf,
-): LayoutNode {
-  return replaceNode(root, paneId, (node) => makeSplit(direction, node, newLeaf, 0.55));
 }
 
 /** Replace a node by id with the result of a transform function */

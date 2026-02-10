@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_SHORTCUTS, loadShortcuts, formatKey } from "./shortcuts";
+import { DEFAULT_SHORTCUTS, loadShortcuts } from "./shortcuts";
 
 describe("DEFAULT_SHORTCUTS", () => {
   it("has all expected keys", () => {
@@ -44,21 +44,3 @@ describe("loadShortcuts", () => {
   });
 });
 
-describe("formatKey", () => {
-  it("uppercases a lowercase key", () => {
-    expect(formatKey("c")).toBe("C");
-  });
-
-  it("keeps uppercase keys uppercase", () => {
-    expect(formatKey("C")).toBe("C");
-  });
-
-  it("uppercases bracket keys", () => {
-    expect(formatKey("[")).toBe("[");
-    expect(formatKey("]")).toBe("]");
-  });
-
-  it("returns empty string for empty input", () => {
-    expect(formatKey("")).toBe("");
-  });
-});

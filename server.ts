@@ -1,5 +1,4 @@
 import { createServer } from "http";
-import { parse } from "url";
 import next from "next";
 import { WebSocketServer } from "ws";
 import { execFileSync, spawnSync } from "child_process";
@@ -48,8 +47,7 @@ const handle = app.getRequestHandler();
 
 app.prepare().then(() => {
   const server = createServer((req, res) => {
-    const parsedUrl = parse(req.url!, true);
-    handle(req, res, parsedUrl);
+    handle(req, res);
   });
 
   // Wire up executor registry to session manager
@@ -67,7 +65,7 @@ app.prepare().then(() => {
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", async (req, socket, head) => {
-    const { pathname } = parse(req.url!);
+    const { pathname } = new URL(req.url!, "http://localhost");
 
     // --- Browser terminal sessions: /ws/sessions/<name> ---
     const terminalMatch = pathname?.match(/^\/ws\/sessions\/([^/]+)$/);

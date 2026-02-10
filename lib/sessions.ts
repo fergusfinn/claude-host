@@ -369,7 +369,7 @@ class SessionManager {
 
   async snapshot(name: string, userId: string): Promise<string> {
     if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
-    const mode = this.getSessionMode(name);
+    const mode = this.getMode(name);
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
     if (mode === "rich") {
@@ -381,7 +381,7 @@ class SessionManager {
 
   async summarize(name: string, userId: string): Promise<string> {
     if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
-    const mode = this.getSessionMode(name);
+    const mode = this.getMode(name);
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
 
@@ -429,12 +429,6 @@ class SessionManager {
     return description;
   }
 
-  private getSessionMode(name: string): "terminal" | "rich" {
-    const row = this.db.prepare("SELECT mode FROM sessions WHERE name = ?").get(name) as
-      | { mode?: string }
-      | undefined;
-    return (row?.mode as "terminal" | "rich") || "terminal";
-  }
 
   private snapshotRichSession(name: string, maxLines = 50): string {
     const dataDir = process.env.DATA_DIR || join(process.cwd(), "data");

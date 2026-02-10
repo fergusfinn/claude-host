@@ -844,15 +844,6 @@ export function SettingsForm({
   );
 }
 
-function timeAgo(dateStr: string): string {
-  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (diff < 5) return "now";
-  if (diff < 60) return `${diff}s`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-  return `${Math.floor(diff / 86400)}d`;
-}
-
 function activityAgo(unixTs: number): string {
   const diff = Math.floor(Date.now() / 1000 - unixTs);
   if (diff < 5) return "active";

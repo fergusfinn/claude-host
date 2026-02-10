@@ -64,7 +64,7 @@ vi.mock("fs", async () => {
 });
 
 // Import after mocks
-import { bridgeRichSession, cleanupRichSession, richSessionExists, richSessionTmuxAlive } from "./claude-bridge";
+import { bridgeRichSession, cleanupRichSession } from "./claude-bridge";
 
 // Helper: create a mock WebSocket
 function createMockWs(): any {
@@ -364,39 +364,10 @@ describe("claude-bridge (tmux-backed)", () => {
         (c: any[]) => c[1]?.[0] === "kill-session"
       );
       expect(killCalls.length).toBeGreaterThanOrEqual(1);
-      expect(richSessionExists("test-session")).toBe(false);
     });
 
     it("handles cleanup for non-existent session", () => {
       expect(() => cleanupRichSession("nonexistent")).not.toThrow();
-    });
-  });
-
-  describe("richSessionExists", () => {
-    it("returns true for active session", () => {
-      const ws = createMockWs();
-      bridgeRichSession(ws, "test-session");
-      expect(richSessionExists("test-session")).toBe(true);
-    });
-
-    it("returns false for non-existent session", () => {
-      expect(richSessionExists("nonexistent")).toBe(false);
-    });
-  });
-
-  describe("richSessionTmuxAlive", () => {
-    it("returns true when tmux session exists", () => {
-      _mockState.spawnSync.mockImplementation((_cmd: string, args: string[]) => {
-        if (args?.[0] === "has-session" && args?.[2] === "rich-test-session") {
-          return { status: 0 };
-        }
-        return { status: 1 };
-      });
-      expect(richSessionTmuxAlive("test-session")).toBe(true);
-    });
-
-    it("returns false when tmux session does not exist", () => {
-      expect(richSessionTmuxAlive("test-session")).toBe(false);
     });
   });
 

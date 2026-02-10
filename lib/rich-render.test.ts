@@ -1,11 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   buildRenderItems,
-  formatDuration,
   truncateAtWord,
   getToolSummary,
   formatToolInput,
-  getToolIcon,
   type ContentBlock,
   type ContentBlockToolUse,
   type ContentBlockToolResult,
@@ -171,34 +169,6 @@ describe("buildRenderItems", () => {
   });
 });
 
-// ---- formatDuration ----
-
-describe("formatDuration", () => {
-  it("formats milliseconds", () => {
-    expect(formatDuration(500)).toBe("500ms");
-  });
-
-  it("formats seconds", () => {
-    expect(formatDuration(3500)).toBe("3.5s");
-  });
-
-  it("formats minutes", () => {
-    expect(formatDuration(125000)).toBe("2m 5s");
-  });
-
-  it("handles zero", () => {
-    expect(formatDuration(0)).toBe("0ms");
-  });
-
-  it("handles exactly 1 second", () => {
-    expect(formatDuration(1000)).toBe("1.0s");
-  });
-
-  it("handles exactly 1 minute", () => {
-    expect(formatDuration(60000)).toBe("1m 0s");
-  });
-});
-
 // ---- truncateAtWord ----
 
 describe("truncateAtWord", () => {
@@ -313,16 +283,4 @@ describe("formatToolInput", () => {
   });
 });
 
-// ---- getToolIcon ----
 
-describe("getToolIcon", () => {
-  it("returns known icons", () => {
-    expect(getToolIcon("Read")).toBe("\u25C7");
-    expect(getToolIcon("Edit")).toBe("\u25B3");
-    expect(getToolIcon("Bash")).toBe("$");
-  });
-
-  it("returns default icon for unknown tools", () => {
-    expect(getToolIcon("Custom")).toBe("\u25C6");
-  });
-});
