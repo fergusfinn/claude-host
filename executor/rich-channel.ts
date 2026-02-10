@@ -19,8 +19,8 @@ interface RichChannelOpts {
 }
 
 export function openRichChannel(opts: RichChannelOpts): void {
-  const url = `${opts.baseUrl}/ws/executor/terminal/${opts.channelId}?token=${encodeURIComponent(opts.token)}`;
-  const ws = new WebSocket(url);
+  const url = `${opts.baseUrl}/ws/executor/terminal/${opts.channelId}`;
+  const ws = new WebSocket(url, { headers: { "x-executor-token": opts.token } });
 
   const thisDir = typeof __dirname !== "undefined"
     ? __dirname

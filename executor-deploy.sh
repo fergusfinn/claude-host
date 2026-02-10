@@ -61,10 +61,11 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=${REMOTE_DIR}
-ExecStart=\${NVM_NODE_DIR}/npx tsx executor/index.ts --url ${CONTROL_PLANE_URL} --token ${EXECUTOR_TOKEN} --id ${EXECUTOR_NAME} --name "${EXECUTOR_NAME}"
+ExecStart=\${NVM_NODE_DIR}/npx tsx executor/index.ts --url ${CONTROL_PLANE_URL} --id ${EXECUTOR_NAME} --name "${EXECUTOR_NAME}"
 Restart=on-failure
 RestartSec=5
 Environment=PATH=\${NVM_NODE_DIR}:\$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=EXECUTOR_TOKEN=${EXECUTOR_TOKEN}
 
 [Install]
 WantedBy=default.target

@@ -45,8 +45,8 @@ Two issues:
 
 Update both the server-side validation (`validateExecutorToken`) and the client-side connection code in `executor/client.ts` to use the new mechanism.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 5. Remove dead code: unused functions
 

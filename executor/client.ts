@@ -50,10 +50,10 @@ export class ExecutorClient {
   private connect(): void {
     if (this.destroyed) return;
 
-    const controlUrl = `${this.opts.url}/ws/executor/control?token=${encodeURIComponent(this.opts.token)}`;
+    const controlUrl = `${this.opts.url}/ws/executor/control`;
     console.log(`Connecting to ${this.opts.url}...`);
 
-    this.ws = new WebSocket(controlUrl);
+    this.ws = new WebSocket(controlUrl, { headers: { "x-executor-token": this.opts.token } });
 
     this.ws.on("open", () => {
       console.log("Connected to control plane");

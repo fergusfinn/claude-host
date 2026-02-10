@@ -38,14 +38,9 @@ try {
   process.exit(1);
 }
 
-function validateExecutorToken(url: string): boolean {
+function validateExecutorToken(req: { headers: Record<string, string | string[] | undefined> }): boolean {
   if (!EXECUTOR_TOKEN) return false; // fail closed — no token configured means no executor access
-  try {
-    const parsed = new URL(url, "http://localhost");
-    return parsed.searchParams.get("token") === EXECUTOR_TOKEN;
-  } catch {
-    return false;
-  }
+  return req.headers["x-executor-token"] === EXECUTOR_TOKEN;
 }
 
 const app = next({ dev, dir: process.cwd() });
@@ -106,7 +101,7 @@ app.prepare().then(() => {
 
     // --- Executor control channel: /ws/executor/control ---
     if (pathname === "/ws/executor/control") {
-      if (!validateExecutorToken(req.url!)) {
+      if (!validateExecutorToken(req)) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
@@ -121,7 +116,7 @@ app.prepare().then(() => {
     // --- Executor terminal channel: /ws/executor/terminal/<channelId> ---
     const termChannelMatch = pathname?.match(/^\/ws\/executor\/terminal\/([^/]+)$/);
     if (termChannelMatch) {
-      if (!validateExecutorToken(req.url!)) {
+      if (!validateExecutorToken(req)) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
