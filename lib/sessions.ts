@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync, existsSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { execFileSync } from "child_process";
-import { createHash, randomBytes, randomUUID } from "crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import type { Session, ExecutorInfo, SessionLiveness } from "../shared/types";
 import { LocalExecutor } from "./executor-interface";
 import { cleanupRichSession, setRichDb } from "./claude-bridge";
@@ -205,7 +205,7 @@ class SessionManager {
     for (const row of rows) {
       if (row.revoked) continue;
       if (row.expires_at && row.expires_at < now) continue;
-      if (row.key_hash === hash) {
+      if (timingSafeEqual(Buffer.from(row.key_hash), Buffer.from(hash))) {
         this.db.prepare("UPDATE executor_keys SET last_used = ? WHERE id = ?").run(now, row.id);
         return { userId: row.user_id, keyId: row.id };
       }
@@ -226,14 +226,6 @@ class SessionManager {
   revokeExecutorKey(userId: string, keyId: string): boolean {
     const result = this.db.prepare(
       "UPDATE executor_keys SET revoked = 1 WHERE id = ? AND user_id = ?"
-    ).run(keyId, userId);
-    return result.changes > 0;
-  }
-
-  /** Delete an executor key permanently. */
-  deleteExecutorKey(userId: string, keyId: string): boolean {
-    const result = this.db.prepare(
-      "DELETE FROM executor_keys WHERE id = ? AND user_id = ?"
     ).run(keyId, userId);
     return result.changes > 0;
   }
@@ -507,8 +499,6 @@ class SessionManager {
         return "";
       }
     } else {
-      const executor = this.getSessionExecutorId(name);
-      const exec = this.getExecutor(executor);
       try {
         snapshotText = await exec.snapshotSession(name, 200);
       } catch {

@@ -10,7 +10,6 @@ export interface RegisterMessage {
   name: string;
   labels: string[];
   version?: string;
-  e2e?: boolean; // executor has E2E encryption enabled
 }
 
 export interface HeartbeatMessage {
@@ -124,6 +123,7 @@ export interface PingMessage {
 
 export interface UpgradeMessage {
   type: "upgrade";
+  id?: string;
   reason?: string;
 }
 

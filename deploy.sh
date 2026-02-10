@@ -82,6 +82,7 @@ Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=ADMIN_EMAIL=fergus.finn@doubleword.ai
+Environment=EXECUTOR_TOKEN=$(cat /home/fergus/.claude-host-executor-token 2>/dev/null)
 Environment=PATH=${NVM_NODE_DIR}:/home/fergus/.local/bin:/usr/local/bin:/usr/bin:/bin
 
 [Install]

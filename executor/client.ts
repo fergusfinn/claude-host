@@ -6,7 +6,7 @@
 import WebSocket from "ws";
 import { execSync } from "child_process";
 import path from "path";
-import type { ControlToExecutorMessage } from "../shared/protocol";
+import type { ControlToExecutorMessage, ExecutorToControlMessage } from "../shared/protocol";
 import { TmuxRunner } from "./tmux-runner";
 import { openTerminalChannel } from "./terminal-channel";
 import { openRichChannel } from "./rich-channel";
@@ -19,7 +19,6 @@ interface ExecutorClientOpts {
   labels: string[];
   version: string;
   noUpgrade?: boolean;
-  e2eKey?: string;
 }
 
 export class ExecutorClient {
@@ -67,7 +66,6 @@ export class ExecutorClient {
         name: this.opts.name,
         labels: this.opts.labels,
         version: this.opts.version,
-        e2e: !!this.opts.e2eKey,
       });
 
       // Start heartbeat
@@ -112,7 +110,7 @@ export class ExecutorClient {
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
   }
 
-  private send(msg: any): void {
+  private send(msg: ExecutorToControlMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     }
@@ -124,7 +122,7 @@ export class ExecutorClient {
   }
 
   private async handleMessage(msg: ControlToExecutorMessage): Promise<void> {
-    const id = (msg as any).id;
+    const id = msg.id!; // All RPC messages have id; only UpgradeMessage (handled below) may omit it
 
     try {
       switch (msg.type) {
@@ -181,7 +179,7 @@ export class ExecutorClient {
         }
 
         case "analyze_session": {
-          const analysis = await this.runner.analyzeSession((msg as any).name);
+          const analysis = await this.runner.analyzeSession(msg.name);
           this.send({ type: "response", id, ok: true, data: analysis });
           break;
         }
@@ -225,7 +223,7 @@ export class ExecutorClient {
         }
 
         case "diagnose_rich_session": {
-          const diag = this.runner.diagnoseRichSession((msg as any).name);
+          const diag = this.runner.diagnoseRichSession(msg.name);
           this.send({ type: "response", id, ok: true, data: diag });
           break;
         }

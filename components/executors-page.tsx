@@ -47,7 +47,6 @@ export function ExecutorsPage() {
   const [newKeyResult, setNewKeyResult] = useState<NewKeyResult | null>(null);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyExpiry, setNewKeyExpiry] = useState<number | undefined>(undefined);
-  const [e2eKey, setE2eKey] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
   const logSinceRef = useRef(0);
@@ -155,12 +154,6 @@ export function ExecutorsPage() {
   async function handleCreateKey() {
     setCreating(true);
     try {
-      // Generate E2E key in browser
-      const e2eBytes = new Uint8Array(32);
-      crypto.getRandomValues(e2eBytes);
-      const hexKey = Array.from(e2eBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-      setE2eKey(hexKey);
-
       const res = await fetch("/api/executor-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -176,6 +169,7 @@ export function ExecutorsPage() {
   }
 
   async function handleRevokeKey(keyId: string) {
+    if (!confirm("Revoke this key? Executors using it will be unable to reconnect.")) return;
     try {
       const res = await fetch(`/api/executor-keys/${keyId}`, { method: "DELETE" });
       if (res.ok) loadKeys();
@@ -187,7 +181,6 @@ export function ExecutorsPage() {
     setNewKeyResult(null);
     setNewKeyName("");
     setNewKeyExpiry(undefined);
-    setE2eKey(null);
     setCopied(false);
   }
 
@@ -198,7 +191,6 @@ export function ExecutorsPage() {
       `npx tsx executor/index.ts \\`,
       `  --url ${proto}://${host} \\`,
       `  --token ${newKeyResult!.token} \\`,
-      ...(e2eKey ? [`  --e2e-key ${e2eKey} \\`] : []),
       ...(newKeyName ? [`  --name "${newKeyName}"`] : [`  --name "My Executor"`]),
     ];
     return parts.join("\n");

@@ -8,6 +8,7 @@ import { getAuthUser } from "./lib/auth";
 
 const dev = process.env.NODE_ENV !== "production";
 const AUTH_DISABLED = process.env.AUTH_DISABLED === "1";
+const EXECUTOR_TOKEN = process.env.EXECUTOR_TOKEN || "";
 const VALID_SESSION_NAME = /^[a-zA-Z0-9_-]+$/;
 
 // Preflight: check auth secret (skip if auth is disabled entirely)
@@ -41,8 +42,14 @@ function validateExecutorToken(req: { headers: Record<string, string | string[] 
   const token = req.headers["x-executor-token"];
   if (!token || typeof token !== "string") return { valid: false };
 
+  // Try per-user key validation first
   const result = getSessionManager().validateExecutorKey(token);
   if (result) return { valid: true, userId: result.userId, keyId: result.keyId };
+
+  // Fall back to legacy EXECUTOR_TOKEN env var (for migration)
+  if (EXECUTOR_TOKEN && token === EXECUTOR_TOKEN) {
+    return { valid: true, userId: "local" };
+  }
 
   return { valid: false };
 }
@@ -145,6 +152,7 @@ app.prepare().then(() => {
   server.listen(port, () => {
     console.log(`Using ${tmuxVersion}`);
     console.log(`Claude Host running at http://localhost:${port}`);
+    if (EXECUTOR_TOKEN) console.log(`Legacy EXECUTOR_TOKEN configured (migrate to per-user keys)`);
     console.log(`Executor connections via per-user keys`);
   });
 });

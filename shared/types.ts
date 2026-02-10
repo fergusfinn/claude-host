@@ -54,7 +54,6 @@ export interface ExecutorInfo {
   last_seen: number; // unix timestamp (seconds)
   sessionCount?: number;
   version?: string;
-  e2e?: boolean; // executor has E2E encryption enabled
 }
 
 // --- Executor interface ---

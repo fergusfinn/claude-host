@@ -70,6 +70,28 @@ Check remote logs:
 ssh fergus@gotenks journalctl --user -u claude-host -f
 ```
 
+## Executor token migration
+
+Executor authentication is migrating from a single shared `EXECUTOR_TOKEN` env var to per-user API keys (`chk_` tokens) managed through the UI (Executors page > Add executor).
+
+**How it works now (backward-compatible):**
+
+1. Server tries per-user key validation first (`validateExecutorKey` in `lib/sessions.ts`)
+2. Falls back to `EXECUTOR_TOKEN` env var if no per-user key matches
+3. Legacy token authenticates as user `"local"`
+
+**Migration steps:**
+
+1. Deploy this branch — existing executors using `EXECUTOR_TOKEN` continue working unchanged
+2. Generate per-user keys via the Executors page and reconfigure remote executors with `--token chk_...`
+3. Once all executors use per-user keys, remove `EXECUTOR_TOKEN` from:
+   - `deploy.sh` (the `Environment=EXECUTOR_TOKEN=...` line in the systemd unit)
+   - `~/.claude-host-executor-token` on gotenks
+   - `executor-deploy.sh` (if still used)
+4. Optionally remove the legacy fallback from `server.ts` (`validateExecutorToken`)
+
+**Key format:** `chk_<64 hex chars>` — SHA-256 hashed in the DB, 8-char prefix stored for lookup.
+
 ## Project structure
 
 - `server.ts` — HTTP + WebSocket server entry point

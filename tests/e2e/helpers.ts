@@ -111,6 +111,12 @@ export function api(baseUrl: string) {
     executors: {
       list: () => json("GET", "/api/executors").then((r) => r.json()),
     },
+    executorKeys: {
+      list: () => json("GET", "/api/executor-keys").then((r) => r.json()),
+      create: (opts: { name?: string; expiresInDays?: number } = {}) =>
+        json("POST", "/api/executor-keys", opts).then((r) => r.json()),
+      revoke: (id: string) => json("DELETE", `/api/executor-keys/${id}`),
+    },
   };
 }
 
