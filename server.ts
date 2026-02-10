@@ -80,6 +80,8 @@ app.prepare().then(() => {
     const { pathname } = new URL(req.url!, "http://localhost");
 
     // --- Browser terminal sessions: /ws/sessions/<name> ---
+    // PARALLEL: rich equivalent is /ws/rich/<name> below. Auth and validation
+    // logic should be kept in sync between both handlers.
     const terminalMatch = pathname?.match(/^\/ws\/sessions\/([^/]+)$/);
     if (terminalMatch) {
       const user = await getAuthUser(req);
@@ -97,6 +99,8 @@ app.prepare().then(() => {
     }
 
     // --- Rich-mode sessions: /ws/rich/<name> ---
+    // PARALLEL: terminal equivalent is /ws/sessions/<name> above. Auth and
+    // validation logic should be kept in sync between both handlers.
     const richMatch = pathname?.match(/^\/ws\/rich\/([^/]+)$/);
     if (richMatch) {
       const user = await getAuthUser(req);

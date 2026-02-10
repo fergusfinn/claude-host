@@ -56,6 +56,8 @@ export class TmuxRunner {
     }
   }
 
+  // PARALLEL: rich equivalent is createRichSession() below.
+  // Changes here (e.g. tmux options, validation, env vars) may need mirroring.
   createSession(opts: CreateSessionOpts): { name: string; command: string } {
     const { name, command = "claude" } = opts;
 
@@ -167,12 +169,14 @@ export class TmuxRunner {
     return { name, command };
   }
 
+  // PARALLEL: rich equivalent is deleteRichSession() below.
   deleteSession(name: string): void {
     if (this.tmuxExists(name)) {
       spawnSync(TMUX, ["kill-session", "-t", name], { stdio: "pipe" });
     }
   }
 
+  // PARALLEL: terminal equivalent is deleteSession() above.
   deleteRichSession(name: string): void {
     const tName = `rich-${name}`;
     if (spawnSync(TMUX, ["has-session", "-t", tName], { stdio: "pipe" }).status === 0) {
@@ -206,6 +210,7 @@ export class TmuxRunner {
     }
   }
 
+  // PARALLEL: rich equivalent is snapshotRichSession() below.
   snapshotSession(name: string, lines = 50): string {
     if (!this.tmuxExists(name)) return "[session not running]";
     try {
@@ -219,6 +224,8 @@ export class TmuxRunner {
     }
   }
 
+  // PARALLEL: terminal equivalent is createSession() above.
+  // Changes here (e.g. tmux options, validation, env vars) may need mirroring.
   createRichSession(opts: CreateRichSessionOpts): { name: string; command: string } {
     const { name, command = "claude" } = opts;
 
@@ -303,6 +310,7 @@ export class TmuxRunner {
     };
   }
 
+  // PARALLEL: terminal equivalent is snapshotSession() above.
   snapshotRichSession(name: string): string {
     return snapshotRichEvents(DATA_DIR, name);
   }

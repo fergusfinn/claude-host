@@ -91,6 +91,41 @@ Executor authentication is migrating from a single shared `EXECUTOR_TOKEN` env v
 
 **Key format:** `chk_<64 hex chars>` — SHA-256 hashed in the DB, 8-char prefix stored for lookup.
 
+## Session architecture: parallel codepaths
+
+Sessions have two axes of duplication: **terminal vs rich** (mode) and **local vs remote** (executor). These run as fully separate codepaths — different WebSocket endpoints, different bridge modules, different tmux naming conventions. When changing one codepath, you must check if the parallel codepath needs the same change.
+
+### Terminal vs Rich pairs
+
+Methods marked `// PARALLEL:` in the code cross-reference their counterpart:
+
+| Terminal | Rich | What it does |
+|----------|------|-------------|
+| `createSession` | `createRichSession` | Create tmux session |
+| `deleteSession` | `deleteRichSession` | Kill tmux + cleanup |
+| `snapshotSession` | `snapshotRichSession` | Capture current state |
+| `attachSession` | `attachRichSession` | Bridge browser WS to session |
+
+### Where the pairs are implemented
+
+Each pair has implementations across these files (all annotated with `// PARALLEL:` comments):
+
+- **`shared/types.ts`** — `ExecutorInterface` definition
+- **`executor/tmux-runner.ts`** — tmux subprocess operations
+- **`lib/executor-interface.ts`** — `LocalExecutor` (delegates to TmuxRunner + bridge) and `RemoteExecutor` (RPC over WebSocket)
+- **`lib/sessions.ts`** — `SessionManager` (DB + routing, branches on `mode`)
+- **`server.ts`** — WebSocket upgrade handlers (`/ws/sessions/<name>` vs `/ws/rich/<name>`)
+
+### Key differences between the modes
+
+- **Terminal**: tmux session created eagerly, named directly (e.g. `fuzzy-ocean`), bridged via `lib/pty-bridge.ts` (node-pty, raw binary)
+- **Rich**: tmux session created lazily on first prompt, named `rich-<name>`, bridged via `lib/claude-bridge.ts` (FIFO + events.ndjson, structured JSON)
+- **Rich tmux sessions are filtered from `listSessions()`** to avoid double-counting — the `rich-` prefix is load-bearing
+
+### Local vs Remote
+
+`RemoteExecutor.attachSession()` and `RemoteExecutor.attachRichSession()` contain nearly identical WS bridging logic (channel setup, message buffering, cleanup). Changes to one should be applied to the other.
+
 ## Project structure
 
 - `server.ts` — HTTP + WebSocket server entry point

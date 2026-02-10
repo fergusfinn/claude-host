@@ -2,6 +2,12 @@
  * ExecutorInterface implementations:
  * - LocalExecutor: direct tmux calls via TmuxRunner (single-machine use)
  * - RemoteExecutor: RPC over WebSocket to a connected executor process
+ *
+ * IMPORTANT: There are two axes of duplication here:
+ *   1. Terminal vs Rich — most methods have a *RichSession counterpart
+ *   2. Local vs Remote — same operations implemented differently
+ * When changing any method, check if its counterpart on both axes needs
+ * the same change. See ExecutorInterface in shared/types.ts for the full map.
  */
 
 import type { WebSocket } from "ws";
@@ -23,10 +29,12 @@ import { bridgeRichSession } from "./claude-bridge";
 export class LocalExecutor implements ExecutorInterface {
   private runner = new TmuxRunner();
 
+  // PARALLEL: rich equivalent is createRichSession(); remote equivalent is RemoteExecutor.createSession()
   async createSession(opts: CreateSessionOpts): Promise<{ name: string; command: string }> {
     return this.runner.createSession(opts);
   }
 
+  // PARALLEL: terminal equivalent is createSession(); remote equivalent is RemoteExecutor.createRichSession()
   async createRichSession(opts: CreateRichSessionOpts): Promise<{ name: string; command: string }> {
     return this.runner.createRichSession(opts);
   }
@@ -35,10 +43,12 @@ export class LocalExecutor implements ExecutorInterface {
     return this.runner.createJob(opts);
   }
 
+  // PARALLEL: rich equivalent is deleteRichSession()
   async deleteSession(name: string): Promise<void> {
     this.runner.deleteSession(name);
   }
 
+  // PARALLEL: terminal equivalent is deleteSession()
   async deleteRichSession(name: string): Promise<void> {
     this.runner.deleteRichSession(name);
   }
@@ -51,10 +61,12 @@ export class LocalExecutor implements ExecutorInterface {
     return this.runner.listSessions();
   }
 
+  // PARALLEL: rich equivalent is snapshotRichSession()
   async snapshotSession(name: string, lines?: number): Promise<string> {
     return this.runner.snapshotSession(name, lines);
   }
 
+  // PARALLEL: terminal equivalent is snapshotSession()
   async snapshotRichSession(name: string): Promise<string> {
     return this.runner.snapshotRichSession(name);
   }
@@ -67,10 +79,14 @@ export class LocalExecutor implements ExecutorInterface {
     return this.runner.analyzeSession(name);
   }
 
+  // PARALLEL: rich equivalent is attachRichSession(); remote equivalent is RemoteExecutor.attachSession()
+  // Terminal bridge: lib/pty-bridge.ts (node-pty, raw binary data)
   attachSession(name: string, userWs: WebSocket, cols?: number, rows?: number): void {
     bridgeSession(userWs, name, cols, rows);
   }
 
+  // PARALLEL: terminal equivalent is attachSession(); remote equivalent is RemoteExecutor.attachRichSession()
+  // Rich bridge: lib/claude-bridge.ts (FIFO + events.ndjson, structured JSON)
   attachRichSession(name: string, command: string, userWs: WebSocket): void {
     bridgeRichSession(userWs, name, command);
   }
@@ -100,10 +116,12 @@ export class RemoteExecutor implements ExecutorInterface {
     private registry: ExecutorRegistry,
   ) {}
 
+  // PARALLEL: rich equivalent is createRichSession(); local equivalent is LocalExecutor.createSession()
   async createSession(opts: CreateSessionOpts): Promise<{ name: string; command: string }> {
     return this.rpc("create_session", { opts });
   }
 
+  // PARALLEL: terminal equivalent is createSession(); local equivalent is LocalExecutor.createRichSession()
   async createRichSession(opts: CreateRichSessionOpts): Promise<{ name: string; command: string }> {
     return this.rpc("create_rich_session", { opts });
   }
@@ -112,10 +130,12 @@ export class RemoteExecutor implements ExecutorInterface {
     return this.rpc("create_job", { opts });
   }
 
+  // PARALLEL: rich equivalent is deleteRichSession()
   async deleteSession(name: string): Promise<void> {
     await this.rpc("delete_session", { name });
   }
 
+  // PARALLEL: terminal equivalent is deleteSession()
   async deleteRichSession(name: string): Promise<void> {
     await this.rpc("delete_rich_session", { name });
   }
@@ -128,10 +148,12 @@ export class RemoteExecutor implements ExecutorInterface {
     return this.rpc("list_sessions", {});
   }
 
+  // PARALLEL: rich equivalent is snapshotRichSession()
   async snapshotSession(name: string, lines?: number): Promise<string> {
     return this.rpc("snapshot_session", { name, lines });
   }
 
+  // PARALLEL: terminal equivalent is snapshotSession()
   async snapshotRichSession(name: string): Promise<string> {
     return this.rpc("snapshot_rich_session", { name });
   }
@@ -144,6 +166,9 @@ export class RemoteExecutor implements ExecutorInterface {
     return this.rpc("analyze_session", { name });
   }
 
+  // PARALLEL: rich equivalent is attachRichSession() below — nearly identical WS bridging
+  // logic. Changes to channel setup, buffering, or cleanup should be applied to both.
+  // Local equivalent: LocalExecutor.attachSession() (uses pty-bridge.ts instead)
   attachSession(name: string, userWs: WebSocket, _cols?: number, _rows?: number): void {
     const channelId = rpcId();
 
@@ -198,6 +223,9 @@ export class RemoteExecutor implements ExecutorInterface {
     });
   }
 
+  // PARALLEL: terminal equivalent is attachSession() above — nearly identical WS bridging
+  // logic. Changes to channel setup, buffering, or cleanup should be applied to both.
+  // Local equivalent: LocalExecutor.attachRichSession() (uses claude-bridge.ts instead)
   attachRichSession(name: string, command: string, userWs: WebSocket): void {
     const channelId = rpcId();
 

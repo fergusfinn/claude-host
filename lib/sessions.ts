@@ -246,6 +246,12 @@ class SessionManager {
     return this._registry;
   }
 
+  // NOTE: Liveness logic differs by mode AND executor. Four cases:
+  //   local+terminal  — tmux has-session check, auto-delete dead sessions
+  //   local+rich      — always alive (tmux session is lazily created)
+  //   remote+terminal — heartbeat-cached liveness from ExecutorRegistry
+  //   remote+rich     — always alive (rich tmux sessions filtered from heartbeat)
+  // When modifying liveness logic, ensure all four cases are handled.
   list(userId: string): Session[] {
     const rows = this.db
       .prepare("SELECT * FROM sessions WHERE user_id = ? ORDER BY position ASC, created_at DESC")
@@ -365,6 +371,8 @@ class SessionManager {
     return alive;
   }
 
+  // NOTE: Branches on mode (terminal vs rich) — changes to one branch likely
+  // need mirroring in the other. Also see createJob() (terminal-only).
   async create(description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal", userId: string = "local"): Promise<Session> {
     const name = this.uniqueName();
 
@@ -452,6 +460,8 @@ class SessionManager {
     };
   }
 
+  // NOTE: Branches on mode (terminal vs rich). Rich path has extra cleanup
+  // (cleanupRichSession for in-memory state + deleteRichSession for files/tmux).
   async delete(name: string, userId: string): Promise<void> {
     if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
     const mode = this.getMode(name);
@@ -489,6 +499,7 @@ class SessionManager {
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   }
 
+  // NOTE: Branches on mode (terminal vs rich) AND executor (local vs remote).
   async snapshot(name: string, userId: string): Promise<string> {
     if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
     const mode = this.getMode(name);
@@ -501,6 +512,8 @@ class SessionManager {
     return exec.snapshotSession(name);
   }
 
+  // NOTE: Branches on mode (terminal vs rich) AND executor (local vs remote).
+  // Snapshot source and prompt text differ by mode.
   async summarize(name: string, userId: string): Promise<string> {
     if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
     const mode = this.getMode(name);
@@ -573,6 +586,8 @@ class SessionManager {
     this.setConfig("forkHooks", JSON.stringify(hooks), userId);
   }
 
+  // NOTE: Branches on mode (terminal vs rich). Rich fork is handled by
+  // forkRichSession() below — different lifecycle (lazy tmux, no immediate spawn).
   async fork(sourceName: string, userId: string = "local"): Promise<Session> {
     if (!this.isOwnedBy(sourceName, userId)) throw new Error("Not found");
     const newName = this.uniqueName();
@@ -672,6 +687,7 @@ class SessionManager {
     };
   }
 
+  // PARALLEL: rich equivalent is attachRichSession() below.
   /** Attach a user's WebSocket to a session's terminal */
   attachSession(name: string, userWs: import("ws").WebSocket, cols?: number, rows?: number): void {
     const executor = this.getSessionExecutorId(name);
@@ -679,6 +695,7 @@ class SessionManager {
     exec.attachSession(name, userWs, cols, rows);
   }
 
+  // PARALLEL: terminal equivalent is attachSession() above.
   /** Attach a user's WebSocket to a rich session */
   attachRichSession(name: string, userWs: import("ws").WebSocket): void {
     const executor = this.getSessionExecutorId(name);
