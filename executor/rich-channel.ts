@@ -7,8 +7,16 @@ import WebSocket from "ws";
 import { existsSync, openSync, readSync, fstatSync, closeSync, statSync, watch, writeSync, constants as fsConstants } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { spawnSync } from "child_process";
+import { spawnSync, execFileSync } from "child_process";
 import type { FSWatcher } from "fs";
+
+const TMUX = (() => {
+  try {
+    return execFileSync("which", ["tmux"], { encoding: "utf-8" }).trim();
+  } catch {
+    return "tmux";
+  }
+})();
 
 interface RichChannelOpts {
   baseUrl: string;
@@ -158,11 +166,11 @@ export function openRichChannel(opts: RichChannelOpts): void {
 
   function sendInterrupt(): void {
     const tName = `rich-${opts.sessionName}`;
-    spawnSync("tmux", ["send-keys", "-t", tName, "C-c"], { stdio: "pipe" });
+    spawnSync(TMUX, ["send-keys", "-t", tName, "C-c"], { stdio: "pipe" });
   }
 
   function tmuxExists(): boolean {
-    return spawnSync("tmux", ["has-session", "-t", `rich-${opts.sessionName}`], { stdio: "pipe" }).status === 0;
+    return spawnSync(TMUX, ["has-session", "-t", `rich-${opts.sessionName}`], { stdio: "pipe" }).status === 0;
   }
 
   function cleanup(): void {

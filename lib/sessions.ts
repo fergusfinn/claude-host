@@ -417,8 +417,6 @@ class SessionManager {
         return "";
       }
     } else {
-      const executor = this.getSessionExecutorId(name);
-      const exec = this.getExecutor(executor);
       try {
         snapshotText = await exec.snapshotSession(name, 200);
       } catch {

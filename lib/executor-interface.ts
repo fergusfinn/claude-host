@@ -92,7 +92,7 @@ export class LocalExecutor implements ExecutorInterface {
 // --- RemoteExecutor ---
 
 import type { ExecutorRegistry } from "./executor-registry";
-import { rpcId } from "../shared/protocol";
+import { rpcId, type AttachRichSessionRpc, type ControlToExecutorMessage } from "../shared/protocol";
 
 export class RemoteExecutor implements ExecutorInterface {
   constructor(
@@ -203,13 +203,14 @@ export class RemoteExecutor implements ExecutorInterface {
 
     const channelPromise = this.registry.waitForTerminalChannel(channelId, 10000);
 
-    this.registry.sendToExecutor(this.executorId, {
+    const attachMsg: AttachRichSessionRpc = {
       type: "attach_rich_session",
       id: rpcId(),
       channelId,
       sessionName: name,
       command,
-    } as any);
+    };
+    this.registry.sendToExecutor(this.executorId, attachMsg);
 
     const pendingMessages: string[] = [];
     userWs.on("message", (data) => {
@@ -247,6 +248,6 @@ export class RemoteExecutor implements ExecutorInterface {
 
   private async rpc<T>(type: string, params: Record<string, unknown>): Promise<T> {
     const id = rpcId();
-    return this.registry.sendRpc<T>(this.executorId, { type, id, ...params } as any);
+    return this.registry.sendRpc<T>(this.executorId, { type, id, ...params } as ControlToExecutorMessage);
   }
 }

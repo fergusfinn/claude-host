@@ -4,7 +4,7 @@ import { getAuthUser } from "@/lib/auth";
 
 const VALID_CONFIG_KEYS = new Set([
   "theme", "mode", "font", "richFont", "fontSize",
-  "showHints", "shortcuts", "forkHooks",
+  "showHints", "shortcuts", "forkHooks", "prefixTimeout",
 ]);
 
 export async function GET(req: NextRequest) {

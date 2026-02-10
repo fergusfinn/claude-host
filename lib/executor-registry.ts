@@ -132,7 +132,7 @@ export class ExecutorRegistry {
     const executor = this.executors.get(executorId);
     if (!executor) throw new Error(`Executor "${executorId}" not connected`);
 
-    const id = (message as any).id;
+    const id = message.id!; // All RPC messages have id; only UpgradeMessage (fire-and-forget) may omit it
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRpcs.delete(id);

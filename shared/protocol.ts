@@ -123,6 +123,7 @@ export interface PingMessage {
 
 export interface UpgradeMessage {
   type: "upgrade";
+  id?: string;
   reason?: string;
 }
 

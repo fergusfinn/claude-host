@@ -7,6 +7,7 @@
  */
 
 import { execSync } from "child_process";
+import { hostname } from "os";
 import path from "path";
 import { ExecutorClient } from "./client";
 
@@ -58,7 +59,7 @@ function parseArgs(): { url: string; token: string; id: string; name: string; la
   // Fall back to env vars
   url = url || process.env.EXECUTOR_URL || "";
   token = token || process.env.EXECUTOR_TOKEN || "";
-  id = id || process.env.EXECUTOR_ID || require("os").hostname();
+  id = id || process.env.EXECUTOR_ID || hostname();
   name = name || process.env.EXECUTOR_NAME || id;
 
   if (!url) {
