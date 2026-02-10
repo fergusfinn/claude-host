@@ -195,7 +195,7 @@ export class TmuxRunner {
       return r.stdout
         .trim()
         .split("\n")
-        .filter(Boolean)
+        .filter((name) => name && !name.startsWith("rich-"))
         .map((name) => ({
           name,
           alive: true,

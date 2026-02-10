@@ -718,6 +718,7 @@ class SessionManager {
       "INSERT OR IGNORE INTO sessions (name, description, command, executor, position, user_id) VALUES (?, ?, ?, ?, ?, ?)"
     );
     for (const s of sessions) {
+      if (s.name.startsWith("rich-")) continue; // internal rich-mode tmux sessions
       insert.run(s.name, "", "claude", executorId, this.nextPosition(), ownerRow?.user_id ?? null);
     }
   }
