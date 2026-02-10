@@ -11,8 +11,6 @@ import { DEFAULT_COMMAND } from "@/shared/constants";
 
 type SessionMode = "rich" | "terminal" | "custom";
 
-type SessionMode = "rich" | "terminal" | "custom";
-
 interface Props {
   theme: TerminalTheme;
   richFont?: string;

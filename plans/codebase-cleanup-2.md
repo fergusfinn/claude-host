@@ -153,5 +153,7 @@ The default command `"claude --dangerously-skip-permissions"` appears as a liter
 
 `package.json` explicitly pins `@rollup/rollup-linux-x64-gnu` as a dependency. This is normally auto-installed by npm based on platform and may cause issues for non-Linux developers. Investigate whether it can be removed or moved to `optionalDependencies`.
 
-- working: [ ]
-- complete: [ ]
+**Verdict: keep as-is.** The explicit pin is a workaround for [npm#4828](https://github.com/npm/cli/issues/4828) — npm fails to install rollup's `optionalDependencies` when rollup is pulled in transitively (`better-auth` → `vitest` → `vite` → `rollup`). Removing the pin causes `Cannot find module @rollup/rollup-linux-x64-gnu` at runtime. This only affects Linux x64 (the deploy target), so it won't break non-Linux dev machines (they'll just have an unused extra package).
+
+- working: [x]
+- complete: [x]
