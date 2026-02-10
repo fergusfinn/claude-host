@@ -187,13 +187,16 @@ export function ExecutorsPage() {
   function getStartupCommand(): string {
     const host = typeof window !== "undefined" ? window.location.host : "localhost:3000";
     const proto = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws";
-    const parts = [
+    const name = newKeyName || "My Executor";
+    const lines = [
+      `git clone https://github.com/fergusfinn/claude-host.git claude-host-executor`,
+      `cd claude-host-executor && npm install --omit=dev`,
       `npx tsx executor/index.ts \\`,
       `  --url ${proto}://${host} \\`,
       `  --token ${newKeyResult!.token} \\`,
-      ...(newKeyName ? [`  --name "${newKeyName}"`] : [`  --name "My Executor"`]),
+      `  --name "${name}"`,
     ];
-    return parts.join("\n");
+    return lines.join("\n");
   }
 
   async function handleCopy() {
@@ -383,9 +386,9 @@ export function ExecutorsPage() {
               </>
             ) : (
               <>
-                <div className={styles.dialogTitle}>Executor startup command</div>
+                <div className={styles.dialogTitle}>Executor setup</div>
                 <div className={styles.warning}>
-                  This token will only be shown once. Copy the command below and run it on the executor machine.
+                  This token will only be shown once. Run these commands on the executor machine.
                 </div>
                 <div className={styles.codeBlock}>
                   <pre className={styles.code}>{getStartupCommand()}</pre>
