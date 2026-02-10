@@ -1,8 +1,9 @@
-import { spawn, type ChildProcess } from "child_process";
-import { mkdtempSync, rmSync } from "fs";
+import { spawn, spawnSync, type ChildProcess } from "child_process";
+import { mkdtempSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import WebSocket from "ws";
+import Database from "better-sqlite3";
 
 const PROJECT_ROOT = join(__dirname, "../..");
 
@@ -60,6 +61,8 @@ export async function startServer(): Promise<ServerHandle> {
   });
 
   const cleanup = () => {
+    // Kill tmux sessions created by this test server before removing data
+    killTestTmuxSessions(dataDir);
     try {
       proc.kill("SIGTERM");
     } catch {}
@@ -391,20 +394,24 @@ export async function startExecutor(
 
 // --- Cleanup utility ---
 
-export function killTestTmuxSessions(): void {
+/** Kill tmux sessions that were created by a test server's data dir. */
+function killTestTmuxSessions(dataDir: string): void {
   try {
-    const { execSync } = require("child_process");
-    // List all tmux sessions and kill any that look like test sessions
-    const sessions = execSync("tmux list-sessions -F '#{session_name}' 2>/dev/null", {
-      encoding: "utf-8",
-    }).trim();
-    if (!sessions) return;
-    for (const name of sessions.split("\n")) {
-      // Test sessions use generated names from the name generator
-      // We can't easily distinguish them, so only kill sessions created
-      // by the test data dir. This is best-effort cleanup.
+    const dbPath = join(dataDir, "sessions.db");
+    if (!existsSync(dbPath)) return;
+
+    const db = new Database(dbPath, { readonly: true });
+    const rows = db.prepare("SELECT name, mode FROM sessions").all() as Array<{ name: string; mode: string }>;
+    db.close();
+
+    for (const row of rows) {
+      // Terminal sessions use the session name directly; rich sessions use "rich-<name>"
+      const tmuxNames = row.mode === "rich" ? [`rich-${row.name}`] : [row.name];
+      for (const tName of tmuxNames) {
+        spawnSync("tmux", ["kill-session", "-t", tName], { stdio: "pipe" });
+      }
     }
   } catch {
-    // tmux not running or no sessions
+    // DB not accessible or tmux not running — best-effort cleanup
   }
 }
