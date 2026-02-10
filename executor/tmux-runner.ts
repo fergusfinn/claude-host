@@ -3,7 +3,7 @@
  * Used by both LocalExecutor (in-process) and standalone executor process.
  */
 
-import { execFileSync, spawnSync, execSync } from "child_process";
+import { execFileSync, spawnSync, execSync, spawn } from "child_process";
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, resolve, dirname } from "path";
@@ -522,8 +522,7 @@ export class TmuxRunner {
     const beforeList = [...before].join("\n");
 
     // Spawn a background process that polls for the new file
-    const { spawn: spawnAsync } = require("child_process");
-    const child = spawnAsync("bash", ["-c", `
+    const child = spawn("bash", ["-c", `
       for i in $(seq 1 20); do
         sleep 0.5
         for f in "${projectDir}"/*.jsonl; do

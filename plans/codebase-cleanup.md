@@ -75,8 +75,8 @@ Delete these unused exported functions (and remove any related imports/exports):
 
 `shiki` is in `package.json` but never imported. Run `npm uninstall shiki`.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 8. Deduplicate `getMode` / `getSessionMode`
 
@@ -104,8 +104,8 @@ Nearly identical implementations exist in `lib/sessions.ts:439` and `executor/tm
 
 `executor/tmux-runner.ts:524` uses `require("child_process")` for `spawn`. Add `spawn` to the existing `import { execFileSync, spawnSync, execSync } from "child_process"` at the top of the file, and remove the `require` call.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 12. Consolidate dual SQLite connections
 
@@ -154,8 +154,8 @@ Go through the codebase and add at minimum `console.error` (or `console.warn` fo
 
 `package.json` lists `tsx` under `devDependencies` but it's required at runtime (`npm start` uses `tsx server.ts`). Move it to `dependencies`.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 18. Clean up stale `.next-staging` references
 
