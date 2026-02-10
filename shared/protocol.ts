@@ -47,6 +47,12 @@ export interface DeleteSessionRpc {
   name: string;
 }
 
+export interface DeleteRichSessionRpc {
+  type: "delete_rich_session";
+  id: string;
+  name: string;
+}
+
 export interface ForkSessionRpc {
   type: "fork_session";
   id: string;
@@ -124,6 +130,7 @@ export type ControlToExecutorMessage =
   | CreateSessionRpc
   | CreateJobRpc
   | DeleteSessionRpc
+  | DeleteRichSessionRpc
   | ForkSessionRpc
   | ListSessionsRpc
   | SnapshotSessionRpc

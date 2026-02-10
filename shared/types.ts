@@ -72,6 +72,7 @@ export interface ExecutorInterface {
   createSession(opts: CreateSessionOpts): Promise<{ name: string; command: string }>;
   createRichSession(opts: CreateRichSessionOpts): Promise<{ name: string; command: string }>;
   deleteSession(name: string): Promise<void>;
+  deleteRichSession(name: string): Promise<void>;
   forkSession(opts: ForkSessionOpts): Promise<{ name: string; command: string }>;
   listSessions(): Promise<SessionLiveness[]>;
   snapshotSession(name: string, lines?: number): Promise<string>;

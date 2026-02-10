@@ -3,7 +3,7 @@ import { WebSocket } from "ws";
 import Database from "better-sqlite3";
 import {
   mkdirSync, existsSync, readFileSync, writeFileSync, appendFileSync, openSync,
-  closeSync, readSync, writeSync, fstatSync, watch, statSync, rmSync,
+  closeSync, readSync, writeSync, fstatSync, watch, statSync,
   constants as fsConstants,
   type FSWatcher,
 } from "fs";
@@ -625,7 +625,8 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
   ws.on("error", (err: Error) => cleanup(`error:${err.message}`));
 }
 
-/** Clean up all state for a rich session (called on session delete) */
+/** Clean up in-memory bridge state for a rich session (called on session delete).
+ *  Tmux session and data files are cleaned up by the executor via deleteRichSession. */
 export function cleanupRichSession(name: string): void {
   const state = sessions.get(name);
   if (state) {
@@ -636,17 +637,6 @@ export function cleanupRichSession(name: string): void {
     }
     state.clients.clear();
     sessions.delete(name);
-  }
-
-  // Kill tmux session
-  if (tmuxExists(name)) {
-    spawnSync(TMUX, ["kill-session", "-t", tmuxName(name)], { stdio: "pipe" });
-  }
-
-  // Remove runtime files
-  const dir = sessionDir(name);
-  if (existsSync(dir)) {
-    try { rmSync(dir, { recursive: true, force: true }); } catch (e) { console.warn("failed to remove session dir", e); }
   }
 
   deleteState(name);

@@ -337,11 +337,14 @@ class SessionManager {
   async delete(name: string, userId: string): Promise<void> {
     if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
     const mode = this.getMode(name);
+    const executor = this.getSessionExecutorId(name);
+    const exec = this.getExecutor(executor);
     if (mode === "rich") {
+      // Clean up local in-memory bridge state (tailing, health checks, WS clients)
       cleanupRichSession(name);
+      // Clean up tmux session + data files on the executor (local or remote)
+      await exec.deleteRichSession(name);
     } else {
-      const executor = this.getSessionExecutorId(name);
-      const exec = this.getExecutor(executor);
       await exec.deleteSession(name);
     }
     this.db.prepare("DELETE FROM sessions WHERE name = ? AND user_id = ?").run(name, userId);

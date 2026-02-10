@@ -125,8 +125,8 @@ Nearly identical implementations exist in `lib/sessions.ts:439` and `executor/tm
 
 `lib/sessions.ts:336` — `delete()` calls `cleanupRichSession(name)` directly for rich mode, bypassing executor routing. Route rich session cleanup through the executor interface, same as terminal mode, so remote rich sessions are cleaned up properly.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 15. Add config key allowlist
 

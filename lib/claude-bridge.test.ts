@@ -348,22 +348,14 @@ describe("claude-bridge (tmux-backed)", () => {
   });
 
   describe("cleanupRichSession", () => {
-    it("kills tmux session and removes state", () => {
+    it("cleans up in-memory state and closes client connections", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
-      // Make tmux session exist for cleanup
-      _mockState.spawnSync.mockImplementation((_cmd: string, args: string[]) => {
-        if (args?.[0] === "has-session") return { status: 0 };
-        return { status: 0 };
-      });
-
       cleanupRichSession("test-session");
 
-      const killCalls = _mockState.spawnSync.mock.calls.filter(
-        (c: any[]) => c[1]?.[0] === "kill-session"
-      );
-      expect(killCalls.length).toBeGreaterThanOrEqual(1);
+      // WS client should be closed
+      expect(ws.close).toHaveBeenCalled();
     });
 
     it("handles cleanup for non-existent session", () => {

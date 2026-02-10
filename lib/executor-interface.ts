@@ -39,6 +39,10 @@ export class LocalExecutor implements ExecutorInterface {
     this.runner.deleteSession(name);
   }
 
+  async deleteRichSession(name: string): Promise<void> {
+    this.runner.deleteRichSession(name);
+  }
+
   async forkSession(opts: ForkSessionOpts): Promise<{ name: string; command: string }> {
     return this.runner.forkSession(opts);
   }
@@ -110,6 +114,10 @@ export class RemoteExecutor implements ExecutorInterface {
 
   async deleteSession(name: string): Promise<void> {
     await this.rpc("delete_session", { name });
+  }
+
+  async deleteRichSession(name: string): Promise<void> {
+    await this.rpc("delete_rich_session", { name });
   }
 
   async forkSession(opts: ForkSessionOpts): Promise<{ name: string; command: string }> {

@@ -5,7 +5,7 @@
 
 import { execFileSync, spawnSync, execSync, spawn } from "child_process";
 import { randomUUID } from "crypto";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { CreateSessionOpts, CreateJobOpts, ForkSessionOpts, CreateRichSessionOpts, SessionLiveness, SessionAnalysis } from "../shared/types";
@@ -176,6 +176,17 @@ export class TmuxRunner {
   deleteSession(name: string): void {
     if (this.tmuxExists(name)) {
       spawnSync(TMUX, ["kill-session", "-t", name], { stdio: "pipe" });
+    }
+  }
+
+  deleteRichSession(name: string): void {
+    const tName = `rich-${name}`;
+    if (spawnSync(TMUX, ["has-session", "-t", tName], { stdio: "pipe" }).status === 0) {
+      spawnSync(TMUX, ["kill-session", "-t", tName], { stdio: "pipe" });
+    }
+    const dataDir = join(DATA_DIR, "rich", name);
+    if (existsSync(dataDir)) {
+      try { rmSync(dataDir, { recursive: true, force: true }); } catch (e) { console.warn("failed to remove rich session dir", e); }
     }
   }
 

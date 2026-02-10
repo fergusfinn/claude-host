@@ -148,6 +148,12 @@ export class ExecutorClient {
           break;
         }
 
+        case "delete_rich_session": {
+          this.runner.deleteRichSession(msg.name);
+          this.send({ type: "response", id, ok: true });
+          break;
+        }
+
         case "fork_session": {
           const result = this.runner.forkSession(msg.opts);
           this.send({ type: "response", id, ok: true, data: result });
