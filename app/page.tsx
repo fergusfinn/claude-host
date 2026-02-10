@@ -8,6 +8,7 @@ import { PaneLayout } from "@/components/pane-layout";
 import { TabBar } from "@/components/tab-bar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ModeSwitchModal } from "@/components/mode-switch-modal";
+import { NewSessionPage } from "@/components/new-session-page";
 import { ensureRichFontLoaded } from "@/components/rich-view";
 import { getThemeById, DEFAULT_DARK_THEME, type TerminalTheme, getFontById, DEFAULT_FONT_ID, type TerminalFont, ensureFontLoaded, getDefaultThemeForMode, themeToChromeVars } from "@/lib/themes";
 import { loadShortcuts, type ShortcutMap } from "@/lib/shortcuts";
@@ -85,6 +86,8 @@ export default function Home() {
   const configRef = useRef<Record<string, string>>({});
   const openCreateRef = useRef<(() => void) | null>(null);
   const shortcutsRef = useRef<ShortcutMap>(loadShortcuts(undefined));
+  const [preSessionOpen, setPreSessionOpen] = useState(false);
+  const pendingPromptRef = useRef<{ session: string; text: string } | null>(null);
 
   // Derived: active tab object, all session names across all tabs
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
@@ -534,6 +537,18 @@ export default function Home() {
     }
   }
 
+  function mobileNew() {
+    setPreSessionOpen(true);
+    setActiveTabId(null);
+  }
+
+  async function handleNewSessionCreated(name: string, _mode: "rich", initialPrompt: string) {
+    setPreSessionOpen(false);
+    pendingPromptRef.current = { session: name, text: initialPrompt };
+    await loadSessions();
+    connectSession(name, "rich");
+  }
+
   const [modeSwitchSession, setModeSwitchSession] = useState<string | null>(null);
 
   async function handleModeSwitch(newMode: "terminal" | "rich", command: string) {
@@ -762,8 +777,8 @@ export default function Home() {
         richFont={richFont}
         keyMode={keyMode}
         onKeyModeChange={setKeyMode}
-        onSelectTab={setActiveTabId}
-        onNew={quickCreateRich}
+        onSelectTab={(id) => { setPreSessionOpen(false); setActiveTabId(id); }}
+        onNew={mobileNew}
         onThemeChange={handleThemeChange}
         onFontChange={handleFontChange}
         onRichFontChange={handleRichFontChange}
@@ -779,11 +794,25 @@ export default function Home() {
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div style={{
           position: "absolute", inset: 0,
-          display: activeTabId === null ? "flex" : "none",
+          display: activeTabId === null && !preSessionOpen ? "flex" : "none",
           flexDirection: "column",
         }}>
           <Dashboard onConnect={connectSession} openCreateRef={openCreateRef} />
         </div>
+        {preSessionOpen && activeTabId === null && (
+          <div style={{
+            position: "absolute", inset: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}>
+            <NewSessionPage
+              theme={theme}
+              richFont={richFont}
+              onSessionCreated={handleNewSessionCreated}
+              onCancel={() => setPreSessionOpen(false)}
+            />
+          </div>
+        )}
         <div style={{
           position: "absolute", inset: 0,
           display: activeTabId === "executors" ? "flex" : "none",
@@ -811,6 +840,7 @@ export default function Home() {
               richFont={richFont}
               refreshKey={refreshKey}
               sessionModes={sessionModes}
+              pendingPrompt={pendingPromptRef.current}
               onFocusPane={handlePaneFocus}
               onResize={handlePaneResize}
               onCloseSession={(name) => {
@@ -819,6 +849,7 @@ export default function Home() {
               }}
               onSwitchSession={connectSession}
               onSwitchMode={(sessionName) => setModeSwitchSession(sessionName)}
+              onInitialPromptSent={() => { pendingPromptRef.current = null; }}
             />
           </div>
         ))}

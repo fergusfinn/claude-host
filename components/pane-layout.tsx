@@ -16,11 +16,13 @@ interface Props {
   richFont?: string;
   refreshKey: number;
   sessionModes?: Record<string, "terminal" | "rich">;
+  pendingPrompt?: { session: string; text: string } | null;
   onFocusPane: (paneId: string) => void;
   onResize: (splitId: string, ratio: number) => void;
   onCloseSession: (sessionName: string) => void;
   onSwitchSession: (sessionName: string) => void;
   onSwitchMode?: (sessionName: string) => void;
+  onInitialPromptSent?: () => void;
 }
 
 export function PaneLayout(props: Props) {
@@ -77,10 +79,12 @@ const PaneTerminal = memo(function PaneTerminal({
   richFont,
   refreshKey,
   sessionModes,
+  pendingPrompt,
   onFocusPane,
   onCloseSession,
   onSwitchSession,
   onSwitchMode,
+  onInitialPromptSent,
   isTabActive,
   isSinglePane,
 }: { leaf: Extract<LayoutNode, { type: "leaf" }> } & Omit<NodeProps, "node">) {
@@ -110,6 +114,8 @@ const PaneTerminal = memo(function PaneTerminal({
           theme={theme}
           font={font}
           richFont={richFont}
+          initialPrompt={pendingPrompt?.session === leaf.sessionName ? pendingPrompt.text : null}
+          onInitialPromptSent={onInitialPromptSent}
           onSwitchMode={onSwitchMode ? () => onSwitchMode(leaf.sessionName) : undefined}
         />
       ) : (

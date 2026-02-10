@@ -46,6 +46,8 @@ interface Props {
   theme: TerminalTheme;
   font: TerminalFont;
   richFont?: string;
+  initialPrompt?: string | null;
+  onInitialPromptSent?: () => void;
   onOpenFile?: (filePath: string) => void;
   onSwitchMode?: () => void;
 }
@@ -144,7 +146,7 @@ class MessageErrorBoundary extends React.Component<
 
 // ---- Component ----
 
-export function RichView({ sessionName, isActive, theme, font, richFont, onOpenFile, onSwitchMode }: Props) {
+export function RichView({ sessionName, isActive, theme, font, richFont, initialPrompt, onInitialPromptSent, onOpenFile, onSwitchMode }: Props) {
   // Ensure the selected rich font is loaded
   useEffect(() => {
     if (richFont) ensureRichFontLoaded(richFont);
@@ -652,6 +654,24 @@ export function RichView({ sessionName, isActive, theme, font, richFont, onOpenF
       inputRef.current?.focus();
     }
   }, [isActive, isStreaming]);
+
+  // Auto-send initial prompt once connected (used by NewSessionPage flow)
+  const initialPromptSentRef = useRef(false);
+  useEffect(() => {
+    if (
+      initialPrompt &&
+      !initialPromptSentRef.current &&
+      connectionState === "connected" &&
+      wsRef.current?.readyState === WebSocket.OPEN
+    ) {
+      initialPromptSentRef.current = true;
+      // Small delay to let the session fully initialize
+      setTimeout(() => {
+        sendPrompt(initialPrompt);
+        onInitialPromptSent?.();
+      }, 300);
+    }
+  }, [connectionState, initialPrompt]);
 
   const connected = connectionState === "connected";
   const streamingText = streamingTextRef.current;
