@@ -192,67 +192,12 @@ export function ExecutorsPage() {
     const name = newKeyName || "My Executor";
     const token = newKeyResult!.token;
     const url = `${proto}://${host}`;
-
-    if (platform === "mac") {
-      return [
-        `# Clone and install`,
-        `git clone https://github.com/fergusfinn/claude-host.git ~/claude-host-executor`,
-        `cd ~/claude-host-executor && npm install --omit=dev`,
-        ``,
-        `# Create launchd plist`,
-        `cat > ~/Library/LaunchAgents/com.claude-host.executor.plist << 'PLIST'`,
-        `<?xml version="1.0" encoding="UTF-8"?>`,
-        `<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">`,
-        `<plist version="1.0">`,
-        `<dict>`,
-        `  <key>Label</key><string>com.claude-host.executor</string>`,
-        `  <key>WorkingDirectory</key><string>${"${HOME}"}/claude-host-executor</string>`,
-        `  <key>ProgramArguments</key>`,
-        `  <array>`,
-        `    <string>npx</string><string>tsx</string><string>executor/index.ts</string>`,
-        `    <string>--url</string><string>${url}</string>`,
-        `    <string>--token</string><string>${token}</string>`,
-        `    <string>--name</string><string>${name}</string>`,
-        `  </array>`,
-        `  <key>RunAtLoad</key><true/>`,
-        `  <key>KeepAlive</key><true/>`,
-        `  <key>StandardOutPath</key><string>/tmp/claude-host-executor.log</string>`,
-        `  <key>StandardErrorPath</key><string>/tmp/claude-host-executor.log</string>`,
-        `</dict>`,
-        `</plist>`,
-        `PLIST`,
-        ``,
-        `# Start the service`,
-        `launchctl load ~/Library/LaunchAgents/com.claude-host.executor.plist`,
-      ].join("\n");
-    }
+    const script = platform === "mac" ? "setup-mac.sh" : "setup-linux.sh";
 
     return [
-      `# Clone and install`,
       `git clone https://github.com/fergusfinn/claude-host.git ~/claude-host-executor`,
       `cd ~/claude-host-executor && npm install --omit=dev`,
-      ``,
-      `# Create systemd user service`,
-      `mkdir -p ~/.config/systemd/user`,
-      `cat > ~/.config/systemd/user/claude-host-executor.service << 'EOF'`,
-      `[Unit]`,
-      `Description=Claude Host Executor`,
-      `After=network.target`,
-      ``,
-      `[Service]`,
-      `Type=simple`,
-      `WorkingDirectory=%h/claude-host-executor`,
-      `ExecStart=npx tsx executor/index.ts --url ${url} --token ${token} --name "${name}"`,
-      `Restart=on-failure`,
-      `RestartSec=5`,
-      ``,
-      `[Install]`,
-      `WantedBy=default.target`,
-      `EOF`,
-      ``,
-      `# Start the service`,
-      `systemctl --user daemon-reload`,
-      `systemctl --user enable --now claude-host-executor`,
+      `./executor/${script} --url ${url} --token ${token} --name "${name}"`,
     ].join("\n");
   }
 
