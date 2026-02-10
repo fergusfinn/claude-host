@@ -25,6 +25,18 @@ if [ -z "$URL" ] || [ -z "$TOKEN" ]; then
   exit 1
 fi
 
+# Validate prerequisites
+MISSING=""
+command -v git >/dev/null 2>&1 || MISSING="$MISSING git"
+command -v node >/dev/null 2>&1 || { export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; command -v node >/dev/null 2>&1 || MISSING="$MISSING node"; }
+command -v tmux >/dev/null 2>&1 || MISSING="$MISSING tmux"
+command -v claude >/dev/null 2>&1 || MISSING="$MISSING claude"
+if [ -n "$MISSING" ]; then
+  echo "ERROR: Missing required tools:$MISSING"
+  echo "Install them before running this script."
+  exit 1
+fi
+
 # Clone or update the repo
 if [ -d "$INSTALL_DIR/.git" ]; then
   echo "==> Updating existing clone in $INSTALL_DIR"
