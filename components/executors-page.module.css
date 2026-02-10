@@ -295,8 +295,10 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 20px;
-  width: 480px;
+  width: 600px;
   max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
@@ -389,11 +391,38 @@
   line-height: 1.4;
 }
 
+.platformTabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 8px;
+}
+
+.platformTab {
+  background: transparent;
+  color: var(--text-3);
+  padding: 4px 12px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.1s;
+}
+
+.platformTab + .platformTab {
+  border-left: none;
+}
+
+.platformTabActive {
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-weight: 500;
+}
+
 .codeBlock {
   position: relative;
   background: var(--bg-0);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 0 4px 4px 4px;
   padding: 12px;
 }
 

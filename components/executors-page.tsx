@@ -49,6 +49,7 @@ export function ExecutorsPage() {
   const [newKeyExpiry, setNewKeyExpiry] = useState<number | undefined>(undefined);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [platform, setPlatform] = useState<"linux" | "mac">("linux");
   const logSinceRef = useRef(0);
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -182,27 +183,82 @@ export function ExecutorsPage() {
     setNewKeyName("");
     setNewKeyExpiry(undefined);
     setCopied(false);
+    setPlatform("linux");
   }
 
-  function getStartupCommand(): string {
+  function getSetupCommands(): string {
     const host = typeof window !== "undefined" ? window.location.host : "localhost:3000";
     const proto = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws";
     const name = newKeyName || "My Executor";
-    const lines = [
-      `git clone https://github.com/fergusfinn/claude-host.git claude-host-executor`,
-      `cd claude-host-executor && npm install --omit=dev`,
-      `npx tsx executor/index.ts \\`,
-      `  --url ${proto}://${host} \\`,
-      `  --token ${newKeyResult!.token} \\`,
-      `  --name "${name}"`,
-    ];
-    return lines.join("\n");
+    const token = newKeyResult!.token;
+    const url = `${proto}://${host}`;
+
+    if (platform === "mac") {
+      return [
+        `# Clone and install`,
+        `git clone https://github.com/fergusfinn/claude-host.git ~/claude-host-executor`,
+        `cd ~/claude-host-executor && npm install --omit=dev`,
+        ``,
+        `# Create launchd plist`,
+        `cat > ~/Library/LaunchAgents/com.claude-host.executor.plist << 'PLIST'`,
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">`,
+        `<plist version="1.0">`,
+        `<dict>`,
+        `  <key>Label</key><string>com.claude-host.executor</string>`,
+        `  <key>WorkingDirectory</key><string>${"${HOME}"}/claude-host-executor</string>`,
+        `  <key>ProgramArguments</key>`,
+        `  <array>`,
+        `    <string>npx</string><string>tsx</string><string>executor/index.ts</string>`,
+        `    <string>--url</string><string>${url}</string>`,
+        `    <string>--token</string><string>${token}</string>`,
+        `    <string>--name</string><string>${name}</string>`,
+        `  </array>`,
+        `  <key>RunAtLoad</key><true/>`,
+        `  <key>KeepAlive</key><true/>`,
+        `  <key>StandardOutPath</key><string>/tmp/claude-host-executor.log</string>`,
+        `  <key>StandardErrorPath</key><string>/tmp/claude-host-executor.log</string>`,
+        `</dict>`,
+        `</plist>`,
+        `PLIST`,
+        ``,
+        `# Start the service`,
+        `launchctl load ~/Library/LaunchAgents/com.claude-host.executor.plist`,
+      ].join("\n");
+    }
+
+    return [
+      `# Clone and install`,
+      `git clone https://github.com/fergusfinn/claude-host.git ~/claude-host-executor`,
+      `cd ~/claude-host-executor && npm install --omit=dev`,
+      ``,
+      `# Create systemd user service`,
+      `mkdir -p ~/.config/systemd/user`,
+      `cat > ~/.config/systemd/user/claude-host-executor.service << 'EOF'`,
+      `[Unit]`,
+      `Description=Claude Host Executor`,
+      `After=network.target`,
+      ``,
+      `[Service]`,
+      `Type=simple`,
+      `WorkingDirectory=%h/claude-host-executor`,
+      `ExecStart=npx tsx executor/index.ts --url ${url} --token ${token} --name "${name}"`,
+      `Restart=on-failure`,
+      `RestartSec=5`,
+      ``,
+      `[Install]`,
+      `WantedBy=default.target`,
+      `EOF`,
+      ``,
+      `# Start the service`,
+      `systemctl --user daemon-reload`,
+      `systemctl --user enable --now claude-host-executor`,
+    ].join("\n");
   }
 
   async function handleCopy() {
-    const text = getStartupCommand();
+    const text = getSetupCommands();
     try {
-      // Clipboard API requires HTTPS; fall back to execCommand for HTTP
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(text);
       } else {
@@ -403,8 +459,12 @@ export function ExecutorsPage() {
                 <div className={styles.warning}>
                   This token will only be shown once. Run these commands on the executor machine.
                 </div>
+                <div className={styles.platformTabs}>
+                  <button className={`${styles.platformTab} ${platform === "linux" ? styles.platformTabActive : ""}`} onClick={() => setPlatform("linux")}>Linux</button>
+                  <button className={`${styles.platformTab} ${platform === "mac" ? styles.platformTabActive : ""}`} onClick={() => setPlatform("mac")}>macOS</button>
+                </div>
                 <div className={styles.codeBlock}>
-                  <pre className={styles.code}>{getStartupCommand()}</pre>
+                  <pre className={styles.code}>{getSetupCommands()}</pre>
                   <button className={styles.copyBtn} onClick={handleCopy}>
                     {copied ? "Copied" : "Copy"}
                   </button>
