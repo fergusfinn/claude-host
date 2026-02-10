@@ -200,8 +200,21 @@ export function ExecutorsPage() {
   }
 
   async function handleCopy() {
+    const text = getStartupCommand();
     try {
-      await navigator.clipboard.writeText(getStartupCommand());
+      // Clipboard API requires HTTPS; fall back to execCommand for HTTP
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {}
