@@ -1,4 +1,4 @@
-import { spawnSync, execFileSync } from "child_process";
+import { spawnSync } from "child_process";
 import { WebSocket } from "ws";
 import type Database from "better-sqlite3";
 import {
@@ -26,13 +26,7 @@ import { dirname, join } from "path";
  *   Server -> Client:  { type: "session_state", streaming: boolean, process_alive: boolean }
  */
 
-const TMUX = (() => {
-  try {
-    return execFileSync("which", ["tmux"], { encoding: "utf-8" }).trim();
-  } catch {
-    return "tmux";
-  }
-})();
+import { TMUX } from "../shared/tmux";
 
 // Strip TMUX env var to avoid nesting issues
 delete process.env.TMUX;

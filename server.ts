@@ -1,10 +1,11 @@
 import { createServer } from "http";
 import next from "next";
 import { WebSocketServer } from "ws";
-import { execFileSync, spawnSync } from "child_process";
+import { spawnSync } from "child_process";
 import { getSessionManager } from "./lib/sessions";
 import { ExecutorRegistry } from "./lib/executor-registry";
 import { getAuthUser } from "./lib/auth";
+import { TMUX } from "./shared/tmux";
 
 const dev = process.env.NODE_ENV !== "production";
 const AUTH_DISABLED = process.env.AUTH_DISABLED === "1";
@@ -30,9 +31,8 @@ const port = resolvePort();
 // Preflight: verify tmux
 let tmuxVersion: string;
 try {
-  const tmuxPath = execFileSync("which", ["tmux"], { encoding: "utf-8" }).trim();
-  const v = spawnSync(tmuxPath, ["-V"], { encoding: "utf-8" });
-  tmuxVersion = `${v.stdout.trim()} (${tmuxPath})`;
+  const v = spawnSync(TMUX, ["-V"], { encoding: "utf-8" });
+  tmuxVersion = `${v.stdout.trim()} (${TMUX})`;
 } catch {
   console.error("Error: tmux is not installed or not in PATH");
   process.exit(1);

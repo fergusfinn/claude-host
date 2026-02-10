@@ -7,16 +7,10 @@ import WebSocket from "ws";
 import { existsSync, openSync, readSync, fstatSync, closeSync, statSync, watch, writeSync, constants as fsConstants } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { spawnSync, execFileSync } from "child_process";
+import { spawnSync } from "child_process";
 import type { FSWatcher } from "fs";
 
-const TMUX = (() => {
-  try {
-    return execFileSync("which", ["tmux"], { encoding: "utf-8" }).trim();
-  } catch {
-    return "tmux";
-  }
-})();
+import { TMUX } from "../shared/tmux";
 
 interface RichChannelOpts {
   baseUrl: string;

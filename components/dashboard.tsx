@@ -4,30 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "./rich-view";
 import { activityAgo } from "@/lib/ui-utils";
 import styles from "./dashboard.module.css";
-
-interface Session {
-  name: string;
-  created_at: string;
-  description: string;
-  command: string;
-  mode: "terminal" | "rich";
-  parent: string | null;
-  executor: string;
-  last_activity: number;
-  alive: boolean;
-  job_prompt: string | null;
-  job_max_iterations: number | null;
-  needs_input: boolean;
-}
-
-interface ExecutorInfo {
-  id: string;
-  name: string;
-  labels: string[];
-  status: string;
-  sessionCount: number;
-  version?: string;
-}
+import type { Session, ExecutorInfo } from "@/shared/types";
 
 interface SessionGroup {
   root: Session;

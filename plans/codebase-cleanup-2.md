@@ -62,8 +62,8 @@ Do not refactor beyond what each task describes. Keep changes minimal and focuse
 
 `Session` is defined independently in `app/page.tsx:27`, `components/dashboard.tsx:8`, and `components/new-session-page.tsx:10` (as `SessionInfo`), duplicating parts of the canonical `Session` type in `shared/types.ts`. Import from `shared/types.ts` instead, using `Pick<>` where only a subset of fields is needed.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 8. Fix `as any` cast in `RemoteExecutor.attachRichSession`
 
@@ -104,8 +104,8 @@ Do not refactor beyond what each task describes. Keep changes minimal and focuse
 
 The same `which tmux` → fallback `"tmux"` pattern is duplicated in `lib/claude-bridge.ts:29-35`, `executor/tmux-runner.ts:23-29`, and `server.ts:33-35`. Extract into a shared utility (e.g. `shared/tmux.ts`) and import from all three (plus `rich-channel.ts` from task #3).
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 14. Extract `page.tsx` logic into custom hooks
 
@@ -146,8 +146,8 @@ Priority order: `executor-registry.ts` (critical infrastructure), `rich-snapshot
 
 The default command `"claude --dangerously-skip-permissions"` appears as a literal string in `components/new-session-page.tsx:129`, `components/mode-switch-modal.tsx:31`, `app/page.tsx:358`, and `lib/sessions.ts:328`. Extract to a shared constant.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 18. Review `@rollup/rollup-linux-x64-gnu` dependency
 

@@ -7,6 +7,7 @@ import { LocalExecutor } from "./executor-interface";
 import { cleanupRichSession, setRichDb } from "./claude-bridge";
 import { snapshotRichEvents } from "../shared/rich-snapshot";
 import { generateName } from "./names";
+import { DEFAULT_COMMAND } from "../shared/constants";
 
 // Cache local git version at startup
 let localVersion: string | undefined;
@@ -325,7 +326,7 @@ class SessionManager {
   async createJob(prompt: string, maxIterations = 50, executor = "local", skipPermissions = true, userId: string = "local"): Promise<Session> {
     const name = this.uniqueName();
 
-    let command = skipPermissions ? "claude --dangerously-skip-permissions" : "claude";
+    let command = skipPermissions ? DEFAULT_COMMAND : "claude";
     command = `${command} ${this.getClaudeThemeArg()}`;
     const exec = this.getExecutor(executor);
 

@@ -3,7 +3,7 @@
  * Used by both LocalExecutor (in-process) and standalone executor process.
  */
 
-import { execFileSync, spawnSync, execSync, spawn } from "child_process";
+import { spawnSync, execSync, spawn } from "child_process";
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from "fs";
 import { join, resolve, dirname } from "path";
@@ -20,13 +20,7 @@ const _thisDir = typeof __dirname !== "undefined"
 const REPO_ROOT = resolve(_thisDir, "..");
 const DATA_DIR = process.env.DATA_DIR || join(REPO_ROOT, "data");
 
-const TMUX = (() => {
-  try {
-    return execFileSync("which", ["tmux"], { encoding: "utf-8" }).trim();
-  } catch {
-    return "tmux";
-  }
-})();
+import { TMUX } from "../shared/tmux";
 
 // Strip TMUX env var to avoid nesting issues when executor runs inside tmux
 delete process.env.TMUX;

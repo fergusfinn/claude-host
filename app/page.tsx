@@ -23,13 +23,8 @@ import {
   getLeafCount,
   type LayoutNode,
 } from "@/lib/layout";
-
-interface Session {
-  name: string;
-  alive: boolean;
-  mode?: "terminal" | "rich";
-  executor: string;
-}
+import type { Session } from "@/shared/types";
+import { DEFAULT_COMMAND } from "@/shared/constants";
 
 export interface TabState {
   id: string;
@@ -355,7 +350,7 @@ export default function Home() {
         });
       } else {
         // Fresh session
-        const command = configRef.current.defaultCommand || "claude --dangerously-skip-permissions";
+        const command = configRef.current.defaultCommand || DEFAULT_COMMAND;
         res = await fetch("/api/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

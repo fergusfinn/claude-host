@@ -6,20 +6,8 @@ import type { TerminalTheme } from "@/lib/themes";
 import { getRichFontFamily, ensureRichFontLoaded } from "./rich-view";
 import { activityAgo } from "@/lib/ui-utils";
 import styles from "./new-session-page.module.css";
-
-interface SessionInfo {
-  name: string;
-  description: string;
-  mode: "terminal" | "rich";
-  last_activity: number;
-  alive: boolean;
-}
-
-interface ExecutorInfo {
-  id: string;
-  name: string;
-  status: string;
-}
+import type { Session, ExecutorInfo } from "@/shared/types";
+import { DEFAULT_COMMAND } from "@/shared/constants";
 
 type SessionMode = "rich" | "terminal" | "custom";
 
@@ -31,7 +19,7 @@ interface Props {
 }
 
 export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: Props) {
-  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [executors, setExecutors] = useState<ExecutorInfo[]>([]);
   const [forkSource, setForkSource] = useState<string | null>(null);
   const [executor, setExecutor] = useState("local");
@@ -120,7 +108,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             description: "",
-            command: "claude --dangerously-skip-permissions",
+            command: DEFAULT_COMMAND,
             executor,
             mode: "rich",
           }),
@@ -145,7 +133,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
     setSubmitting(true);
 
     try {
-      const command = skipPermissions ? "claude --dangerously-skip-permissions" : "claude";
+      const command = skipPermissions ? DEFAULT_COMMAND : "claude";
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

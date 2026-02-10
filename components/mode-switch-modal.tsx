@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import styles from "./dashboard.module.css";
+import { DEFAULT_COMMAND } from "@/shared/constants";
 
 interface Props {
   open: boolean;
@@ -28,7 +29,7 @@ export function ModeSwitchModal({ open, onSwitch, onCancel }: Props) {
       onSwitch("terminal", cmd.trim());
     } else {
       const finalCmd = skipPermissions
-        ? "claude --dangerously-skip-permissions"
+        ? DEFAULT_COMMAND
         : "claude";
       onSwitch(mode, finalCmd);
     }
