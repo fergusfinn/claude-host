@@ -7,8 +7,14 @@ import { ExecutorRegistry } from "./lib/executor-registry";
 import { getAuthUser } from "./lib/auth";
 
 const dev = process.env.NODE_ENV !== "production";
+const AUTH_DISABLED = process.env.AUTH_DISABLED === "1";
 const EXECUTOR_TOKEN = process.env.EXECUTOR_TOKEN || "";
 const VALID_SESSION_NAME = /^[a-zA-Z0-9_-]+$/;
+
+// Preflight: check auth secret (skip if auth is disabled entirely)
+if (!AUTH_DISABLED && !process.env.BETTER_AUTH_SECRET) {
+  console.warn("WARNING: No BETTER_AUTH_SECRET set — using insecure default. Set BETTER_AUTH_SECRET for production use.");
+}
 
 // Support --port <n> CLI flag, falling back to PORT env, then 3000
 function resolvePort(): number {

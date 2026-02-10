@@ -5,7 +5,7 @@
 
 import { execFileSync, spawnSync, execSync, spawn } from "child_process";
 import { randomUUID } from "crypto";
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { CreateSessionOpts, CreateJobOpts, ForkSessionOpts, CreateRichSessionOpts, SessionLiveness, SessionAnalysis } from "../shared/types";
@@ -510,32 +510,41 @@ export class TmuxRunner {
     const projectDir = join(process.env.HOME || "/tmp", ".claude", "projects", encodedCwd);
     if (!existsSync(projectDir)) return;
 
-    // Snapshot existing files
-    const before = new Set<string>();
+    // Snapshot existing files using readdirSync (no shell)
+    let beforeList: string;
     try {
-      const r = spawnSync("ls", [projectDir], { encoding: "utf-8", timeout: 2000 });
-      for (const f of (r.stdout || "").split("\n")) {
-        if (f.endsWith(".jsonl")) before.add(f);
-      }
+      beforeList = readdirSync(projectDir)
+        .filter((f: string) => f.endsWith(".jsonl"))
+        .join("\n");
     } catch { return; }
 
-    const beforeList = [...before].join("\n");
-
-    // Spawn a background process that polls for the new file
+    // Spawn a background process that polls for a new file.
+    // All dynamic values are passed via environment variables to avoid
+    // shell injection — the script source contains no interpolated data.
     const child = spawn("bash", ["-c", `
       for i in $(seq 1 20); do
         sleep 0.5
-        for f in "${projectDir}"/*.jsonl; do
+        for f in "$PROJECT_DIR"/*.jsonl; do
           [ -f "$f" ] || continue
           name=$(basename "$f")
-          if ! echo "${beforeList}" | grep -qF "$name"; then
+          if ! echo "$BEFORE_LIST" | grep -qF "$name"; then
             sid="\${name%.jsonl}"
-            ${TMUX} set-environment -t "${sessionName}" CLAUDE_SESSION_ID "$sid" 2>/dev/null
+            "$TMUX_BIN" set-environment -t "$TMUX_SESSION" CLAUDE_SESSION_ID "$sid" 2>/dev/null
             exit 0
           fi
         done
       done
-    `], { stdio: "ignore", detached: true });
+    `], {
+      stdio: "ignore",
+      detached: true,
+      env: {
+        ...process.env,
+        PROJECT_DIR: projectDir,
+        BEFORE_LIST: beforeList,
+        TMUX_BIN: TMUX,
+        TMUX_SESSION: sessionName,
+      },
+    });
     child.unref();
   }
 }

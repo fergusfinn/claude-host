@@ -20,22 +20,22 @@ Do not refactor beyond what each task describes. Keep changes minimal and focuse
 
 `app/api/sessions/[name]/diagnose/route.ts` is the only API route missing a `getAuthUser()` call. Add the same auth pattern used by every other route (check `getAuthUser(req)`, return 401 if null). Also pass `userId` into the ownership check if appropriate.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 2. Fix shell injection in `discoverNewSessionId`
 
 `executor/tmux-runner.ts:525` — `projectDir`, `beforeList`, and other variables are interpolated directly into a bash template string. Escape or quote these properly, or refactor to avoid shell interpolation (e.g., pass values as environment variables to the subprocess, or use argument arrays instead of a bash -c string).
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 3. Warn or fail on default auth secret
 
 `lib/auth.ts:25` — The hardcoded fallback `"dev-placeholder-secret-change-in-production"` is dangerous. At minimum, log a loud warning at startup if no `BETTER_AUTH_SECRET` is set. Ideally, refuse to start in production (`NODE_ENV=production`) without an explicit secret.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 4. Move executor token out of query strings and CLI args
 
