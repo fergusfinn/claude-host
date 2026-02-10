@@ -12,10 +12,9 @@ interface Props {
   theme: TerminalTheme;
   font: TerminalFont;
   onClose: () => void;
-  onSwitch: (name: string) => void;
 }
 
-export function TerminalView({ sessionName, isActive, theme, font, onClose, onSwitch }: Props) {
+export function TerminalView({ sessionName, isActive, theme, font, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const [error, setError] = useState<string | null>(null);

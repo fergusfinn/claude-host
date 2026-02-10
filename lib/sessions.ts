@@ -594,6 +594,20 @@ class SessionManager {
     exec.attachRichSession(name, command, userWs);
   }
 
+  /** Diagnose a remote rich session via its executor */
+  async diagnoseSession(name: string): Promise<{ error?: string; [key: string]: unknown }> {
+    const executor = this.getSessionExecutorId(name);
+    if (!this._registry || executor === "local") {
+      return { error: "Only works for remote sessions" };
+    }
+    const { rpcId } = await import("../shared/protocol");
+    return this._registry.sendRpc(executor, {
+      type: "diagnose_rich_session",
+      id: rpcId(),
+      name,
+    });
+  }
+
   /** List registered executors */
   listExecutors(userId: string): ExecutorInfo[] {
     const executors: ExecutorInfo[] = [];

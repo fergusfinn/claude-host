@@ -68,8 +68,8 @@ Delete these unused exported functions (and remove any related imports/exports):
 - `onSwitch` prop — Remove from `TerminalView`'s props interface in `components/terminal-view.tsx` and from where it's passed in `components/pane-layout.tsx`.
 - `onOpenFile` prop — Remove from `RichView` and all sub-components that thread it (`ToolPairBlock`, `DiffView`, etc.) in `components/rich-view.tsx`. Remove from caller in `components/pane-layout.tsx` if present.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 7. Remove unused `shiki` dependency
 
@@ -132,8 +132,8 @@ Nearly identical implementations exist in `lib/sessions.ts:439` and `executor/tm
 
 `app/api/config/route.ts:18` — Any arbitrary key can be written. Add an allowlist of valid config keys and reject unknown keys with a 400 response.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 16. Replace empty catch blocks with logging
 
@@ -176,5 +176,5 @@ Go through the codebase and add at minimum `console.error` (or `console.warn` fo
 
 `app/api/sessions/[name]/diagnose/route.ts:10-11` uses `(sm as any)._registry` and `(sm as any).getSessionExecutorId`. Either expose proper public methods on `SessionManager` for what the diagnose route needs, or add a dedicated `diagnose()` method to `SessionManager` that encapsulates the logic.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]

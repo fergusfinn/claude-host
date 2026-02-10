@@ -126,7 +126,6 @@ const PaneTerminal = memo(function PaneTerminal({
           theme={theme}
           font={font}
           onClose={() => onCloseSession(leaf.sessionName)}
-          onSwitch={onSwitchSession}
         />
       )}
     </div>

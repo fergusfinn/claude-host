@@ -56,11 +56,11 @@ describe("PUT /api/config", () => {
 
     const req = new NextRequest("http://localhost/api/config", {
       method: "PUT",
-      body: JSON.stringify({ good: "value", bad: 123, also_bad: null }),
+      body: JSON.stringify({ theme: "dark", fontSize: 123, font: null }),
     });
     await PUT(req);
 
     expect(mockSetConfig).toHaveBeenCalledTimes(1);
-    expect(mockSetConfig).toHaveBeenCalledWith("good", "value", "local");
+    expect(mockSetConfig).toHaveBeenCalledWith("theme", "dark", "local");
   });
 });

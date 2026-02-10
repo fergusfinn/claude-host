@@ -48,7 +48,6 @@ interface Props {
   richFont?: string;
   initialPrompt?: string | null;
   onInitialPromptSent?: () => void;
-  onOpenFile?: (filePath: string) => void;
   onSwitchMode?: () => void;
 }
 
@@ -146,7 +145,7 @@ class MessageErrorBoundary extends React.Component<
 
 // ---- Component ----
 
-export function RichView({ sessionName, isActive, theme, font, richFont, initialPrompt, onInitialPromptSent, onOpenFile, onSwitchMode }: Props) {
+export function RichView({ sessionName, isActive, theme, font, richFont, initialPrompt, onInitialPromptSent, onSwitchMode }: Props) {
   // Ensure the selected rich font is loaded
   useEffect(() => {
     if (richFont) ensureRichFontLoaded(richFont);
@@ -847,7 +846,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
                             onToggle={toggleTool}
                             resultExpanded={expandedResults.has(item.toolUse.id)}
                             onToggleResult={toggleResultExpanded}
-                            onOpenFile={onOpenFile}
+
                           />
                         );
                       case "tool_group":
@@ -861,7 +860,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
                             onToggle={toggleTool}
                             expandedResults={expandedResults}
                             onToggleResult={toggleResultExpanded}
-                            onOpenFile={onOpenFile}
+
                           />
                         );
                       case "subagent":
@@ -876,7 +875,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
                             resultExpanded={expandedResults.has(item.toolUse.id)}
                             onToggleResult={toggleResultExpanded}
                             childMessages={subagentMessages.get(item.toolUse.id)}
-                            onOpenFile={onOpenFile}
+
                           />
                         );
                       case "question":
@@ -1075,7 +1074,6 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
   compact,
   resultExpanded,
   onToggleResult,
-  onOpenFile,
 }: {
   toolUse: ContentBlockToolUse;
   toolResult: ContentBlockToolResult | null;
@@ -1085,7 +1083,6 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
   compact?: boolean;
   resultExpanded?: boolean;
   onToggleResult?: (id: string) => void;
-  onOpenFile?: (filePath: string) => void;
 }) {
   const toolColor = getToolColor(toolUse.name, theme);
   const isEditTool = toolUse.name === "Edit" && toolUse.input.old_string != null;
@@ -1109,20 +1106,9 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
         <span className={styles.toolChevron}>{collapsed ? "\u25B8" : "\u25BE"}</span>
         <span className={styles.toolIcon}>{toolIcon(toolUse.name)}</span>
         <span className={styles.toolName}>{toolUse.name}</span>
-        {onOpenFile && toolUse.input.file_path && ["Read", "Edit", "Write"].includes(toolUse.name) ? (
-          <span
-            className={`${styles.toolSummary} ${styles.toolSummaryClickable}`}
-            style={{ color: `${theme.foreground}80` }}
-            onClick={(e) => { e.stopPropagation(); onOpenFile(toolUse.input.file_path as string); }}
-            title={`Open ${toolUse.input.file_path}`}
-          >
-            {getToolSummary(toolUse.name, toolUse.input)}
-          </span>
-        ) : (
-          <span className={styles.toolSummary} style={{ color: `${theme.foreground}80` }}>
-            {getToolSummary(toolUse.name, toolUse.input)}
-          </span>
-        )}
+        <span className={styles.toolSummary} style={{ color: `${theme.foreground}80` }}>
+          {getToolSummary(toolUse.name, toolUse.input)}
+        </span>
         {collapsed && toolResult === null && (
           <span className={styles.toolPending}>
             <span className={styles.toolPendingDot} style={{ background: toolColor }} />
@@ -1143,7 +1129,6 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
               oldStr={toolUse.input.old_string as string}
               newStr={(toolUse.input.new_string as string) || ""}
               theme={theme}
-              onOpenFile={onOpenFile}
             />
           ) : (
             <pre
@@ -1194,13 +1179,11 @@ const DiffView = React.memo(function DiffView({
   oldStr,
   newStr,
   theme,
-  onOpenFile,
 }: {
   filePath: string;
   oldStr: string;
   newStr: string;
   theme: TerminalTheme;
-  onOpenFile?: (filePath: string) => void;
 }) {
   const oldLines = oldStr.split("\n");
   const newLines = newStr.split("\n");
@@ -1230,10 +1213,8 @@ const DiffView = React.memo(function DiffView({
   return (
     <div className={styles.diffView}>
       <div
-        className={`${styles.diffFilePath} ${onOpenFile ? styles.toolSummaryClickable : ""}`}
-        style={{ color: `${theme.foreground}60`, cursor: onOpenFile ? "pointer" : undefined }}
-        onClick={onOpenFile ? () => onOpenFile(filePath) : undefined}
-        title={onOpenFile ? `Open ${filePath}` : undefined}
+        className={styles.diffFilePath}
+        style={{ color: `${theme.foreground}60` }}
       >
         {filePath}
       </div>
@@ -1271,7 +1252,6 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
   onToggle,
   expandedResults,
   onToggleResult,
-  onOpenFile,
 }: {
   name: string;
   pairs: Array<{ toolUse: ContentBlockToolUse; toolResult: ContentBlockToolResult | null }>;
@@ -1280,7 +1260,6 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
   onToggle: (id: string) => void;
   expandedResults: Set<string>;
   onToggleResult: (id: string) => void;
-  onOpenFile?: (filePath: string) => void;
 }) {
   const toolColor = getToolColor(name, theme);
   const groupKey = `group-${pairs[0].toolUse.id}`;
@@ -1321,7 +1300,6 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
               onToggle={onToggle}
               resultExpanded={expandedResults.has(pair.toolUse.id)}
               onToggleResult={onToggleResult}
-              onOpenFile={onOpenFile}
               compact
             />
           ))}
@@ -1340,7 +1318,6 @@ const SubagentBlock = React.memo(function SubagentBlock({
   resultExpanded,
   onToggleResult,
   childMessages,
-  onOpenFile,
 }: {
   toolUse: ContentBlockToolUse;
   toolResult: ContentBlockToolResult | null;
@@ -1350,7 +1327,6 @@ const SubagentBlock = React.memo(function SubagentBlock({
   resultExpanded?: boolean;
   onToggleResult?: (id: string) => void;
   childMessages?: RenderedMessage[];
-  onOpenFile?: (filePath: string) => void;
 }) {
   const agentColor = theme.mode === "light" ? theme.magenta : theme.brightMagenta;
   const subagentType = toolUse.input.subagent_type as string | undefined;
@@ -1466,7 +1442,7 @@ const SubagentBlock = React.memo(function SubagentBlock({
                               onToggle={toggleNestedTool}
                               resultExpanded={nestedExpandedResults.has(item.toolUse.id)}
                               onToggleResult={toggleNestedResult}
-                              onOpenFile={onOpenFile}
+  
                               compact
                             />
                           );
@@ -1481,7 +1457,7 @@ const SubagentBlock = React.memo(function SubagentBlock({
                               onToggle={toggleNestedTool}
                               expandedResults={nestedExpandedResults}
                               onToggleResult={toggleNestedResult}
-                              onOpenFile={onOpenFile}
+  
                             />
                           );
                         default:
