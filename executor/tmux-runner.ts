@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { CreateSessionOpts, CreateJobOpts, ForkSessionOpts, CreateRichSessionOpts, SessionLiveness, SessionAnalysis } from "../shared/types";
+import { snapshotRichEvents } from "../shared/rich-snapshot";
 
 // Repo root: resolve from this file's location (executor/tmux-runner.ts -> repo root)
 // This is critical for remote executors that may not run from the repo directory.
@@ -298,34 +299,7 @@ export class TmuxRunner {
   }
 
   snapshotRichSession(name: string): string {
-    const eventsPath = join(DATA_DIR, "rich", name, "events.ndjson");
-    if (!existsSync(eventsPath)) return "";
-    let content: string;
-    try {
-      content = readFileSync(eventsPath, "utf-8");
-    } catch {
-      return "";
-    }
-    const lines: string[] = [];
-    for (const line of content.split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        const event = JSON.parse(line);
-        if (event.type === "user") {
-          for (const block of event.message?.content || []) {
-            if (block.type === "text") lines.push(`User: ${block.text}`);
-          }
-        } else if (event.type === "assistant") {
-          for (const block of event.message?.content || []) {
-            if (block.type === "text") lines.push(`Assistant: ${block.text}`);
-            if (block.type === "tool_use") lines.push(`[Tool: ${block.name}]`);
-          }
-        } else if (event.type === "result") {
-          if (event.result) lines.push(`Result: ${event.result}`);
-        }
-      } catch (e) { console.debug("skipping malformed event line", e); }
-    }
-    return lines.slice(-50).join("\n");
+    return snapshotRichEvents(DATA_DIR, name);
   }
 
   async summarizeSession(name: string): Promise<string> {

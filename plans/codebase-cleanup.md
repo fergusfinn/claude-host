@@ -89,8 +89,8 @@ Delete these unused exported functions (and remove any related imports/exports):
 
 Nearly identical implementations exist in `lib/sessions.ts:439` and `executor/tmux-runner.ts:299`. Extract the shared logic into a utility function (e.g., in `lib/claude-bridge.ts` or a new shared helper) and call it from both places, passing `maxLines` as a parameter.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 10. Deduplicate `tabLabel` and `activityAgo`
 

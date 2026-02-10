@@ -5,6 +5,7 @@ import { execFileSync } from "child_process";
 import type { Session, ExecutorInfo, SessionLiveness } from "../shared/types";
 import { LocalExecutor } from "./executor-interface";
 import { cleanupRichSession } from "./claude-bridge";
+import { snapshotRichEvents } from "../shared/rich-snapshot";
 import { generateName } from "./names";
 
 // Cache local git version at startup
@@ -432,34 +433,7 @@ class SessionManager {
 
   private snapshotRichSession(name: string, maxLines = 50): string {
     const dataDir = process.env.DATA_DIR || join(process.cwd(), "data");
-    const eventsPath = join(dataDir, "rich", name, "events.ndjson");
-    if (!existsSync(eventsPath)) return "";
-    let content: string;
-    try {
-      content = readFileSync(eventsPath, "utf-8");
-    } catch {
-      return "";
-    }
-    const lines: string[] = [];
-    for (const line of content.split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        const event = JSON.parse(line);
-        if (event.type === "user") {
-          for (const block of event.message?.content || []) {
-            if (block.type === "text") lines.push(`User: ${block.text}`);
-          }
-        } else if (event.type === "assistant") {
-          for (const block of event.message?.content || []) {
-            if (block.type === "text") lines.push(`Assistant: ${block.text}`);
-            if (block.type === "tool_use") lines.push(`[Tool: ${block.name}]`);
-          }
-        } else if (event.type === "result") {
-          if (event.result) lines.push(`Result: ${event.result}`);
-        }
-      } catch (e) { console.debug("skipping malformed event line", e); }
-    }
-    return lines.slice(-maxLines).join("\n");
+    return snapshotRichEvents(dataDir, name, maxLines);
   }
 
   /** Get configured fork hooks: command prefix -> hook script path */
