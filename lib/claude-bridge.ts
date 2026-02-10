@@ -1,6 +1,6 @@
 import { spawnSync, execFileSync } from "child_process";
 import { WebSocket } from "ws";
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import {
   mkdirSync, existsSync, readFileSync, writeFileSync, appendFileSync, openSync,
   closeSync, readSync, writeSync, fstatSync, watch, statSync,
@@ -62,32 +62,18 @@ interface RichState {
 }
 
 // --- SQLite persistence ---
-
-const DB_PATH = join(process.env.DATA_DIR || join(process.cwd(), "data"), "sessions.db");
+// The DB handle is provided by SessionManager via setRichDb() so that
+// both modules share a single connection to sessions.db.
 
 let _db: Database.Database | null = null;
 
+/** Inject the shared database connection (called by SessionManager). */
+export function setRichDb(db: Database.Database): void {
+  _db = db;
+}
+
 function getDb(): Database.Database {
-  if (!_db) {
-    mkdirSync(dirname(DB_PATH), { recursive: true });
-    _db = new Database(DB_PATH);
-    _db.pragma("journal_mode = WAL");
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS rich_sessions (
-        name TEXT PRIMARY KEY,
-        session_id TEXT,
-        events TEXT NOT NULL DEFAULT '[]',
-        byte_offset INTEGER DEFAULT 0,
-        updated_at INTEGER DEFAULT (unixepoch())
-      )
-    `);
-    // Migration: add byte_offset if missing
-    try {
-      _db.exec(`ALTER TABLE rich_sessions ADD COLUMN byte_offset INTEGER DEFAULT 0`);
-    } catch {
-      // Column already exists
-    }
-  }
+  if (!_db) throw new Error("Rich session DB not initialized — call setRichDb() first");
   return _db;
 }
 

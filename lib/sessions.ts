@@ -4,7 +4,7 @@ import { dirname, join } from "path";
 import { execFileSync } from "child_process";
 import type { Session, ExecutorInfo, SessionLiveness } from "../shared/types";
 import { LocalExecutor } from "./executor-interface";
-import { cleanupRichSession } from "./claude-bridge";
+import { cleanupRichSession, setRichDb } from "./claude-bridge";
 import { snapshotRichEvents } from "../shared/rich-snapshot";
 import { generateName } from "./names";
 
@@ -114,6 +114,24 @@ class SessionManager {
         PRIMARY KEY (user_id, key)
       )
     `);
+    // Rich session state (shared with claude-bridge module)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS rich_sessions (
+        name TEXT PRIMARY KEY,
+        session_id TEXT,
+        events TEXT NOT NULL DEFAULT '[]',
+        byte_offset INTEGER DEFAULT 0,
+        updated_at INTEGER DEFAULT (unixepoch())
+      )
+    `);
+    // Migration: add byte_offset column if missing (older schemas)
+    try {
+      this.db.exec(`ALTER TABLE rich_sessions ADD COLUMN byte_offset INTEGER DEFAULT 0`);
+    } catch {
+      // Column already exists
+    }
+    // Share this DB connection with the rich-session bridge module
+    setRichDb(this.db);
   }
 
   /** Assign all unowned sessions/executors to the given user (first-login migration) */

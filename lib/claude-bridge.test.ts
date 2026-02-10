@@ -64,7 +64,7 @@ vi.mock("fs", async () => {
 });
 
 // Import after mocks
-import { bridgeRichSession, cleanupRichSession } from "./claude-bridge";
+import { bridgeRichSession, cleanupRichSession, setRichDb } from "./claude-bridge";
 
 // Helper: create a mock WebSocket
 function createMockWs(): any {
@@ -114,6 +114,8 @@ describe("claude-bridge (tmux-backed)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupDefaultMocks();
+    // Inject mock DB so getDb() doesn't throw
+    setRichDb({ prepare: _mockState.prepare } as any);
   });
 
   afterEach(() => {

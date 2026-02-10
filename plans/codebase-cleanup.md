@@ -111,8 +111,8 @@ Nearly identical implementations exist in `lib/sessions.ts:439` and `executor/tm
 
 `lib/claude-bridge.ts:66` opens its own `Database` handle to `sessions.db` while `lib/sessions.ts` opens another. Refactor so `claude-bridge` receives or shares the database connection from `SessionManager` rather than creating its own. This also consolidates schema management into one place.
 
-- working: [ ]
-- complete: [ ]
+- working: [x]
+- complete: [x]
 
 ## 13. Fix `adoptOrphanedSessions` missing `user_id`
 
