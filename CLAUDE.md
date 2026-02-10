@@ -87,7 +87,6 @@ Executor authentication is migrating from a single shared `EXECUTOR_TOKEN` env v
 3. Once all executors use per-user keys, remove `EXECUTOR_TOKEN` from:
    - `deploy.sh` (the `Environment=EXECUTOR_TOKEN=...` line in the systemd unit)
    - `~/.claude-host-executor-token` on gotenks
-   - `executor-deploy.sh` (if still used)
 4. Optionally remove the legacy fallback from `server.ts` (`validateExecutorToken`)
 
 **Key format:** `chk_<64 hex chars>` — SHA-256 hashed in the DB, 8-char prefix stored for lookup.
