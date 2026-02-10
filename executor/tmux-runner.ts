@@ -17,6 +17,7 @@ const _thisDir = typeof __dirname !== "undefined"
   ? __dirname
   : dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(_thisDir, "..");
+const DATA_DIR = process.env.DATA_DIR || join(REPO_ROOT, "data");
 
 const TMUX = (() => {
   try {
@@ -225,7 +226,7 @@ export class TmuxRunner {
       return { name, command };
     }
 
-    const dataDir = join(REPO_ROOT, "data", "rich", name);
+    const dataDir = join(DATA_DIR, "rich", name);
     mkdirSync(dataDir, { recursive: true });
 
     const eventsFile = join(dataDir, "events.ndjson");
@@ -260,7 +261,7 @@ export class TmuxRunner {
 
   diagnoseRichSession(name: string): Record<string, unknown> {
     const tName = `rich-${name}`;
-    const dataDir = join(REPO_ROOT, "data", "rich", name);
+    const dataDir = join(DATA_DIR, "rich", name);
     const eventsFile = join(dataDir, "events.ndjson");
     const fifoPath = join(dataDir, "prompt.fifo");
     const wrapperScript = join(REPO_ROOT, "scripts", "rich-wrapper.sh");
@@ -297,7 +298,7 @@ export class TmuxRunner {
   }
 
   snapshotRichSession(name: string): string {
-    const eventsPath = join(REPO_ROOT, "data", "rich", name, "events.ndjson");
+    const eventsPath = join(DATA_DIR, "rich", name, "events.ndjson");
     if (!existsSync(eventsPath)) return "";
     let content: string;
     try {

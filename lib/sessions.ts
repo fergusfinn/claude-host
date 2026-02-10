@@ -437,7 +437,8 @@ class SessionManager {
   }
 
   private snapshotRichSession(name: string, maxLines = 50): string {
-    const eventsPath = join(process.cwd(), "data", "rich", name, "events.ndjson");
+    const dataDir = process.env.DATA_DIR || join(process.cwd(), "data");
+    const eventsPath = join(dataDir, "rich", name, "events.ndjson");
     if (!existsSync(eventsPath)) return "";
     let content: string;
     try {
@@ -561,7 +562,8 @@ class SessionManager {
     const forkCommand = `${cleanCommand} --resume ${richRow.session_id} --fork-session`;
 
     // Create runtime directory for the new rich session
-    mkdirSync(join(process.cwd(), "data", "rich", newName), { recursive: true });
+    const dataDir = process.env.DATA_DIR || join(process.cwd(), "data");
+    mkdirSync(join(dataDir, "rich", newName), { recursive: true });
 
     this.db
       .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode, position, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
@@ -707,7 +709,8 @@ const globalForSessions = globalThis as unknown as {
 
 export function getSessionManager(): SessionManager {
   if (!globalForSessions.__sessions || globalForSessions.__sessionsVersion !== SCHEMA_VERSION) {
-    const dbPath = join(process.cwd(), "data", "sessions.db");
+    const dataDir = process.env.DATA_DIR || join(process.cwd(), "data");
+    const dbPath = join(dataDir, "sessions.db");
     globalForSessions.__sessions = new SessionManager(dbPath);
     globalForSessions.__sessionsVersion = SCHEMA_VERSION;
   }

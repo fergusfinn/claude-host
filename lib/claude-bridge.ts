@@ -38,7 +38,7 @@ const TMUX = (() => {
 delete process.env.TMUX;
 
 const WRAPPER_SCRIPT = join(process.cwd(), "scripts", "rich-wrapper.sh");
-const RICH_DATA_DIR = join(process.cwd(), "data", "rich");
+const RICH_DATA_DIR = join(process.env.DATA_DIR || join(process.cwd(), "data"), "rich");
 
 interface RichState {
   sessionId: string | null;
@@ -63,7 +63,7 @@ interface RichState {
 
 // --- SQLite persistence ---
 
-const DB_PATH = join(process.cwd(), "data", "sessions.db");
+const DB_PATH = join(process.env.DATA_DIR || join(process.cwd(), "data"), "sessions.db");
 
 let _db: Database.Database | null = null;
 
