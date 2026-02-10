@@ -51,6 +51,12 @@ Note: you may be running on `gotenks` (the deploy target) rather than a local de
 
 ## Deployment
 
+**Always run both unit and E2E tests before deploying:**
+
+```bash
+npm test && npm run test:e2e
+```
+
 Deploy to `gotenks` (reachable via Tailscale):
 
 ```bash
