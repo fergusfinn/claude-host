@@ -2,12 +2,23 @@ import Database from "better-sqlite3";
 import { mkdirSync, existsSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { execFileSync } from "child_process";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import type { Session, ExecutorInfo, SessionLiveness } from "../shared/types";
 import { LocalExecutor } from "./executor-interface";
 import { cleanupRichSession, setRichDb } from "./claude-bridge";
 import { snapshotRichEvents } from "../shared/rich-snapshot";
 import { generateName } from "./names";
 import { DEFAULT_COMMAND } from "../shared/constants";
+
+export interface ExecutorKeyInfo {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: number;
+  expires_at: number | null;
+  last_used: number | null;
+  revoked: boolean;
+}
 
 // Cache local git version at startup
 let localVersion: string | undefined;
@@ -133,6 +144,20 @@ class SessionManager {
     }
     // Share this DB connection with the rich-session bridge module
     setRichDb(this.db);
+    // Executor keys table for per-user executor authentication
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS executor_keys (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        key_hash TEXT NOT NULL,
+        key_prefix TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        last_used INTEGER,
+        revoked INTEGER DEFAULT 0
+      )
+    `);
   }
 
   /** Assign all unowned sessions/executors to the given user (first-login migration) */
@@ -147,6 +172,63 @@ class SessionManager {
         insert.run(userId, row.key, row.value);
       }
     }
+  }
+
+  // --- Executor key management ---
+
+  /** Generate a new executor key. Returns the raw token (shown only once). */
+  createExecutorKey(userId: string, name: string, expiresAt: number | null): { id: string; token: string; key_prefix: string } {
+    const id = randomUUID();
+    const raw = randomBytes(32).toString("hex");
+    const token = `chk_${raw}`;
+    const keyPrefix = raw.slice(0, 8);
+    const keyHash = createHash("sha256").update(token).digest("hex");
+    const now = Math.floor(Date.now() / 1000);
+
+    this.db.prepare(
+      "INSERT INTO executor_keys (id, user_id, name, key_hash, key_prefix, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(id, userId, name, keyHash, keyPrefix, now, expiresAt);
+
+    return { id, token, key_prefix: keyPrefix };
+  }
+
+  /** Validate an executor token. Returns user info if valid, null otherwise. */
+  validateExecutorKey(rawToken: string): { userId: string; keyId: string } | null {
+    if (!rawToken.startsWith("chk_")) return null;
+    const prefix = rawToken.slice(4, 12);
+    const hash = createHash("sha256").update(rawToken).digest("hex");
+    const now = Math.floor(Date.now() / 1000);
+
+    const rows = this.db.prepare(
+      "SELECT id, user_id, key_hash, expires_at, revoked FROM executor_keys WHERE key_prefix = ?"
+    ).all(prefix) as Array<{ id: string; user_id: string; key_hash: string; expires_at: number | null; revoked: number }>;
+
+    for (const row of rows) {
+      if (row.revoked) continue;
+      if (row.expires_at && row.expires_at < now) continue;
+      if (timingSafeEqual(Buffer.from(row.key_hash), Buffer.from(hash))) {
+        this.db.prepare("UPDATE executor_keys SET last_used = ? WHERE id = ?").run(now, row.id);
+        return { userId: row.user_id, keyId: row.id };
+      }
+    }
+    return null;
+  }
+
+  /** List all executor keys for a user. */
+  listExecutorKeys(userId: string): ExecutorKeyInfo[] {
+    const rows = this.db.prepare(
+      "SELECT id, name, key_prefix, created_at, expires_at, last_used, revoked FROM executor_keys WHERE user_id = ? ORDER BY created_at DESC"
+    ).all(userId) as Array<{ id: string; name: string; key_prefix: string; created_at: number; expires_at: number | null; last_used: number | null; revoked: number }>;
+
+    return rows.map((r) => ({ ...r, revoked: !!r.revoked }));
+  }
+
+  /** Revoke an executor key. */
+  revokeExecutorKey(userId: string, keyId: string): boolean {
+    const result = this.db.prepare(
+      "UPDATE executor_keys SET revoked = 1 WHERE id = ? AND user_id = ?"
+    ).run(keyId, userId);
+    return result.changes > 0;
   }
 
   /** Check if a session belongs to a user */
@@ -610,16 +692,16 @@ class SessionManager {
       executors.push({ id: "local", name: "local", labels: [], status: "online", last_seen: Math.floor(Date.now() / 1000), version: localVersion, sessionCount: localCount });
     }
     if (this._registry) {
-      executors.push(...this._registry.listExecutors());
+      executors.push(...this._registry.listExecutorsForUser(userId));
     }
     return executors;
   }
 
   /** Update executor info in DB (called by registry on register/heartbeat) */
-  upsertExecutor(info: { id: string; name: string; labels: string[]; status: string }): void {
+  upsertExecutor(info: { id: string; name: string; labels: string[]; status: string; userId?: string }): void {
     this.db
-      .prepare("INSERT OR REPLACE INTO executors (id, name, labels, status, last_seen) VALUES (?, ?, ?, ?, ?)")
-      .run(info.id, info.name, JSON.stringify(info.labels), info.status, Math.floor(Date.now() / 1000));
+      .prepare("INSERT OR REPLACE INTO executors (id, name, labels, status, last_seen, user_id) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(info.id, info.name, JSON.stringify(info.labels), info.status, Math.floor(Date.now() / 1000), info.userId ?? null);
   }
 
   /** Adopt sessions reported by a remote executor that don't exist in the DB */
@@ -711,7 +793,7 @@ class SessionManager {
 }
 
 // Singleton — survives Next.js hot reloads in dev
-const SCHEMA_VERSION = 9; // bump to force re-creation after class changes
+const SCHEMA_VERSION = 10; // bump to force re-creation after class changes
 const globalForSessions = globalThis as unknown as {
   __sessions?: SessionManager;
   __sessionsVersion?: number;

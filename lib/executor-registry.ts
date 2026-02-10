@@ -19,6 +19,7 @@ interface ConnectedExecutor {
   ws: WebSocket;
   info: ExecutorInfo;
   sessions: SessionLiveness[];
+  userId: string;
 }
 
 interface PendingRpc {
@@ -50,7 +51,7 @@ export class ExecutorRegistry {
   private logs: ExecutorLogEntry[] = [];
 
   constructor(
-    private onExecutorChange?: (id: string, status: "online" | "offline") => void,
+    private onExecutorChange?: (id: string, status: "online" | "offline", userId?: string) => void,
     private onHeartbeat?: (executorId: string, sessions: SessionLiveness[]) => void,
   ) {
     // Periodically check for stale executors
@@ -70,7 +71,7 @@ export class ExecutorRegistry {
   }
 
   /** Handle a new executor control channel connection */
-  handleControlConnection(ws: WebSocket, token: string): void {
+  handleControlConnection(ws: WebSocket, userId: string): void {
     let executorId: string | null = null;
 
     ws.on("message", (raw) => {
@@ -84,7 +85,7 @@ export class ExecutorRegistry {
       switch (msg.type) {
         case "register":
           executorId = (msg as RegisterMessage).executorId;
-          this.registerExecutor(executorId, ws, msg as RegisterMessage);
+          this.registerExecutor(executorId, ws, msg as RegisterMessage, userId);
           break;
         case "heartbeat":
           if (executorId) this.handleHeartbeat(executorId, msg as HeartbeatMessage);
@@ -167,6 +168,16 @@ export class ExecutorRegistry {
     }));
   }
 
+  /** List connected executors owned by a specific user */
+  listExecutorsForUser(userId: string): ExecutorInfo[] {
+    return Array.from(this.executors.values())
+      .filter((e) => e.userId === userId)
+      .map((e) => ({
+        ...e.info,
+        sessionCount: e.sessions.length,
+      }));
+  }
+
   /** Check if an executor is online */
   isExecutorOnline(executorId: string): boolean {
     const executor = this.executors.get(executorId);
@@ -222,7 +233,7 @@ export class ExecutorRegistry {
 
   // --- Private ---
 
-  private registerExecutor(id: string, ws: WebSocket, msg: RegisterMessage): void {
+  private registerExecutor(id: string, ws: WebSocket, msg: RegisterMessage, userId: string): void {
     this.executors.set(id, {
       ws,
       info: {
@@ -234,10 +245,11 @@ export class ExecutorRegistry {
         version: msg.version,
       },
       sessions: [],
+      userId,
     });
-    this.onExecutorChange?.(id, "online");
+    this.onExecutorChange?.(id, "online", userId);
     this.log(id, "registered", `${msg.name}${msg.version ? ` v${msg.version}` : ""}`);
-    console.log(`Executor registered: ${msg.name} (${id})${msg.version ? ` v${msg.version}` : ""}`);
+    console.log(`Executor registered: ${msg.name} (${id})${msg.version ? ` v${msg.version}` : ""} for user ${userId}`);
   }
 
   private handleHeartbeat(executorId: string, msg: HeartbeatMessage): void {
@@ -267,7 +279,7 @@ export class ExecutorRegistry {
     const executor = this.executors.get(executorId);
     if (executor) {
       executor.info.status = "offline";
-      this.onExecutorChange?.(executorId, "offline");
+      this.onExecutorChange?.(executorId, "offline", executor.userId);
       this.log(executorId, "disconnected", executor.info.name);
       console.log(`Executor disconnected: ${executor.info.name} (${executorId})`);
     }

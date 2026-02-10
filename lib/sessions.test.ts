@@ -612,4 +612,112 @@ describe("SessionManager", () => {
       expect(found!.description).toBe(`forked from ${sourceName}`);
     });
   });
+
+  describe("executor keys", () => {
+    it("creates a key and returns token with chk_ prefix", () => {
+      const m = mgr();
+      const result = m.createExecutorKey("user1", "My Key", null);
+      expect(result.id).toBeDefined();
+      expect(result.token).toMatch(/^chk_[0-9a-f]{64}$/);
+      expect(result.key_prefix).toHaveLength(8);
+    });
+
+    it("validates a valid token", () => {
+      const m = mgr();
+      const { token } = m.createExecutorKey("user1", "test", null);
+      const result = m.validateExecutorKey(token);
+      expect(result).not.toBeNull();
+      expect(result!.userId).toBe("user1");
+      expect(result!.keyId).toBeDefined();
+    });
+
+    it("rejects an invalid token", () => {
+      const m = mgr();
+      m.createExecutorKey("user1", "test", null);
+      expect(m.validateExecutorKey("chk_0000000000000000000000000000000000000000000000000000000000000000")).toBeNull();
+    });
+
+    it("rejects a token without chk_ prefix", () => {
+      expect(mgr().validateExecutorKey("not-a-valid-token")).toBeNull();
+    });
+
+    it("rejects a revoked key", () => {
+      const m = mgr();
+      const { id, token } = m.createExecutorKey("user1", "test", null);
+      m.revokeExecutorKey("user1", id);
+      expect(m.validateExecutorKey(token)).toBeNull();
+    });
+
+    it("rejects an expired key", () => {
+      const m = mgr();
+      // Create key that expired 1 hour ago
+      const expiredAt = Math.floor(Date.now() / 1000) - 3600;
+      const { token } = m.createExecutorKey("user1", "test", expiredAt);
+      expect(m.validateExecutorKey(token)).toBeNull();
+    });
+
+    it("accepts a key that has not expired yet", () => {
+      const m = mgr();
+      const expiresAt = Math.floor(Date.now() / 1000) + 86400; // 1 day from now
+      const { token } = m.createExecutorKey("user1", "test", expiresAt);
+      expect(m.validateExecutorKey(token)).not.toBeNull();
+    });
+
+    it("updates last_used on successful validation", () => {
+      const m = mgr();
+      const { token } = m.createExecutorKey("user1", "test", null);
+      const keysBefore = m.listExecutorKeys("user1");
+      expect(keysBefore[0].last_used).toBeNull();
+
+      m.validateExecutorKey(token);
+      const keysAfter = m.listExecutorKeys("user1");
+      expect(keysAfter[0].last_used).not.toBeNull();
+    });
+
+    it("lists keys for a user", () => {
+      const m = mgr();
+      m.createExecutorKey("user1", "Key A", null);
+      m.createExecutorKey("user1", "Key B", null);
+      m.createExecutorKey("user2", "Other", null);
+
+      const keys = m.listExecutorKeys("user1");
+      expect(keys).toHaveLength(2);
+      expect(keys.map((k) => k.name).sort()).toEqual(["Key A", "Key B"]);
+    });
+
+    it("does not list other users keys", () => {
+      const m = mgr();
+      m.createExecutorKey("user1", "mine", null);
+      expect(m.listExecutorKeys("user2")).toHaveLength(0);
+    });
+
+    it("revokes a key", () => {
+      const m = mgr();
+      const { id } = m.createExecutorKey("user1", "test", null);
+      expect(m.revokeExecutorKey("user1", id)).toBe(true);
+
+      const keys = m.listExecutorKeys("user1");
+      expect(keys[0].revoked).toBe(true);
+    });
+
+    it("cannot revoke another users key", () => {
+      const m = mgr();
+      const { id } = m.createExecutorKey("user1", "test", null);
+      expect(m.revokeExecutorKey("user2", id)).toBe(false);
+    });
+
+    it("handles prefix collision gracefully", () => {
+      const m = mgr();
+      // Create many keys — prefix collisions are extremely unlikely with 8 hex chars
+      // but the code handles them by iterating rows
+      const tokens: string[] = [];
+      for (let i = 0; i < 10; i++) {
+        tokens.push(m.createExecutorKey("user1", `key${i}`, null).token);
+      }
+      // All should validate correctly
+      for (const token of tokens) {
+        expect(m.validateExecutorKey(token)).not.toBeNull();
+      }
+    });
+  });
 });
