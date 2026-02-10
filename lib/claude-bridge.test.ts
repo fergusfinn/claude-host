@@ -232,6 +232,27 @@ describe("claude-bridge (tmux-backed)", () => {
       expect(tmuxCalls[0][1]).toContain("rich-test-session");
     });
 
+    it("includes --allowedTools for plan mode tools in tmux session args", async () => {
+      const ws = createMockWs();
+      bridgeRichSession(ws, "test-session");
+
+      _mockState.fsOpenSync.mockReturnValue(99);
+
+      ws.emit("message", JSON.stringify({ type: "prompt", text: "hello" }));
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      const tmuxCalls = _mockState.spawnSync.mock.calls.filter(
+        (c: any[]) => c[1]?.[0] === "new-session"
+      );
+      expect(tmuxCalls.length).toBeGreaterThanOrEqual(1);
+      const args = tmuxCalls[0][1] as string[];
+      const allowedIdx = args.indexOf("--allowedTools");
+      expect(allowedIdx).toBeGreaterThan(-1);
+      expect(args[allowedIdx + 1]).toContain("ExitPlanMode");
+      expect(args[allowedIdx + 1]).toContain("EnterPlanMode");
+    });
+
     it("sends interrupt via tmux send-keys", async () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");

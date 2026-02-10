@@ -361,7 +361,7 @@ export default function Home() {
         });
       } else {
         // Fresh session
-        const command = configRef.current.defaultCommand || "claude";
+        const command = configRef.current.defaultCommand || "claude --dangerously-skip-permissions";
         res = await fetch("/api/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

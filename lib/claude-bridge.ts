@@ -212,6 +212,19 @@ function ensureTmuxSession(name: string, state: RichState): void {
     claudeArgs.push("--dangerously-skip-permissions");
   }
 
+  // Auto-approve confirmation-only tools that can't be resolved via
+  // stream-json input (no tool_result support). Prevents infinite loops
+  // where ExitPlanMode keeps prompting even under bypassPermissions mode.
+  const allowedToolsMatch = state.command.match(/--(?:allowedTools|allowed-tools)\s+'([^']+)'/);
+  if (allowedToolsMatch) {
+    claudeArgs.push("--allowedTools", allowedToolsMatch[1]);
+  } else {
+    claudeArgs.push(
+      "--allowedTools",
+      "ExitPlanMode,EnterPlanMode,TodoWrite,Skill",
+    );
+  }
+
   // Extract --settings from command if present
   const settingsMatch = state.command.match(/--settings\s+'([^']+)'/);
   if (settingsMatch) {
