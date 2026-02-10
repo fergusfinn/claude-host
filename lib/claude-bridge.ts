@@ -224,7 +224,7 @@ function ensureTmuxSession(name: string, state: RichState): void {
   const r = spawnSync(TMUX, [
     "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
     "-c", process.cwd(),
-    "bash", WRAPPER_SCRIPT,
+    "bash", "-l", WRAPPER_SCRIPT,
     state.eventsFilePath, state.fifoPath, ...claudeArgs,
   ], { stdio: "pipe" });
 

@@ -252,7 +252,7 @@ export class TmuxRunner {
     const r = spawnSync(TMUX, [
       "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
       "-c", REPO_ROOT,
-      "bash", wrapperScript, eventsFile, fifoPath, ...claudeArgs,
+      "bash", "-l", wrapperScript, eventsFile, fifoPath, ...claudeArgs,
     ], { stdio: "pipe" });
 
     if (r.status !== 0) {
