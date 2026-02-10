@@ -63,6 +63,8 @@ if [ -z "$NPX_PATH" ]; then
 fi
 
 NODE_BIN_DIR="$(dirname "$NPX_PATH")"
+TMUX_BIN_DIR="$(dirname "$(command -v tmux)")"
+CLAUDE_BIN_DIR="$(dirname "$(command -v claude)")"
 PLIST_FILE="$HOME/Library/LaunchAgents/com.claude-host.executor.plist"
 
 mkdir -p "$HOME/Library/LaunchAgents"
@@ -88,7 +90,7 @@ cat > "$PLIST_FILE" << EOF
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>${NODE_BIN_DIR}:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PATH</key><string>${NODE_BIN_DIR}:${TMUX_BIN_DIR}:${CLAUDE_BIN_DIR}:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

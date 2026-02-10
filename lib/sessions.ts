@@ -289,6 +289,23 @@ class SessionManager {
           deadNames.push(row.name);
         }
       } else {
+        // Rich sessions on remote executors — alive as long as the DB row exists
+        // (rich tmux sessions are filtered from heartbeat liveness, so we can't
+        // rely on the heartbeat to report them)
+        if (mode === "rich") {
+          alive.push({
+            ...row,
+            mode,
+            parent: row.parent || null,
+            executor,
+            last_activity: row.last_activity || Math.floor(new Date(row.created_at).getTime() / 1000),
+            alive: true,
+            job_prompt: row.job_prompt || null,
+            job_max_iterations: row.job_max_iterations || null,
+            needs_input: false,
+          });
+          continue;
+        }
         // Remote executor: use heartbeat-cached liveness data
         const liveness = this._registry?.getSessionLiveness(executor, row.name);
         if (liveness) {

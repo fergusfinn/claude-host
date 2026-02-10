@@ -71,6 +71,8 @@ if [ -z "$NPX_PATH" ]; then
 fi
 
 NODE_BIN_DIR="$(dirname "$NPX_PATH")"
+TMUX_BIN_DIR="$(dirname "$(command -v tmux)")"
+CLAUDE_BIN_DIR="$(dirname "$(command -v claude)")"
 
 SERVICE_FILE="$HOME/.config/systemd/user/claude-host-executor.service"
 cat > "$SERVICE_FILE" << EOF
@@ -84,7 +86,7 @@ WorkingDirectory=${INSTALL_DIR}
 ExecStart=${NPX_PATH} tsx executor/index.ts --url ${URL} --token ${TOKEN} --name "${NAME}"
 Restart=on-failure
 RestartSec=5
-Environment=PATH=${NODE_BIN_DIR}:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=${NODE_BIN_DIR}:${TMUX_BIN_DIR}:${CLAUDE_BIN_DIR}:/usr/local/bin:/usr/bin:/bin
 
 [Install]
 WantedBy=default.target
