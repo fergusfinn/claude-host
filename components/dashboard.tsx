@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type MutableRefObject } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { RICH_FONT_OPTIONS, ensureRichFontLoaded } from "./rich-view";
 import { activityAgo } from "@/lib/ui-utils";
 import styles from "./dashboard.module.css";
@@ -35,18 +35,10 @@ interface SessionGroup {
   maxActivity: number; // most recent activity across the group
 }
 
-export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: string, mode?: "terminal" | "rich") => void; openCreateRef?: MutableRefObject<(() => void) | null> }) {
+export function Dashboard({ onConnect, onNew }: { onConnect: (name: string, mode?: "terminal" | "rich") => void; onNew?: () => void }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [executors, setExecutors] = useState<ExecutorInfo[]>([]);
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  // Expose dialog trigger to parent
-  useEffect(() => {
-    if (openCreateRef) openCreateRef.current = () => setDialogOpen(true);
-    return () => { if (openCreateRef) openCreateRef.current = null; };
-  }, [openCreateRef]);
   const [jobDialogOpen, setJobDialogOpen] = useState(false);
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const jobDialogRef = useRef<HTMLDialogElement>(null);
 
   const load = useCallback(async () => {
@@ -72,22 +64,17 @@ export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: stri
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key === "n" && !dialogOpen && !jobDialogOpen) {
+      if (e.key === "n" && !jobDialogOpen) {
         e.preventDefault();
-        setDialogOpen(true);
-      } else if (e.key === "j" && !dialogOpen && !jobDialogOpen) {
+        onNew?.();
+      } else if (e.key === "j" && !jobDialogOpen) {
         e.preventDefault();
         setJobDialogOpen(true);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [dialogOpen, jobDialogOpen]);
-
-  useEffect(() => {
-    if (dialogOpen) dialogRef.current?.showModal();
-    else dialogRef.current?.close();
-  }, [dialogOpen]);
+  }, [jobDialogOpen, onNew]);
 
   useEffect(() => {
     if (jobDialogOpen) jobDialogRef.current?.showModal();
@@ -104,22 +91,6 @@ export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: stri
       else next.add(rootName);
       return next;
     });
-  }
-
-  async function handleCreate(description: string, command: string, executor: string, mode: "terminal" | "rich" = "terminal") {
-    const res = await fetch("/api/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description, command, executor, mode }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || "Failed to create session");
-    }
-    const created = await res.json();
-    setDialogOpen(false);
-    await load();
-    onConnect(created.name, mode);
   }
 
   async function handleDelete(name: string) {
@@ -149,7 +120,7 @@ export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: stri
         <div className={styles.empty}>
           <pre className={styles.emptyArt}>{`  _\n |_|\n | |_`}</pre>
           <p>No sessions yet</p>
-          <button className="btn-accent" onClick={() => setDialogOpen(true)}>
+          <button className="btn-accent" onClick={() => onNew?.()}>
             Create your first session
           </button>
           <button className="btn-ghost" onClick={() => setJobDialogOpen(true)}>
@@ -177,20 +148,6 @@ export function Dashboard({ onConnect, openCreateRef }: { onConnect: (name: stri
           </div>
         </>
       )}
-
-      <dialog
-        ref={dialogRef}
-        className={styles.dialog}
-        onClose={() => setDialogOpen(false)}
-      >
-        {dialogOpen && (
-          <CreateForm
-            executors={executors}
-            onSubmit={handleCreate}
-            onCancel={() => setDialogOpen(false)}
-          />
-        )}
-      </dialog>
 
       <dialog
         ref={jobDialogRef}
@@ -406,156 +363,6 @@ function SessionRow({
         </div>
       )}
     </div>
-  );
-}
-
-function CreateForm({
-  executors,
-  onSubmit,
-  onCancel,
-}: {
-  executors: ExecutorInfo[];
-  onSubmit: (desc: string, cmd: string, executor: string, mode: "terminal" | "rich") => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [desc, setDesc] = useState("");
-  const [sessionType, setSessionType] = useState<"claude" | "custom">("claude");
-  const [mode, setMode] = useState<"terminal" | "rich">("terminal");
-  const [skipPermissions, setSkipPermissions] = useState(true);
-  const [cmd, setCmd] = useState("");
-  const [executor, setExecutor] = useState("local");
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const onlineExecutors = executors.filter((e) => e.status === "online");
-
-  // Sync executor selection when executors load and current value isn't valid
-  useEffect(() => {
-    if (onlineExecutors.length > 0 && !onlineExecutors.some((e) => e.id === executor)) {
-      setExecutor(onlineExecutors[0].id);
-    }
-  }, [executors]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (sessionType === "custom" && !cmd.trim()) return;
-    setSubmitting(true);
-    setError("");
-    try {
-      const finalMode = sessionType === "custom" ? "terminal" : mode;
-      const finalCmd = sessionType === "claude"
-        ? (skipPermissions ? "claude --dangerously-skip-permissions" : "claude")
-        : cmd.trim();
-      await onSubmit(desc.trim(), finalCmd, executor, finalMode);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <div className={styles.dialogHeader}>New session</div>
-      <div className={styles.dialogBody}>
-        <div className={styles.modeToggle}>
-          <button
-            type="button"
-            className={`${styles.modeOption} ${sessionType === "claude" ? styles.modeActive : ""}`}
-            onClick={() => setSessionType("claude")}
-          >
-            Claude
-          </button>
-          <button
-            type="button"
-            className={`${styles.modeOption} ${sessionType === "custom" ? styles.modeActive : ""}`}
-            onClick={() => setSessionType("custom")}
-          >
-            Custom
-          </button>
-        </div>
-        {sessionType === "claude" && (
-          <div className={styles.typeSection}>
-            <div className={styles.subToggle}>
-              <button
-                type="button"
-                className={`${styles.modeOption} ${mode === "terminal" ? styles.modeActive : ""}`}
-                onClick={() => setMode("terminal")}
-              >
-                Terminal
-              </button>
-              <button
-                type="button"
-                className={`${styles.modeOption} ${mode === "rich" ? styles.modeActive : ""}`}
-                onClick={() => setMode("rich")}
-              >
-                Rich
-              </button>
-            </div>
-            <label className={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={skipPermissions}
-                onChange={(e) => setSkipPermissions(e.target.checked)}
-              />
-              Dangerously skip permissions
-            </label>
-          </div>
-        )}
-        {sessionType === "custom" && (
-          <div className={styles.typeSection}>
-            <input
-              type="text"
-              value={cmd}
-              onChange={(e) => setCmd(e.target.value)}
-              placeholder="Command (e.g. bash, python3)"
-              autoComplete="off"
-              spellCheck={false}
-              required
-              className={styles.input}
-            />
-          </div>
-        )}
-        <input
-          type="text"
-          value={desc}
-          onChange={(e) => setDesc(e.target.value)}
-          placeholder="Description (optional)"
-          autoComplete="off"
-          spellCheck={false}
-          autoFocus
-          className={styles.input}
-        />
-        {onlineExecutors.length > 1 && (
-          <>
-            <label className={styles.label}>Executor</label>
-            <select
-              value={executor}
-              onChange={(e) => setExecutor(e.target.value)}
-              className={styles.input}
-            >
-              {onlineExecutors.map((ex) => (
-                <option key={ex.id} value={ex.id}>
-                  {ex.name}{ex.name !== ex.id ? ` (${ex.id})` : ""}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-        {error && <div className={styles.error}>{error}</div>}
-      </div>
-      <div className={styles.dialogFooter}>
-        <div />
-        <div className={styles.dialogFooterRight}>
-          <button type="button" className="btn-ghost" onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="submit" className="btn-accent" disabled={submitting}>
-            {submitting ? "Creating..." : "Create & connect"}
-          </button>
-        </div>
-      </div>
-    </form>
   );
 }
 

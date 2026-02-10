@@ -84,7 +84,6 @@ export default function Home() {
   const controlTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showHints, setShowHints] = useState(true);
   const configRef = useRef<Record<string, string>>({});
-  const openCreateRef = useRef<(() => void) | null>(null);
   const shortcutsRef = useRef<ShortcutMap>(loadShortcuts(undefined));
   const [preSessionOpen, setPreSessionOpen] = useState(false);
   const pendingPromptRef = useRef<{ session: string; text: string } | null>(null);
@@ -462,9 +461,8 @@ export default function Home() {
   }
 
   function quickCreate() {
+    setPreSessionOpen(true);
     setActiveTabId(null);
-    // Small delay so Dashboard mounts before we trigger the ref
-    setTimeout(() => openCreateRef.current?.(), 0);
   }
 
   async function forkNewTab() {
@@ -487,61 +485,13 @@ export default function Home() {
     } catch (e) { console.warn("failed to fork session", e); }
   }
 
-  const [executorPickerOptions, setExecutorPickerOptions] = useState<Array<{ id: string; name: string }> | null>(null);
-
-  async function quickCreateRich() {
-    // Fetch online executors; if multiple, show a picker
-    let onlineExecutors: Array<{ id: string; name: string; status: string }> = [];
-    try {
-      const execRes = await fetch("/api/executors");
-      const executors: Array<{ id: string; name: string; status: string }> = await execRes.json();
-      onlineExecutors = executors.filter((e) => e.status === "online");
-    } catch (e) { console.warn("failed to load executors", e); }
-
-    if (onlineExecutors.length > 1) {
-      setExecutorPickerOptions(onlineExecutors);
-      return;
-    }
-
-    const executor = onlineExecutors.length === 1 ? onlineExecutors[0].id : "local";
-    await doCreateRich(executor);
-  }
-
-  async function doCreateRich(executor: string) {
-    try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description: "",
-          command: "claude --dangerously-skip-permissions",
-          executor,
-          mode: "rich",
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        console.error("Failed to create rich session:", body);
-        return;
-      }
-      const created = await res.json();
-      await loadSessions();
-      connectSession(created.name, "rich");
-    } catch (err) {
-      console.error("Failed to create rich session:", err);
-    }
-  }
-
-  function mobileNew() {
-    setPreSessionOpen(true);
-    setActiveTabId(null);
-  }
-
-  async function handleNewSessionCreated(name: string, _mode: "rich", initialPrompt: string) {
+  async function handleNewSessionCreated(name: string, mode: "rich" | "terminal", initialPrompt: string) {
     setPreSessionOpen(false);
-    pendingPromptRef.current = { session: name, text: initialPrompt };
+    if (mode === "rich" && initialPrompt) {
+      pendingPromptRef.current = { session: name, text: initialPrompt };
+    }
     await loadSessions();
-    connectSession(name, "rich");
+    connectSession(name, mode);
   }
 
   const [modeSwitchSession, setModeSwitchSession] = useState<string | null>(null);
@@ -773,7 +723,7 @@ export default function Home() {
         keyMode={keyMode}
         onKeyModeChange={setKeyMode}
         onSelectTab={(id) => { setPreSessionOpen(false); setActiveTabId(id); }}
-        onNew={mobileNew}
+        onNew={quickCreate}
         onThemeChange={handleThemeChange}
         onFontChange={handleFontChange}
         onRichFontChange={handleRichFontChange}
@@ -792,7 +742,7 @@ export default function Home() {
           display: activeTabId === null && !preSessionOpen ? "flex" : "none",
           flexDirection: "column",
         }}>
-          <Dashboard onConnect={connectSession} openCreateRef={openCreateRef} />
+          <Dashboard onConnect={connectSession} onNew={quickCreate} />
         </div>
         {preSessionOpen && activeTabId === null && (
           <div style={{
@@ -881,48 +831,6 @@ export default function Home() {
         onCancel={() => setModeSwitchSession(null)}
       />
 
-      {executorPickerOptions && (
-        <div
-          style={{
-            position: "fixed", inset: 0, zIndex: 1000,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            background: "var(--backdrop)", backdropFilter: "blur(2px)",
-          }}
-          onPointerDown={() => setExecutorPickerOptions(null)}
-        >
-          <div
-            style={{
-              background: "var(--bg-2)", border: "1px solid var(--border)",
-              borderRadius: 12, padding: 4, width: "min(320px, calc(100vw - 32px))",
-              boxShadow: "0 16px 64px var(--shadow-dialog)",
-              fontFamily: "var(--mono)",
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <div style={{ padding: "12px 12px 8px", fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>
-              Select executor
-            </div>
-            {executorPickerOptions.map((ex) => (
-              <button
-                key={ex.id}
-                style={{
-                  display: "block", width: "100%", padding: "12px",
-                  background: "transparent", border: "none", borderRadius: 8,
-                  fontFamily: "var(--mono)", fontSize: 14, color: "var(--text-1)",
-                  textAlign: "left", cursor: "pointer",
-                  minHeight: 44,
-                }}
-                onClick={() => {
-                  setExecutorPickerOptions(null);
-                  doCreateRich(ex.id);
-                }}
-              >
-                {ex.name}{ex.name !== ex.id ? ` (${ex.id})` : ""}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
