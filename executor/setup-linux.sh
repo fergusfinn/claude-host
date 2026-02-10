@@ -35,7 +35,7 @@ else
 fi
 
 echo "==> Installing dependencies"
-cd "$INSTALL_DIR" && npm install --omit=dev
+cd "$INSTALL_DIR" && npm install --omit=dev --force
 
 # Ensure ~/.config is writable (some cloud images have it owned by root)
 if [ -d "$HOME/.config" ] && [ ! -w "$HOME/.config" ]; then

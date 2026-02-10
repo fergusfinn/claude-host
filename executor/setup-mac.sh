@@ -35,7 +35,7 @@ else
 fi
 
 echo "==> Installing dependencies"
-cd "$INSTALL_DIR" && npm install --omit=dev
+cd "$INSTALL_DIR" && npm install --omit=dev --force
 
 # Find npx
 NPX_PATH="$(command -v npx 2>/dev/null || true)"
