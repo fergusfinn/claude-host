@@ -48,7 +48,6 @@ interface Props {
   richFont?: string;
   initialPrompt?: string | null;
   onInitialPromptSent?: () => void;
-  onSwitchMode?: () => void;
 }
 
 interface MessageEvent {
@@ -145,7 +144,7 @@ class MessageErrorBoundary extends React.Component<
 
 // ---- Component ----
 
-export function RichView({ sessionName, isActive, theme, font, richFont, initialPrompt, onInitialPromptSent, onSwitchMode }: Props) {
+export function RichView({ sessionName, isActive, theme, font, richFont, initialPrompt, onInitialPromptSent }: Props) {
   // Ensure the selected rich font is loaded
   useEffect(() => {
     if (richFont) ensureRichFontLoaded(richFont);
@@ -161,7 +160,6 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
   // Subagent child messages keyed by parent tool_use_id
   const [subagentMessages, setSubagentMessages] = useState<Map<string, RenderedMessage[]>>(new Map());
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  const [wasEmpty, setWasEmpty] = useState(true);
 
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -675,22 +673,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
   const connected = connectionState === "connected";
   const streamingText = streamingTextRef.current;
 
-  const isEmpty = messages.length === 0 && !isStreaming;
-
-  // Track transition from empty → non-empty for animation
-  const justTransitioned = !isEmpty && wasEmpty;
-  useEffect(() => {
-    if (!isEmpty && wasEmpty) {
-      // Clear after animation completes
-      const t = setTimeout(() => setWasEmpty(false), 400);
-      return () => clearTimeout(t);
-    }
-    if (isEmpty) setWasEmpty(true);
-  }, [isEmpty, wasEmpty]);
-
   return (
     <div
-      className={`${styles.root} ${isEmpty ? styles.rootEmpty : ""}`}
+      className={styles.root}
       style={{
         background: theme.background,
         color: theme.foreground,
@@ -698,76 +683,46 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       }}
     >
       {/* Status bar */}
-      {!isEmpty && (
-        <div className={styles.statusBar}>
-          <div className={styles.statusLeft}>
-            <span
-              className={`${styles.statusDot} ${
-                connectionState === "connected" && processAlive !== false
-                  ? styles.statusConnected
-                  : connectionState === "reconnecting"
-                    ? styles.statusReconnecting
-                    : ""
-              }`}
-            />
-            <span className={styles.statusText}>
-              {connectionState === "connected"
-                ? processAlive === false
-                  ? "Process exited"
-                  : "Connected"
-                : connectionState === "connecting"
-                  ? "Connecting…"
-                  : connectionState === "reconnecting"
-                    ? "Reconnecting…"
-                    : "Disconnected"}
-            </span>
-            {connectionState === "connected" && processAlive === false && (
-              <button
-                className={styles.restartBtn}
-                onClick={sendRestart}
-                style={{ color: theme.cursor }}
-              >
-                Restart
-              </button>
-            )}
-          </div>
-          {error && <span className={styles.statusError}>{error}</span>}
+      <div className={styles.statusBar}>
+        <div className={styles.statusLeft}>
+          <span
+            className={`${styles.statusDot} ${
+              connectionState === "connected" && processAlive !== false
+                ? styles.statusConnected
+                : connectionState === "reconnecting"
+                  ? styles.statusReconnecting
+                  : ""
+            }`}
+          />
+          <span className={styles.statusText}>
+            {connectionState === "connected"
+              ? processAlive === false
+                ? "Process exited"
+                : "Connected"
+              : connectionState === "connecting"
+                ? "Connecting…"
+                : connectionState === "reconnecting"
+                  ? "Reconnecting…"
+                  : "Disconnected"}
+          </span>
+          {connectionState === "connected" && processAlive === false && (
+            <button
+              className={styles.restartBtn}
+              onClick={sendRestart}
+              style={{ color: theme.cursor }}
+            >
+              Restart
+            </button>
+          )}
         </div>
-      )}
+        {error && <span className={styles.statusError}>{error}</span>}
+      </div>
 
       {/* Messages */}
       <div className={styles.messagesWrap}>
         <div className={styles.messages} ref={scrollRef}>
           <div className={styles.messagesInner}>
           <MessageErrorBoundary theme={theme}>
-            {messages.length === 0 && !isStreaming && (
-              <div className={styles.welcome}>
-                <div className={styles.welcomeIcon}>
-                  <div className={styles.welcomeMark} style={{ background: theme.cursor }} />
-                </div>
-                <div className={styles.welcomeText}>
-                  <p className={styles.welcomeTitle} style={{ color: theme.foreground }}>{sessionName}</p>
-                  <p className={styles.welcomeHint}>
-                    Type a message to start a conversation
-                  </p>
-                </div>
-                <div className={styles.welcomeShortcuts}>
-                  <span><kbd className={styles.kbd} style={{ background: `${theme.foreground}08`, borderColor: `${theme.foreground}15` }}>Enter</kbd> send</span>
-                  <span><kbd className={styles.kbd} style={{ background: `${theme.foreground}08`, borderColor: `${theme.foreground}15` }}>Shift+Enter</kbd> newline</span>
-                  <span><kbd className={styles.kbd} style={{ background: `${theme.foreground}08`, borderColor: `${theme.foreground}15` }}>Esc</kbd> interrupt</span>
-                </div>
-                {onSwitchMode && (
-                  <button
-                    className={styles.switchModeBtn}
-                    onClick={onSwitchMode}
-                    style={{ color: theme.foreground }}
-                  >
-                    Switch to terminal or custom mode
-                  </button>
-                )}
-              </div>
-            )}
-
             {renderPlan.map(({ msg, items }) => {
               // Skip pure tool_result user messages
               if (items !== null && items.length === 0) return null;
@@ -928,7 +883,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       </div>
 
       {/* Input */}
-      <div className={`${styles.inputArea} ${justTransitioned ? styles.inputSettling : ""}`}>
+      <div className={styles.inputArea}>
         <div className={styles.inputInner}>
         <textarea
           ref={inputRef}

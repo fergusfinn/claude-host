@@ -21,7 +21,6 @@ interface Props {
   onResize: (splitId: string, ratio: number) => void;
   onCloseSession: (sessionName: string) => void;
   onSwitchSession: (sessionName: string) => void;
-  onSwitchMode?: (sessionName: string) => void;
   onInitialPromptSent?: () => void;
 }
 
@@ -83,7 +82,6 @@ const PaneTerminal = memo(function PaneTerminal({
   onFocusPane,
   onCloseSession,
   onSwitchSession,
-  onSwitchMode,
   onInitialPromptSent,
   isTabActive,
   isSinglePane,
@@ -116,7 +114,6 @@ const PaneTerminal = memo(function PaneTerminal({
           richFont={richFont}
           initialPrompt={pendingPrompt?.session === leaf.sessionName ? pendingPrompt.text : null}
           onInitialPromptSent={onInitialPromptSent}
-          onSwitchMode={onSwitchMode ? () => onSwitchMode(leaf.sessionName) : undefined}
         />
       ) : (
         <TerminalView

@@ -7,7 +7,6 @@ import { ExecutorsPage } from "@/components/executors-page";
 import { PaneLayout } from "@/components/pane-layout";
 import { TabBar } from "@/components/tab-bar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
-import { ModeSwitchModal } from "@/components/mode-switch-modal";
 import { NewSessionPage } from "@/components/new-session-page";
 import { ensureRichFontLoaded } from "@/components/rich-view";
 import { getThemeById, DEFAULT_DARK_THEME, type TerminalTheme, getFontById, DEFAULT_FONT_ID, type TerminalFont, ensureFontLoaded, getDefaultThemeForMode, themeToChromeVars } from "@/lib/themes";
@@ -481,39 +480,13 @@ export default function Home() {
   }
 
   async function handleNewSessionCreated(name: string, mode: "rich" | "terminal", initialPrompt: string) {
-    setPreSessionOpen(false);
     if (mode === "rich" && initialPrompt) {
       pendingPromptRef.current = { session: name, text: initialPrompt };
     }
-    await loadSessions();
+    // Connect first so the tab is visible immediately (avoids Dashboard flash)
     connectSession(name, mode);
-  }
-
-  const [modeSwitchSession, setModeSwitchSession] = useState<string | null>(null);
-
-  async function handleModeSwitch(newMode: "terminal" | "rich", command: string) {
-    if (!modeSwitchSession) return;
-    const oldName = modeSwitchSession;
-    setModeSwitchSession(null);
-
-    // If staying on rich mode, nothing to do
-    if (newMode === "rich") return;
-
-    try {
-      // Delete existing rich session, recreate with new mode (server generates new slug)
-      await fetch(`/api/sessions/${encodeURIComponent(oldName)}`, { method: "DELETE" });
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: "", command, executor: "local", mode: newMode }),
-      });
-      if (!res.ok) return;
-      const created = await res.json();
-      setSessionModes((prev) => ({ ...prev, [created.name]: newMode }));
-      setRefreshKey((k) => k + 1);
-      await loadSessions();
-      connectSession(created.name, newMode);
-    } catch (e) { console.warn("failed to create session", e); }
+    setPreSessionOpen(false);
+    loadSessions();
   }
 
   // Keyboard shortcuts
@@ -788,7 +761,6 @@ export default function Home() {
                 if (leaf) closePane(leaf.id);
               }}
               onSwitchSession={connectSession}
-              onSwitchMode={(sessionName) => setModeSwitchSession(sessionName)}
               onInitialPromptSent={() => { pendingPromptRef.current = null; }}
             />
           </div>
@@ -819,12 +791,6 @@ export default function Home() {
           />
         )}
       </dialog>
-
-      <ModeSwitchModal
-        open={modeSwitchSession !== null}
-        onSwitch={handleModeSwitch}
-        onCancel={() => setModeSwitchSession(null)}
-      />
 
     </div>
   );

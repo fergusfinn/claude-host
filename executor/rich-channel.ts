@@ -4,7 +4,7 @@
  */
 
 import WebSocket from "ws";
-import { existsSync, openSync, readSync, fstatSync, closeSync, statSync, watch, writeSync, constants as fsConstants } from "fs";
+import { existsSync, openSync, readSync, fstatSync, closeSync, statSync, watch, writeSync, appendFileSync, constants as fsConstants } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
@@ -204,6 +204,14 @@ export function openRichChannel(opts: RichChannelOpts): void {
     }
 
     if (parsed.type === "prompt" && parsed.text) {
+      // Persist and broadcast the user message (matches local bridge behavior)
+      const userEvent = { type: "user", message: { role: "user", content: [{ type: "text", text: parsed.text }] } };
+      const userLine = JSON.stringify(userEvent) + "\n";
+      try { appendFileSync(eventsFile, userLine); } catch {}
+      byteOffset += Buffer.byteLength(userLine);
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "event", event: userEvent }));
+      }
       sendPromptViaFifo(parsed.text);
     } else if (parsed.type === "interrupt") {
       sendInterrupt();

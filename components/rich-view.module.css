@@ -6,38 +6,6 @@
   container-type: inline-size;
 }
 
-/* When conversation is empty, center welcome + input as a cohesive unit */
-.rootEmpty {
-  justify-content: center;
-}
-
-.rootEmpty .messagesWrap {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.rootEmpty .messages {
-  position: static;
-  overflow: visible;
-  padding: 0;
-}
-
-.rootEmpty .messagesInner {
-  min-height: auto;
-}
-
-.rootEmpty .inputArea {
-  background: transparent;
-  animation: emptyInputIn 0.4s ease-out 0.1s both;
-}
-
-@keyframes emptyInputIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 /* Status bar */
 
 .statusBar {
@@ -150,74 +118,6 @@
   display: block;
   height: 24px;
   flex-shrink: 0;
-}
-
-/* Welcome state */
-
-.welcome {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 24px;
-  animation: welcomeFadeIn 0.4s ease-out both;
-}
-
-@keyframes welcomeFadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.welcomeIcon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 4px;
-}
-
-.welcomeMark {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-}
-
-.welcomeText {
-  text-align: center;
-}
-
-.welcomeTitle {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 6px;
-}
-
-.welcomeHint {
-  font-size: 13px;
-  line-height: 1.6;
-  margin: 0;
-  opacity: 0.5;
-}
-
-.welcomeShortcuts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px 16px;
-  font-size: 10px;
-  margin-top: 4px;
-  opacity: 0.35;
-}
-
-.kbd {
-  padding: 1px 5px;
-  border: 1px solid;
-  border-radius: 3px;
-  font-family: inherit;
-  font-size: 10px;
-  margin-right: 3px;
 }
 
 /* Message rows */
@@ -823,16 +723,6 @@
   flex-shrink: 0;
 }
 
-/* Animate input settling into bottom position after first message */
-.inputSettling {
-  animation: inputSettle 0.35s ease-out both;
-}
-
-@keyframes inputSettle {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 .inputInner {
   display: flex;
   align-items: flex-end;
@@ -929,15 +819,6 @@
 /* ---- Mobile responsive (≤600px) ---- */
 
 @container (max-width: 600px) {
-  /* Override empty state: pin input to bottom, center welcome above */
-  .rootEmpty {
-    justify-content: flex-end;
-  }
-
-  .rootEmpty .messagesWrap {
-    flex: 1;
-  }
-
   .statusBar {
     padding: 6px 12px;
     font-size: 12px;
@@ -1067,18 +948,6 @@
     font-size: 12px;
   }
 
-  .welcomeShortcuts {
-    display: none;
-  }
-
-  .welcome {
-    padding: 16px;
-  }
-
-  .welcomeTitle {
-    font-size: 18px;
-  }
-
   .jumpToBottom {
     font-size: 12px;
     padding: 8px 14px;
@@ -1127,25 +996,6 @@
   .questionBlock {
     padding: 8px;
   }
-}
-
-/* Switch mode button (rich-view welcome state) */
-
-.switchModeBtn {
-  background: transparent;
-  border: 1px solid currentColor;
-  border-radius: 8px;
-  padding: 6px 14px;
-  font-family: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  margin-top: 8px;
-  opacity: 0.35;
-  transition: opacity 0.15s;
-}
-
-.switchModeBtn:hover {
-  opacity: 0.7;
 }
 
 /* ---- Touch devices: ensure good tap targets ---- */
