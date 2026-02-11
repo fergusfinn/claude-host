@@ -251,6 +251,21 @@ export class TmuxRunner {
     if (command.includes("--dangerously-skip-permissions")) {
       claudeArgs.push("--dangerously-skip-permissions");
     }
+
+    // PARALLEL: keep in sync with lib/claude-bridge.ts ensureTmuxSession()
+    // Auto-approve confirmation-only tools that can't be resolved via
+    // stream-json input (no tool_result support). Prevents infinite loops
+    // where ExitPlanMode keeps prompting even under bypassPermissions mode.
+    const allowedToolsMatch = command.match(/--(?:allowedTools|allowed-tools)\s+'([^']+)'/);
+    if (allowedToolsMatch) {
+      claudeArgs.push("--allowedTools", allowedToolsMatch[1]);
+    } else {
+      claudeArgs.push(
+        "--allowedTools",
+        "ExitPlanMode,EnterPlanMode,TodoWrite,Skill",
+      );
+    }
+
     const settingsMatch = command.match(/--settings\s+'([^']+)'/);
     if (settingsMatch) {
       claudeArgs.push("--settings", settingsMatch[1]);

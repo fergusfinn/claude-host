@@ -192,6 +192,7 @@ function ensureTmuxSession(name: string, state: RichState): void {
     claudeArgs.push("--dangerously-skip-permissions");
   }
 
+  // PARALLEL: keep in sync with executor/tmux-runner.ts createRichTmuxSession()
   // Auto-approve confirmation-only tools that can't be resolved via
   // stream-json input (no tool_result support). Prevents infinite loops
   // where ExitPlanMode keeps prompting even under bypassPermissions mode.
