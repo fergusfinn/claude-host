@@ -15,6 +15,7 @@ import type {
   CreateRichSessionOpts,
   SessionLiveness,
   SessionAnalysis,
+  RichProvider,
 } from "../shared/types";
 import type { ExecutorRegistry } from "./executor-registry";
 import { rpcId, type AttachRichSessionRpc, type ControlToExecutorMessage } from "../shared/protocol";
@@ -127,7 +128,7 @@ export class RemoteExecutor implements ExecutorInterface {
 
   // PARALLEL: terminal equivalent is attachSession() above — nearly identical WS bridging
   // logic. Changes to channel setup, buffering, or cleanup should be applied to both.
-  attachRichSession(name: string, command: string, userWs: WebSocket): void {
+  attachRichSession(name: string, command: string, userWs: WebSocket, provider?: RichProvider): void {
     const channelId = rpcId();
 
     const channelPromise = this.registry.waitForTerminalChannel(channelId, 10000);
@@ -138,6 +139,7 @@ export class RemoteExecutor implements ExecutorInterface {
       channelId,
       sessionName: name,
       command,
+      provider,
     };
     this.registry.sendToExecutor(this.executorId, attachMsg);
 

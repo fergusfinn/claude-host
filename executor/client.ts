@@ -208,13 +208,14 @@ export class ExecutorClient {
 
         case "attach_rich_session": {
           // Create the rich tmux session if needed, then open a rich channel
-          this.runner.createRichSession({ name: msg.sessionName, command: msg.command });
+          this.runner.createRichSession({ name: msg.sessionName, command: msg.command, provider: msg.provider });
           openRichChannel({
             baseUrl: this.opts.url,
             token: this.opts.token,
             channelId: msg.channelId,
             sessionName: msg.sessionName,
             command: msg.command,
+            provider: msg.provider,
           });
           this.send({ type: "response", id, ok: true });
           break;

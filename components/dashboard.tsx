@@ -297,7 +297,7 @@ function SessionRow({
           <div className={`${styles.dot} ${isStale ? styles.dotStale : ""}`} />
           <span className={styles.rowName}>{s.name}</span>
           {s.mode === "rich" && (
-            <span className={styles.modeBadge}>rich</span>
+            <span className={styles.modeBadge}>{s.provider === "codex" ? "codex" : "rich"}</span>
           )}
           {s.needs_input && (
             <span className={styles.inputBadge}>waiting</span>
@@ -309,7 +309,7 @@ function SessionRow({
             <span className={styles.executorBadge}>{s.executor}</span>
           )}
           <span className={styles.rowTime}>{activityAgo(s.last_activity)}</span>
-          {s.command && !s.command.startsWith("claude") && (
+          {s.command && !s.command.startsWith("claude") && !s.command.startsWith("codex") && (
             <span className={styles.rowCmd}>{s.command}</span>
           )}
         </div>

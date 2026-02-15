@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync, readFileSync, existsSync } from "fs";
 import { dirname, join } from "path";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "crypto";
-import type { Session, ExecutorInfo, SessionLiveness } from "../shared/types";
+import type { Session, ExecutorInfo, SessionLiveness, RichProvider } from "../shared/types";
 import { generateName } from "./names";
 import { DEFAULT_COMMAND } from "../shared/constants";
 
@@ -111,6 +111,12 @@ class SessionManager {
         PRIMARY KEY (user_id, key)
       )
     `);
+    // Migration: add provider column for rich session backend (claude vs codex)
+    try {
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN provider TEXT DEFAULT 'claude'`);
+    } catch {
+      // Column already exists
+    }
     // Executor keys table for per-user executor authentication
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS executor_keys (
@@ -225,12 +231,14 @@ class SessionManager {
     for (const row of rows) {
       const executor = row.executor || "local";
       const mode = row.mode || "terminal";
+      const provider = (row.provider || "claude") as RichProvider;
 
       // Rich sessions — always alive (tmux session is lazily created)
       if (mode === "rich") {
         alive.push({
           ...row,
           mode,
+          provider,
           parent: row.parent || null,
           executor,
           last_activity: row.last_activity || Math.floor(new Date(row.created_at).getTime() / 1000),
@@ -247,6 +255,7 @@ class SessionManager {
       if (liveness) {
         alive.push({
           ...row,
+          provider,
           parent: row.parent || null,
           executor,
           last_activity: liveness.last_activity,
@@ -261,6 +270,7 @@ class SessionManager {
         if (!executorOnline) {
           alive.push({
             ...row,
+            provider,
             parent: row.parent || null,
             executor,
             last_activity: 0,
@@ -278,6 +288,7 @@ class SessionManager {
           } else {
             alive.push({
               ...row,
+              provider,
               parent: row.parent || null,
               executor,
               last_activity: Math.floor(createdAt / 1000),
@@ -300,7 +311,7 @@ class SessionManager {
 
   // NOTE: Branches on mode (terminal vs rich) — changes to one branch likely
   // need mirroring in the other. Also see createJob() (terminal-only).
-  async create(description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal", userId: string = "local"): Promise<Session> {
+  async create(description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal", userId: string = "local", provider: RichProvider = "claude"): Promise<Session> {
     const name = this.uniqueName();
 
     // Inject theme settings for claude commands
@@ -311,17 +322,18 @@ class SessionManager {
 
     if (mode === "rich") {
       const exec = this.getExecutor(executor);
-      await exec.createRichSession({ name, command: finalCommand });
+      await exec.createRichSession({ name, command: finalCommand, provider });
 
       this.db
-        .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode, position, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .run(name, description, finalCommand, executor, "rich", this.nextPosition(), userId);
+        .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode, provider, position, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(name, description, finalCommand, executor, "rich", provider, this.nextPosition(), userId);
 
       return {
         name,
         description,
         command: finalCommand,
         mode: "rich",
+        provider,
         parent: null,
         executor,
         last_activity: Math.floor(Date.now() / 1000),
@@ -346,6 +358,7 @@ class SessionManager {
       description,
       command: result.command,
       mode: "terminal",
+      provider: "claude",
       parent: null,
       executor,
       last_activity: Math.floor(Date.now() / 1000),
@@ -376,6 +389,7 @@ class SessionManager {
       description: prompt.slice(0, 200),
       command,
       mode: "terminal" as const,
+      provider: "claude" as const,
       parent: null,
       executor,
       last_activity: Math.floor(Date.now() / 1000),
@@ -494,14 +508,15 @@ class SessionManager {
 
     // Get source session info from DB
     const sourceRow = this.db
-      .prepare("SELECT command, executor, mode FROM sessions WHERE name = ?")
-      .get(sourceName) as { command: string; executor: string; mode: string } | undefined;
+      .prepare("SELECT command, executor, mode, provider FROM sessions WHERE name = ?")
+      .get(sourceName) as { command: string; executor: string; mode: string; provider: string } | undefined;
     const sourceCommand = sourceRow?.command || "claude";
     const sourceExecutor = sourceRow?.executor || "local";
     const sourceMode = (sourceRow?.mode || "terminal") as "terminal" | "rich";
+    const sourceProvider = (sourceRow?.provider || "claude") as RichProvider;
 
     if (sourceMode === "rich") {
-      return this.forkRichSession(sourceName, newName, sourceCommand, sourceExecutor, userId);
+      return this.forkRichSession(sourceName, newName, sourceCommand, sourceExecutor, userId, sourceProvider);
     }
 
     // Fork targets the same executor as the source
@@ -525,6 +540,7 @@ class SessionManager {
       description: `forked from ${sourceName}`,
       command: result.command,
       mode: "terminal" as const,
+      provider: "claude" as const,
       parent: sourceName,
       executor: sourceExecutor,
       last_activity: Math.floor(Date.now() / 1000),
@@ -536,7 +552,7 @@ class SessionManager {
     };
   }
 
-  private async forkRichSession(sourceName: string, newName: string, sourceCommand: string, sourceExecutor: string, userId: string): Promise<Session> {
+  private async forkRichSession(sourceName: string, newName: string, sourceCommand: string, sourceExecutor: string, userId: string, provider: RichProvider = "claude"): Promise<Session> {
     // Get the Claude session_id from events.ndjson
     const sessionId = this.getRichSessionId(sourceName);
 
@@ -560,14 +576,15 @@ class SessionManager {
     mkdirSync(join(dataDir, "rich", newName), { recursive: true });
 
     this.db
-      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode, position, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(newName, `forked from ${sourceName}`, forkCommand, sourceName, sourceExecutor, "rich", this.nextPosition(), userId);
+      .prepare("INSERT OR REPLACE INTO sessions (name, description, command, parent, executor, mode, provider, position, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(newName, `forked from ${sourceName}`, forkCommand, sourceName, sourceExecutor, "rich", provider, this.nextPosition(), userId);
 
     return {
       name: newName,
       description: `forked from ${sourceName}`,
       command: forkCommand,
       mode: "rich" as const,
+      provider,
       parent: sourceName,
       executor: sourceExecutor,
       last_activity: Math.floor(Date.now() / 1000),
@@ -593,7 +610,8 @@ class SessionManager {
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
     const command = this.getCommand(name);
-    exec.attachRichSession(name, command, userWs);
+    const provider = this.getProvider(name);
+    exec.attachRichSession(name, command, userWs, provider);
   }
 
   /** Diagnose a rich session via its executor */
@@ -673,6 +691,13 @@ class SessionManager {
     return row?.command || "claude";
   }
 
+  getProvider(name: string): RichProvider {
+    const row = this.db.prepare("SELECT provider FROM sessions WHERE name = ?").get(name) as
+      | { provider: string }
+      | undefined;
+    return (row?.provider as RichProvider) || "claude";
+  }
+
   // --- Private helpers ---
 
   /** Extract session_id from a rich session's events.ndjson file */
@@ -728,7 +753,7 @@ class SessionManager {
 }
 
 // Singleton — survives Next.js hot reloads in dev
-const SCHEMA_VERSION = 11; // bump to force re-creation after class changes
+const SCHEMA_VERSION = 12; // bump to force re-creation after class changes
 const globalForSessions = globalThis as unknown as {
   __sessions?: SessionManager;
   __sessionsVersion?: number;

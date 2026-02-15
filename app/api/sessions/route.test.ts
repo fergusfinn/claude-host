@@ -51,7 +51,7 @@ describe("POST /api/sessions", () => {
 
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual(created);
-    expect(mockCreate).toHaveBeenCalledWith("test", "bash", undefined, undefined, "local");
+    expect(mockCreate).toHaveBeenCalledWith("test", "bash", undefined, undefined, "local", undefined);
   });
 
   it("creates a session with no description", async () => {
@@ -65,7 +65,7 @@ describe("POST /api/sessions", () => {
     const res = await POST(req);
 
     expect(res.status).toBe(201);
-    expect(mockCreate).toHaveBeenCalledWith(undefined, undefined, undefined, undefined, "local");
+    expect(mockCreate).toHaveBeenCalledWith(undefined, undefined, undefined, undefined, "local", undefined);
   });
 
   it("returns 400 when create throws", async () => {

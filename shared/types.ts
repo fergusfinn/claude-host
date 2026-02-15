@@ -2,12 +2,15 @@ import type { WebSocket } from "ws";
 
 // --- Session types ---
 
+export type RichProvider = "claude" | "codex";
+
 export interface Session {
   name: string;
   created_at: string;
   description: string;
   command: string;
   mode: "terminal" | "rich";
+  provider: RichProvider; // which CLI backend for rich sessions
   parent: string | null;
   executor: string; // "local" or executor ID
   last_activity: number; // unix timestamp (seconds)
@@ -83,6 +86,7 @@ export interface SessionAnalysis {
 export interface CreateRichSessionOpts {
   name: string;
   command?: string;
+  provider?: RichProvider;
 }
 
 export interface ExecutorInterface {
@@ -96,7 +100,7 @@ export interface ExecutorInterface {
   createRichSession(opts: CreateRichSessionOpts): Promise<{ name: string; command: string }>;
   deleteRichSession(name: string): Promise<void>;
   snapshotRichSession(name: string): Promise<string>;
-  attachRichSession(name: string, command: string, userWs: WebSocket): void;
+  attachRichSession(name: string, command: string, userWs: WebSocket, provider?: RichProvider): void;
 
   // Terminal-only methods (no rich equivalent)
   forkSession(opts: ForkSessionOpts): Promise<{ name: string; command: string }>;

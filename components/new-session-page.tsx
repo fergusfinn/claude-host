@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowUp, Sparkles, GitFork, ChevronDown, Terminal, Play } from "lucide-react";
+import { ArrowUp, Sparkles, GitFork, ChevronDown, Terminal, Play, Diamond } from "lucide-react";
 import type { TerminalTheme } from "@/lib/themes";
 import { getRichFontFamily, ensureRichFontLoaded } from "./rich-view";
 import { activityAgo } from "@/lib/ui-utils";
 import styles from "./new-session-page.module.css";
-import type { Session, ExecutorInfo } from "@/shared/types";
-import { DEFAULT_COMMAND } from "@/shared/constants";
+import type { Session, ExecutorInfo, RichProvider } from "@/shared/types";
+import { DEFAULT_COMMAND, DEFAULT_CODEX_COMMAND } from "@/shared/constants";
 
 type SessionMode = "rich" | "terminal" | "custom";
 
@@ -29,6 +29,8 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
   const [execOpen, setExecOpen] = useState(false);
   const [sessionMode, setSessionMode] = useState<SessionMode>("rich");
   const [modeOpen, setModeOpen] = useState(false);
+  const [provider, setProvider] = useState<RichProvider>("claude");
+  const [providerOpen, setProviderOpen] = useState(false);
   const [customCmd, setCustomCmd] = useState("");
   const [skipPermissions, setSkipPermissions] = useState(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -36,6 +38,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
   const forkRef = useRef<HTMLDivElement>(null);
   const execRef = useRef<HTMLDivElement>(null);
   const modeRef = useRef<HTMLDivElement>(null);
+  const providerRef = useRef<HTMLDivElement>(null);
 
   // On iOS PWA/Safari the virtual keyboard overlays content (dvh doesn't change).
   // Use visualViewport to shrink the root to the visible area so the input
@@ -85,10 +88,13 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
       if (modeOpen && modeRef.current && !modeRef.current.contains(e.target as Node)) {
         setModeOpen(false);
       }
+      if (providerOpen && providerRef.current && !providerRef.current.contains(e.target as Node)) {
+        setProviderOpen(false);
+      }
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [forkOpen, execOpen, modeOpen]);
+  }, [forkOpen, execOpen, modeOpen, providerOpen]);
 
   const richSessions = sessions.filter((s) => s.mode === "rich");
 
@@ -120,14 +126,16 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
         const created = await res.json();
         createdName = created.name;
       } else {
+        const command = provider === "codex" ? DEFAULT_CODEX_COMMAND : DEFAULT_COMMAND;
         const res = await fetch("/api/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             description: "",
-            command: DEFAULT_COMMAND,
+            command,
             executor,
             mode: "rich",
+            provider,
           }),
         });
         if (!res.ok) {
@@ -143,7 +151,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
       console.warn("failed to create session", e);
       setSubmitting(false);
     }
-  }, [inputValue, submitting, forkSource, executor, onSessionCreated]);
+  }, [inputValue, submitting, forkSource, executor, provider, onSessionCreated]);
 
   const handleSubmitTerminal = useCallback(async () => {
     if (submitting) return;
@@ -226,13 +234,17 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
 
   const fontFamily = getRichFontFamily(richFont ?? "system");
 
+  const providerLabel = provider === "codex" ? "Codex" : "Claude";
+
   const welcomeTitle = forkSource
     ? `Fork ${forkSource}`
     : sessionMode === "terminal"
       ? "Terminal session"
       : sessionMode === "custom"
         ? "Custom session"
-        : "New session";
+        : provider === "codex"
+          ? "New Codex session"
+          : "New session";
 
   const welcomeHint = forkSource
     ? "Type a message to continue"
@@ -240,7 +252,9 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
       ? "Opens claude in terminal mode"
       : sessionMode === "custom"
         ? "Run a custom command"
-        : "Type a message to start a conversation";
+        : provider === "codex"
+          ? "Type a message to start a Codex session"
+          : "Type a message to start a conversation";
 
   return (
     <div
@@ -347,6 +361,41 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
             </div>
           )}
         </div>
+
+        {/* Provider dropdown — only for rich mode */}
+        {sessionMode === "rich" && !forkSource && (
+          <div className={styles.dropdownWrap} ref={providerRef}>
+            <button
+              className={styles.dropdownBtn}
+              onClick={() => { setProviderOpen(!providerOpen); setForkOpen(false); setExecOpen(false); setModeOpen(false); }}
+              style={{ color: theme.foreground, borderColor: `${theme.foreground}20` }}
+            >
+              <Diamond size={12} style={{ opacity: 0.6 }} />
+              <span className={styles.dropdownLabel}>{providerLabel}</span>
+              <ChevronDown size={10} style={{ opacity: 0.4 }} />
+            </button>
+            {providerOpen && (
+              <div className={styles.dropdown} style={{ background: theme.background, borderColor: `${theme.foreground}20` }}>
+                <button
+                  className={`${styles.dropdownItem} ${provider === "claude" ? styles.dropdownItemActive : ""}`}
+                  onClick={() => { setProvider("claude"); setProviderOpen(false); }}
+                  style={{ color: theme.foreground }}
+                >
+                  <Sparkles size={12} style={{ opacity: 0.5 }} />
+                  <span>Claude</span>
+                </button>
+                <button
+                  className={`${styles.dropdownItem} ${provider === "codex" ? styles.dropdownItemActive : ""}`}
+                  onClick={() => { setProvider("codex"); setProviderOpen(false); }}
+                  style={{ color: theme.foreground }}
+                >
+                  <Diamond size={12} style={{ opacity: 0.5 }} />
+                  <span>Codex</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Executor dropdown */}
         {executors.length > 1 && (
