@@ -37,6 +37,23 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
   const execRef = useRef<HTMLDivElement>(null);
   const modeRef = useRef<HTMLDivElement>(null);
 
+  // On iOS PWA/Safari the virtual keyboard overlays content (dvh doesn't change).
+  // Use visualViewport to shrink the root to the visible area so the input
+  // stays above the keyboard.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function onResize() {
+      if (rootRef.current) {
+        rootRef.current.style.height = `${vv!.height}px`;
+      }
+    }
+    vv.addEventListener("resize", onResize);
+    onResize();
+    return () => vv.removeEventListener("resize", onResize);
+  }, []);
+
   useEffect(() => {
     if (richFont) ensureRichFontLoaded(richFont);
   }, [richFont]);
@@ -227,6 +244,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
 
   return (
     <div
+      ref={rootRef}
       className={styles.root}
       style={{ background: theme.background, color: theme.foreground, fontFamily }}
     >

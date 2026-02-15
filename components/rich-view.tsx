@@ -14,7 +14,7 @@ import {
   type ContentBlockToolResult,
   type RenderItem,
 } from "@/lib/rich-render";
-import { ArrowUp, Square, FileText, Pencil, FilePlus, Terminal, LayoutGrid, Search, ListTree, Globe, CircleHelp, SquarePlus, Diamond } from "lucide-react";
+import { ArrowUp, Square, FileText, Pencil, FilePlus, Terminal, LayoutGrid, Search, ListTree, Globe, CircleHelp, SquarePlus, Diamond, CheckCircle2, Circle, Loader2 } from "lucide-react";
 import styles from "./rich-view.module.css";
 
 export const RICH_FONT_OPTIONS: Record<string, { label: string; fontFamily: string; googleFontsUrl?: string }> = {
@@ -349,7 +349,13 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       }
 
       if (msg.role === "assistant") {
-        const items = buildRenderItems(msg.blocks, resultMap);
+        const items = buildRenderItems(msg.blocks, resultMap)
+          .filter((item) => {
+            // Hide TodoWrite tool calls — surfaced in the todo bar instead
+            if (item.kind === "tool_pair" && item.toolUse.name === "TodoWrite") return false;
+            if (item.kind === "tool_group" && item.name === "TodoWrite") return false;
+            return true;
+          });
         return { msg, items };
       }
 
@@ -385,6 +391,28 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       }
     }
     return answered;
+  }, [messages]);
+
+  // --- Todo list: extract latest TodoWrite from messages ---
+  interface TodoItem {
+    content: string;
+    status: "pending" | "in_progress" | "completed";
+    activeForm: string;
+  }
+
+  const currentTodos = useMemo((): TodoItem[] => {
+    // Walk messages in reverse to find the last TodoWrite tool_use
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role !== "assistant") continue;
+      for (let j = msg.blocks.length - 1; j >= 0; j--) {
+        const block = msg.blocks[j];
+        if (block.type === "tool_use" && block.name === "TodoWrite" && Array.isArray(block.input?.todos)) {
+          return block.input.todos as TodoItem[];
+        }
+      }
+    }
+    return [];
   }, [messages]);
 
   // WebSocket connection with auto-reconnect
@@ -962,6 +990,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
         </div>
         {error && <span className={styles.statusError}>{error}</span>}
       </div>
+
+      {/* Todo bar */}
+      {currentTodos.length > 0 && <TodoBar todos={currentTodos} theme={theme} />}
 
       {/* Messages */}
       <div className={styles.messagesWrap}>
@@ -1872,6 +1903,80 @@ const QuestionBlock = React.memo(function QuestionBlock({
       {answered && (
         <div className={styles.questionAnswered} style={{ color: `${theme.foreground}50` }}>
           {"\u2713"} answered
+        </div>
+      )}
+    </div>
+  );
+});
+
+interface TodoBarItem {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+  activeForm: string;
+}
+
+const TodoBar = React.memo(function TodoBar({ todos, theme }: { todos: TodoBarItem[]; theme: TerminalTheme }) {
+  const completed = todos.filter((t) => t.status === "completed").length;
+  const inProgress = todos.find((t) => t.status === "in_progress");
+  const allDone = completed === todos.length;
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className={styles.todoBar} style={{ borderColor: `${theme.foreground}12` }}>
+      <button
+        className={styles.todoBarHeader}
+        onClick={() => setExpanded((p) => !p)}
+      >
+        <span className={styles.todoBarProgress}>
+          <span
+            className={styles.todoBarProgressFill}
+            style={{
+              width: `${(completed / todos.length) * 100}%`,
+              background: allDone ? theme.green : theme.cyan,
+            }}
+          />
+        </span>
+        <span className={styles.todoBarCount} style={{ color: `${theme.foreground}70` }}>
+          {completed}/{todos.length}
+        </span>
+        {inProgress && (
+          <span className={styles.todoBarActive} style={{ color: theme.foreground }}>
+            <Loader2 size={11} className={styles.todoBarSpinner} style={{ color: theme.cyan }} />
+            {inProgress.activeForm}
+          </span>
+        )}
+        {allDone && (
+          <span className={styles.todoBarActive} style={{ color: theme.green }}>
+            <CheckCircle2 size={11} />
+            All tasks complete
+          </span>
+        )}
+        <span className={styles.todoBarChevron} style={{ color: `${theme.foreground}50` }}>
+          {expanded ? "\u25BE" : "\u25B8"}
+        </span>
+      </button>
+      {expanded && (
+        <div className={styles.todoBarList}>
+          {todos.map((todo, i) => (
+            <div key={i} className={styles.todoBarItem}>
+              {todo.status === "completed" ? (
+                <CheckCircle2 size={12} style={{ color: theme.green, flexShrink: 0 }} />
+              ) : todo.status === "in_progress" ? (
+                <Loader2 size={12} className={styles.todoBarSpinner} style={{ color: theme.cyan, flexShrink: 0 }} />
+              ) : (
+                <Circle size={12} style={{ color: `${theme.foreground}30`, flexShrink: 0 }} />
+              )}
+              <span
+                className={styles.todoBarItemText}
+                style={{
+                  color: todo.status === "completed" ? `${theme.foreground}50` : theme.foreground,
+                  textDecoration: todo.status === "completed" ? "line-through" : "none",
+                }}
+              >
+                {todo.content}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>

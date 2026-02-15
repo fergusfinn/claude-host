@@ -474,8 +474,8 @@
 
 .inputBadge {
   font-size: 10px;
-  color: #d97706;
-  background: rgba(217, 119, 6, 0.15);
+  color: var(--warning);
+  background: var(--warning-dim);
   padding: 1px 5px;
   border-radius: 3px;
   white-space: nowrap;

@@ -51,7 +51,7 @@
   border-radius: 8px;
   padding: 4px;
   z-index: 100;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 32px var(--shadow-dropdown);
 }
 
 .dropdownItem {
@@ -71,11 +71,11 @@
 }
 
 .dropdownItem:hover {
-  background: rgba(128, 128, 128, 0.1);
+  background: var(--bg-3);
 }
 
 .dropdownItemActive {
-  background: rgba(128, 128, 128, 0.15);
+  background: var(--bg-2);
 }
 
 .dropdownItemContent {
@@ -172,7 +172,7 @@
   display: flex;
   align-items: flex-end;
   gap: 6px;
-  border: 1px solid rgba(128, 128, 128, 0.2);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 6px 6px 6px 14px;
   max-width: 720px;

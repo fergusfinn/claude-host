@@ -872,6 +872,45 @@ function mix(color: string, target: string, amount: number): string {
   );
 }
 
+/** Relative luminance (WCAG 2.x) */
+function luminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG contrast ratio between two hex colors */
+function contrastRatio(c1: string, c2: string): number {
+  const l1 = luminance(c1),
+    l2 = luminance(c2);
+  const lighter = Math.max(l1, l2),
+    darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Mix `from` toward `target`, but ensure the result has at least
+ * `minContrast` against `ref`. If the initial `amount` doesn't
+ * achieve it, ramp up until it does (or hits 1.0).
+ */
+function mixWithMinContrast(
+  from: string,
+  target: string,
+  amount: number,
+  ref: string,
+  minContrast: number,
+): string {
+  let result = mix(from, target, amount);
+  let a = amount;
+  while (contrastRatio(result, ref) < minContrast && a < 1.0) {
+    a = Math.min(a + 0.05, 1.0);
+    result = mix(from, target, a);
+  }
+  return result;
+}
+
 /**
  * Derive all UI chrome CSS custom properties from a terminal theme.
  * This makes the tab bar, backgrounds, borders, text, and accent colors
@@ -889,24 +928,25 @@ export function themeToChromeVars(theme: TerminalTheme): Record<string, string> 
 
   // Background levels — step toward the theme's own light/dark tone
   const bg0 = bg;
-  const bg1 = mix(bg, step, 0.06);
-  const bg2 = mix(bg, step, 0.12);
-  const bg3 = mix(bg, step, 0.18);
-  const bg4 = mix(bg, step, 0.24);
+  const bg1 = mix(bg, step, 0.08);
+  const bg2 = mix(bg, step, 0.14);
+  const bg3 = mix(bg, step, 0.22);
+  const bg4 = mix(bg, step, 0.30);
 
-  // Borders — anchor on brightBlack (the theme's "comment" gray)
-  const border = mix(bg, theme.brightBlack, 0.40);
-  const borderHover = mix(bg, theme.brightBlack, 0.65);
+  // Borders — mix bg toward fg, ensuring minimum contrast so borders
+  // remain visible even on low-contrast themes (Solarized, Rose Pine, etc.)
+  const border = mixWithMinContrast(bg, fg, 0.20, bg, 1.8);
+  const borderHover = mixWithMinContrast(bg, fg, 0.40, bg, 3.0);
 
   // Text levels — use the theme's palette for natural hierarchy:
   //   text-0: foreground (primary)
   //   text-1: slightly muted toward the theme's gray
-  //   text-2: the theme's brightBlack ("comment" color)
-  //   text-3: brightBlack faded toward background
+  //   text-2: brightBlack pushed toward fg — always readable
+  //   text-3: brightBlack pushed toward fg enough for minimum contrast
   const text0 = fg;
-  const text1 = mix(fg, theme.brightBlack, 0.20);
-  const text2 = theme.brightBlack;
-  const text3 = mix(theme.brightBlack, bg, 0.40);
+  const text1 = mix(fg, theme.brightBlack, 0.15);
+  const text2 = mixWithMinContrast(theme.brightBlack, fg, 0.20, bg, 3.5);
+  const text3 = mixWithMinContrast(theme.brightBlack, fg, 0.05, bg, 2.5);
 
   // Accent from theme swatch
   const accentDim = `${accent}26`;
@@ -918,10 +958,14 @@ export function themeToChromeVars(theme: TerminalTheme): Record<string, string> 
   const danger = isDark ? "#ef4444" : "#dc2626";
   const dangerDim = isDark ? "rgba(239,68,68,0.1)" : "rgba(220,38,38,0.1)";
 
+  // Warning (amber) — theme-aware so it contrasts on both modes
+  const warning = isDark ? "#fbbf24" : "#b45309";
+  const warningDim = isDark ? "rgba(251,191,36,0.15)" : "rgba(180,83,9,0.12)";
+
   // Terminal preview areas
   const termBg = isDark ? mix(bg, "#000000", 0.30) : theme.black;
   const termText = mix(fg, bg, 0.35);
-  const termBorder = mix(bg, theme.brightBlack, 0.30);
+  const termBorder = border;
 
   // Shadows & backdrop
   const shadowDropdown = isDark ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.1)";
@@ -945,6 +989,8 @@ export function themeToChromeVars(theme: TerminalTheme): Record<string, string> 
     "--accent-hover": accentHover,
     "--danger": danger,
     "--danger-dim": dangerDim,
+    "--warning": warning,
+    "--warning-dim": warningDim,
     "--term-bg": termBg,
     "--term-text": termText,
     "--term-border": termBorder,

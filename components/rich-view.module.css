@@ -80,6 +80,99 @@
   flex-shrink: 0;
 }
 
+/* Todo bar */
+
+.todoBar {
+  border-bottom: 1px solid;
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--bg-1);
+}
+
+.todoBarHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  min-height: 28px;
+}
+
+.todoBarHeader:hover {
+  background: var(--bg-2);
+}
+
+.todoBarProgress {
+  width: 40px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-3);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.todoBarProgressFill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.todoBarCount {
+  font-size: 11px;
+  flex-shrink: 0;
+  min-width: 28px;
+}
+
+.todoBarActive {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.todoBarChevron {
+  font-size: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.todoBarSpinner {
+  animation: spin 1s linear infinite;
+}
+
+.todoBarList {
+  padding: 0 16px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.todoBarItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 2px 0;
+  line-height: 1.4;
+}
+
+.todoBarItemText {
+  font-size: 11px;
+  word-break: break-word;
+}
+
 /* Messages wrapper — holds scroll container + jump button */
 
 .messagesWrap {
@@ -742,7 +835,7 @@
   border-radius: 20px;
   cursor: pointer;
   z-index: 10;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px var(--shadow-dropdown);
   backdrop-filter: blur(4px);
   transition: opacity 0.15s;
   white-space: nowrap;
@@ -771,7 +864,7 @@
   border-radius: 12px;
   padding: 8px 8px 8px 16px;
   background: var(--bg-2);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px var(--shadow-dropdown);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 

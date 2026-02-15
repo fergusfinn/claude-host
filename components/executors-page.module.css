@@ -77,8 +77,8 @@
 }
 
 .dotUpgrading {
-  background: #d97706;
-  box-shadow: 0 0 4px rgba(217, 119, 6, 0.3);
+  background: var(--warning);
+  box-shadow: 0 0 4px var(--warning-dim);
   animation: pulse 1.5s ease-in-out infinite;
 }
 
@@ -142,7 +142,7 @@
 
 .upgradingLabel {
   font-size: 11px;
-  color: #d97706;
+  color: var(--warning);
   white-space: nowrap;
   animation: pulse 1.5s ease-in-out infinite;
 }
@@ -283,7 +283,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -299,7 +299,7 @@
   max-width: 90vw;
   max-height: 80vh;
   overflow-y: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 32px var(--shadow-dialog);
 }
 
 .dialogTitle {
@@ -523,7 +523,7 @@
 }
 
 .event_upgrade_sent {
-  color: #d97706;
+  color: var(--warning);
 }
 
 /* Mobile */
