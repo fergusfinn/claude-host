@@ -690,6 +690,27 @@
   50% { opacity: 0; }
 }
 
+/* Load earlier messages */
+
+.loadEarlier {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: center;
+  background: none;
+  border: none;
+  border-bottom: 1px solid;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.loadEarlier:hover {
+  opacity: 1;
+}
+
 /* Jump to bottom */
 
 .jumpToBottom {

@@ -184,6 +184,8 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
   const replayBackfillingRef = useRef(false); // true while prepending earlier chunks
   const backfillScrollCompensationRef = useRef<number | null>(null); // scrollHeight before prepend
   const [backfillTick, setBackfillTick] = useState(0); // triggers useLayoutEffect for scroll compensation
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [isBackfilling, setIsBackfilling] = useState(false);
 
   const scrollToBottom = useCallback(() => {
     if (userScrolledUpRef.current) return;
@@ -195,8 +197,8 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
   function requestBackfill(ws: WebSocket, loadedFrom: number) {
     if (loadedFrom <= 0) return;
     replayBackfillingRef.current = true;
+    setIsBackfilling(true);
     replayChunkBufferRef.current = [];
-    // Request all remaining events in one shot — single prepend, single scroll compensation
     requestAnimationFrame(() => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "replay_range", start: 0, end: loadedFrom }));
@@ -222,10 +224,6 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
     } else {
       userScrolledUpRef.current = true;
       setShowJumpToBottom(true);
-    }
-    // Trigger backfill when user scrolls near the top
-    if (el.scrollTop < 200 && replayLoadedFromRef.current > 0 && !replayBackfillingRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-      requestBackfill(wsRef.current, replayLoadedFromRef.current);
     }
   }, []);
 
@@ -372,6 +370,8 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
         replayLoadedFromRef.current = 0;
         replayChunkBufferRef.current = [];
         replayBackfillingRef.current = false;
+        setHasMoreHistory(false);
+        setIsBackfilling(false);
       };
 
       ws.onmessage = (e) => {
@@ -400,9 +400,10 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
             const el = scrollRef.current;
             if (el) el.scrollTop = el.scrollHeight;
           });
-          // Record how far back we've loaded — backfill triggered on scroll-to-top
+          // Record how far back we've loaded — user can tap "Load earlier" to backfill
           const tailStart = total - tailEvents.length;
           replayLoadedFromRef.current = tailStart;
+          setHasMoreHistory(tailStart > 0);
         } else if (msg.type === "event") {
           if (replayBackfillingRef.current) {
             // Buffer events during backfill chunk loading
@@ -443,6 +444,8 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
           }
 
           replayLoadedFromRef.current = start;
+          setHasMoreHistory(start > 0);
+          setIsBackfilling(false);
         } else if (msg.type === "turn_complete") {
           setIsStreaming(false);
           streamingStartRef.current = 0;
@@ -915,6 +918,30 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       <div className={styles.messagesWrap}>
         <div className={styles.messages} ref={scrollRef}>
           <div className={styles.messagesInner}>
+          {hasMoreHistory && !isBackfilling && (
+            <button
+              className={styles.loadEarlier}
+              onClick={() => {
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                  requestBackfill(wsRef.current, replayLoadedFromRef.current);
+                }
+              }}
+              style={{
+                color: theme.foreground,
+                borderColor: `${theme.foreground}20`,
+              }}
+            >
+              {"\u2191"} Load earlier messages
+            </button>
+          )}
+          {isBackfilling && (
+            <div
+              className={styles.loadEarlier}
+              style={{ color: `${theme.foreground}60` }}
+            >
+              Loading...
+            </div>
+          )}
           <MessageErrorBoundary theme={theme}>
             {renderPlan.map(({ msg, items }) => {
               // Skip pure tool_result user messages
