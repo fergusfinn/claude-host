@@ -20,6 +20,13 @@ import styles from "./rich-view.module.css";
 export const RICH_FONT_OPTIONS: Record<string, { label: string; fontFamily: string; googleFontsUrl?: string }> = {
   system: { label: "System", fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" },
   geist: { label: "Geist", fontFamily: "'Geist', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=Geist:wght@300..900&display=swap" },
+  inter: { label: "Inter", fontFamily: "'Inter', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..900;1,14..32,300..900&display=swap" },
+  lato: { label: "Lato", fontFamily: "'Lato', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;1,400&display=swap" },
+  nunito: { label: "Nunito", fontFamily: "'Nunito', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300..900;1,300..900&display=swap" },
+  "work-sans": { label: "Work Sans", fontFamily: "'Work Sans', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,300..900;1,300..900&display=swap" },
+  "dm-sans": { label: "DM Sans", fontFamily: "'DM Sans', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..900;1,9..40,300..900&display=swap" },
+  outfit: { label: "Outfit", fontFamily: "'Outfit', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=Outfit:wght@300..900&display=swap" },
+  rubik: { label: "Rubik", fontFamily: "'Rubik', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" },
   "ibm-plex-sans": { label: "IBM Plex Sans", fontFamily: "'IBM Plex Sans', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" },
   "source-sans": { label: "Source Sans 3", fontFamily: "'Source Sans 3', system-ui, sans-serif", googleFontsUrl: "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" },
 };
