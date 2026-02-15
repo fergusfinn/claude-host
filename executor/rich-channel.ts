@@ -4,7 +4,7 @@
  */
 
 import WebSocket from "ws";
-import { existsSync, openSync, readSync, fstatSync, closeSync, statSync, watch, writeSync, appendFileSync, constants as fsConstants } from "fs";
+import { existsSync, openSync, readSync, fstatSync, closeSync, watch, writeSync, appendFileSync, constants as fsConstants } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
@@ -38,6 +38,7 @@ export function openRichChannel(opts: RichChannelOpts): void {
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let destroyed = false;
   let initReceived = false;
+  let replayEventsParsed: object[] | null = null;
 
   function readNewEvents(): void {
     if (!existsSync(eventsFile) || destroyed) return;
@@ -94,23 +95,23 @@ export function openRichChannel(opts: RichChannelOpts): void {
     }
   }
 
-  function replayEvents(): void {
-    if (!existsSync(eventsFile)) return;
-    // Read entire file for replay
+  function parseReplayEvents(): object[] {
+    if (!existsSync(eventsFile)) return [];
     let fd: number;
     try {
       fd = openSync(eventsFile, "r");
     } catch {
-      return;
+      return [];
     }
     try {
       const fileSize = fstatSync(fd).size;
-      if (fileSize === 0) return;
+      if (fileSize === 0) return [];
       const buf = Buffer.alloc(fileSize);
       const bytesRead = readSync(fd, buf, 0, fileSize, 0);
       byteOffset = bytesRead;
 
       const content = buf.slice(0, bytesRead).toString("utf-8");
+      const events: object[] = [];
       let initSeen = false;
       for (const line of content.split("\n")) {
         const trimmed = line.trim();
@@ -125,15 +126,28 @@ export function openRichChannel(opts: RichChannelOpts): void {
             if (initSeen) continue;
             initSeen = true;
           }
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "event", event }));
-          }
-        } catch (e) { console.debug("failed to send event to ws", e); }
+          events.push(event);
+        } catch (e) { console.debug("failed to parse event", e); }
       }
       // Carry init state into live tailing
       initReceived = initSeen;
+      return events;
     } finally {
       closeSync(fd);
+    }
+  }
+
+  function sendReplayRange(start: number, end: number): void {
+    if (!replayEventsParsed) replayEventsParsed = parseReplayEvents();
+    const s = Math.max(0, start);
+    const e = Math.min(replayEventsParsed.length, end);
+    for (let i = s; i < e; i++) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "event", event: replayEventsParsed[i] }));
+      }
+    }
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "replay_range_complete", start: s, end: e }));
     }
   }
 
@@ -197,8 +211,14 @@ export function openRichChannel(opts: RichChannelOpts): void {
   }
 
   ws.on("open", () => {
-    // Replay existing events then start tailing
-    replayEvents();
+    // Parse events and send tail inline for instant bottom-of-chat rendering
+    replayEventsParsed = parseReplayEvents();
+    const TAIL_COUNT = 10;
+    const tailStart = Math.max(0, replayEventsParsed.length - TAIL_COUNT);
+    const tailEvents = replayEventsParsed.slice(tailStart);
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "replay_info", totalEvents: replayEventsParsed.length, tailEvents }));
+    }
 
     // Wait briefly for the tmux session to be ready (it may have just been spawned)
     const sendState = (attempt = 0) => {
@@ -222,6 +242,14 @@ export function openRichChannel(opts: RichChannelOpts): void {
     try {
       parsed = JSON.parse(str);
     } catch {
+      return;
+    }
+
+    if (parsed.type === "replay_range") {
+      const { start, end } = parsed as any;
+      if (typeof start === "number" && typeof end === "number") {
+        sendReplayRange(start, end);
+      }
       return;
     }
 
