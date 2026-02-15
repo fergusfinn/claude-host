@@ -514,7 +514,7 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
   // without a round-trip.
   parseReplayEvents(state);
   const events = state.replayEvents ?? [];
-  const TAIL_COUNT = 10;
+  const TAIL_COUNT = 50;
   const tailStart = Math.max(0, events.length - TAIL_COUNT);
   const tailEvents = events.slice(tailStart);
   send(ws, { type: "replay_info", totalEvents: events.length, tailEvents });

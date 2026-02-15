@@ -223,6 +223,10 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       userScrolledUpRef.current = true;
       setShowJumpToBottom(true);
     }
+    // Trigger backfill when user scrolls near the top
+    if (el.scrollTop < 200 && replayLoadedFromRef.current > 0 && !replayBackfillingRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+      requestBackfill(wsRef.current, replayLoadedFromRef.current);
+    }
   }, []);
 
   // Passive scroll listener
@@ -396,12 +400,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
             const el = scrollRef.current;
             if (el) el.scrollTop = el.scrollHeight;
           });
-          // Start backfilling older events
+          // Record how far back we've loaded — backfill triggered on scroll-to-top
           const tailStart = total - tailEvents.length;
           replayLoadedFromRef.current = tailStart;
-          if (tailStart > 0) {
-            requestBackfill(ws!, tailStart);
-          }
         } else if (msg.type === "event") {
           if (replayBackfillingRef.current) {
             // Buffer events during backfill chunk loading

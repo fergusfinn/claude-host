@@ -213,7 +213,7 @@ export function openRichChannel(opts: RichChannelOpts): void {
   ws.on("open", () => {
     // Parse events and send tail inline for instant bottom-of-chat rendering
     replayEventsParsed = parseReplayEvents();
-    const TAIL_COUNT = 10;
+    const TAIL_COUNT = 50;
     const tailStart = Math.max(0, replayEventsParsed.length - TAIL_COUNT);
     const tailEvents = replayEventsParsed.slice(tailStart);
     if (ws.readyState === WebSocket.OPEN) {
