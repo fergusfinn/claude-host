@@ -186,6 +186,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
   const [backfillTick, setBackfillTick] = useState(0); // triggers useLayoutEffect for scroll compensation
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [isBackfilling, setIsBackfilling] = useState(false);
+  const [pullProgress, setPullProgress] = useState(0); // 0-1, drives pull indicator
 
   const scrollToBottom = useCallback(() => {
     if (userScrolledUpRef.current) return;
@@ -194,14 +195,16 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
     el.scrollTop = el.scrollHeight;
   }, []);
 
+  const BACKFILL_CHUNK = 200;
   function requestBackfill(ws: WebSocket, loadedFrom: number) {
     if (loadedFrom <= 0) return;
     replayBackfillingRef.current = true;
     setIsBackfilling(true);
     replayChunkBufferRef.current = [];
+    const start = Math.max(0, loadedFrom - BACKFILL_CHUNK);
     requestAnimationFrame(() => {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "replay_range", start: 0, end: loadedFrom }));
+        ws.send(JSON.stringify({ type: "replay_range", start, end: loadedFrom }));
       }
     });
   }
@@ -241,6 +244,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
     if (!el) return;
     let touchStartY = 0;
     let pulling = false;
+    const PULL_THRESHOLD = 80;
 
     const onTouchStart = (e: TouchEvent) => {
       if (el.scrollTop <= 0 && replayLoadedFromRef.current > 0 && !replayBackfillingRef.current) {
@@ -251,14 +255,24 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
     const onTouchMove = (e: TouchEvent) => {
       if (!pulling) return;
       const dy = e.touches[0].clientY - touchStartY;
-      if (dy > 60) {
+      if (dy <= 0) {
+        setPullProgress(0);
+        return;
+      }
+      const progress = Math.min(1, dy / PULL_THRESHOLD);
+      setPullProgress(progress);
+      if (dy >= PULL_THRESHOLD) {
         pulling = false;
+        setPullProgress(0);
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           requestBackfill(wsRef.current, replayLoadedFromRef.current);
         }
       }
     };
-    const onTouchEnd = () => { pulling = false; };
+    const onTouchEnd = () => {
+      pulling = false;
+      setPullProgress(0);
+    };
 
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchmove", onTouchMove, { passive: true });
@@ -954,27 +968,38 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
         <div className={styles.messages} ref={scrollRef}>
           <div className={styles.messagesInner}>
           {hasMoreHistory && !isBackfilling && (
-            <button
-              className={styles.loadEarlier}
-              onClick={() => {
-                if (wsRef.current?.readyState === WebSocket.OPEN) {
-                  requestBackfill(wsRef.current, replayLoadedFromRef.current);
-                }
-              }}
-              style={{
-                color: theme.foreground,
-                borderColor: `${theme.foreground}20`,
-              }}
-            >
-              {"\u2191"} Load earlier messages
-            </button>
+            <>
+              {pullProgress > 0 && (
+                <div
+                  className={styles.pullIndicator}
+                  style={{
+                    color: theme.foreground,
+                    opacity: 0.3 + pullProgress * 0.7,
+                    transform: `rotate(${pullProgress * 180}deg)`,
+                  }}
+                >
+                  {"\u2191"}
+                </div>
+              )}
+              <button
+                className={styles.loadEarlier}
+                onClick={() => {
+                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    requestBackfill(wsRef.current, replayLoadedFromRef.current);
+                  }
+                }}
+                style={{
+                  color: theme.foreground,
+                  borderColor: `${theme.foreground}20`,
+                }}
+              >
+                {"\u2191"} Load earlier messages
+              </button>
+            </>
           )}
           {isBackfilling && (
-            <div
-              className={styles.loadEarlier}
-              style={{ color: `${theme.foreground}60` }}
-            >
-              Loading...
+            <div className={styles.pullIndicator} style={{ color: theme.foreground }}>
+              <span className={styles.spinner}>{"\u21bb"}</span>
             </div>
           )}
           <MessageErrorBoundary theme={theme}>
