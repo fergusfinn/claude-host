@@ -249,7 +249,9 @@ export class TmuxRunner {
       // Codex provider: use codex-wrapper.sh with per-prompt invocation
       const wrapperScript = join(REPO_ROOT, "scripts", "codex-wrapper.sh");
       const codexArgs: string[] = [];
-      if (command.includes("--full-auto")) {
+      if (command.includes("--dangerously-bypass-approvals-and-sandbox")) {
+        codexArgs.push("--dangerously-bypass-approvals-and-sandbox");
+      } else if (command.includes("--full-auto")) {
         codexArgs.push("--full-auto");
       }
 
