@@ -227,7 +227,7 @@ export class TmuxRunner {
   // PARALLEL: terminal equivalent is createSession() above.
   // Changes here (e.g. tmux options, validation, env vars) may need mirroring.
   createRichSession(opts: CreateRichSessionOpts): { name: string; command: string } {
-    const { name, command = "claude" } = opts;
+    const { name, command = "claude", provider = "claude" } = opts;
 
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
       throw new Error("Name must be alphanumeric, hyphens, underscores only");
@@ -244,38 +244,59 @@ export class TmuxRunner {
 
     const eventsFile = join(dataDir, "events.ndjson");
     const fifoPath = join(dataDir, "prompt.fifo");
-    const wrapperScript = join(REPO_ROOT, "scripts", "rich-wrapper.sh");
 
-    // Build claude args
-    const claudeArgs = ["-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose"];
-    if (command.includes("--dangerously-skip-permissions")) {
-      claudeArgs.push("--dangerously-skip-permissions");
-    }
+    if (provider === "codex") {
+      // Codex provider: use codex-wrapper.sh with per-prompt invocation
+      const wrapperScript = join(REPO_ROOT, "scripts", "codex-wrapper.sh");
+      const codexArgs: string[] = [];
+      if (command.includes("--full-auto")) {
+        codexArgs.push("--full-auto");
+      }
 
-    // Disallow plan mode tools — ExitPlanMode always fails with
-    // is_error in -p/stream-json mode (no interactive UI to approve the
-    // plan), which leaves Claude stuck in plan mode unable to use tools.
-    // --allowedTools does NOT fix it; the CLI still returns an error.
-    claudeArgs.push("--disallowedTools", "EnterPlanMode,ExitPlanMode");
+      const r = spawnSync(TMUX, [
+        "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
+        "-c", REPO_ROOT,
+        "bash", "-l", wrapperScript, eventsFile, fifoPath, ...codexArgs,
+      ], { stdio: "pipe" });
 
-    const allowedToolsMatch = command.match(/--(?:allowedTools|allowed-tools)\s+'([^']+)'/);
-    if (allowedToolsMatch) {
-      claudeArgs.push("--allowedTools", allowedToolsMatch[1]);
-    }
+      if (r.status !== 0) {
+        throw new Error(`Failed to create codex rich tmux session: ${r.stderr?.toString()}`);
+      }
+    } else {
+      // Claude provider: use rich-wrapper.sh with persistent -p process
+      const wrapperScript = join(REPO_ROOT, "scripts", "rich-wrapper.sh");
 
-    const settingsMatch = command.match(/--settings\s+'([^']+)'/);
-    if (settingsMatch) {
-      claudeArgs.push("--settings", settingsMatch[1]);
-    }
+      // Build claude args
+      const claudeArgs = ["-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose"];
+      if (command.includes("--dangerously-skip-permissions")) {
+        claudeArgs.push("--dangerously-skip-permissions");
+      }
 
-    const r = spawnSync(TMUX, [
-      "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
-      "-c", REPO_ROOT,
-      "bash", "-l", wrapperScript, eventsFile, fifoPath, ...claudeArgs,
-    ], { stdio: "pipe" });
+      // Disallow plan mode tools — ExitPlanMode always fails with
+      // is_error in -p/stream-json mode (no interactive UI to approve the
+      // plan), which leaves Claude stuck in plan mode unable to use tools.
+      // --allowedTools does NOT fix it; the CLI still returns an error.
+      claudeArgs.push("--disallowedTools", "EnterPlanMode,ExitPlanMode");
 
-    if (r.status !== 0) {
-      throw new Error(`Failed to create rich tmux session: ${r.stderr?.toString()}`);
+      const allowedToolsMatch = command.match(/--(?:allowedTools|allowed-tools)\s+'([^']+)'/);
+      if (allowedToolsMatch) {
+        claudeArgs.push("--allowedTools", allowedToolsMatch[1]);
+      }
+
+      const settingsMatch = command.match(/--settings\s+'([^']+)'/);
+      if (settingsMatch) {
+        claudeArgs.push("--settings", settingsMatch[1]);
+      }
+
+      const r = spawnSync(TMUX, [
+        "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
+        "-c", REPO_ROOT,
+        "bash", "-l", wrapperScript, eventsFile, fifoPath, ...claudeArgs,
+      ], { stdio: "pipe" });
+
+      if (r.status !== 0) {
+        throw new Error(`Failed to create rich tmux session: ${r.stderr?.toString()}`);
+      }
     }
 
     spawnSync(TMUX, ["set-option", "-t", tName, "status", "off"], { stdio: "pipe" });

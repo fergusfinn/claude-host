@@ -102,6 +102,7 @@ export interface AttachRichSessionRpc {
   channelId: string;
   sessionName: string;
   command: string;
+  provider?: import("./types").RichProvider;
 }
 
 export interface SnapshotRichSessionRpc {

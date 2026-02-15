@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { description, command, executor, mode } = await req.json();
-    const session = await getSessionManager().create(description, command, executor, mode, user.userId);
+    const { description, command, executor, mode, provider } = await req.json();
+    const session = await getSessionManager().create(description, command, executor, mode, user.userId, provider);
     return NextResponse.json(session, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 400 });

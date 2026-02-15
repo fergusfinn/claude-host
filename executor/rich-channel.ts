@@ -11,6 +11,7 @@ import { spawnSync } from "child_process";
 import type { FSWatcher } from "fs";
 
 import { TMUX } from "../shared/tmux";
+import type { RichProvider } from "../shared/types";
 
 interface RichChannelOpts {
   baseUrl: string;
@@ -18,6 +19,7 @@ interface RichChannelOpts {
   channelId: string;
   sessionName: string;
   command: string;
+  provider?: RichProvider;
 }
 
 export function openRichChannel(opts: RichChannelOpts): void {
