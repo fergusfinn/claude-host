@@ -11,9 +11,42 @@ vi.mock("child_process", () => ({
 }));
 
 import { spawnSync, execSync } from "child_process";
+import { TmuxRunner } from "../executor/tmux-runner";
 
 let tempDir: string;
 let origCwd: () => string;
+
+// Create a mock executor that wraps TmuxRunner (synchronous) with async methods
+// matching ExecutorInterface. This lets tests use the same spawnSync mocks.
+function createMockExecutor() {
+  const runner = new TmuxRunner();
+  return {
+    createSession: async (opts: any) => runner.createSession(opts),
+    createRichSession: async (opts: any) => runner.createRichSession(opts),
+    createJob: async (opts: any) => runner.createJob(opts),
+    deleteSession: async (name: string) => runner.deleteSession(name),
+    deleteRichSession: async (name: string) => runner.deleteRichSession(name),
+    forkSession: async (opts: any) => runner.forkSession(opts),
+    listSessions: async () => runner.listSessions(),
+    snapshotSession: async (name: string, lines?: number) => runner.snapshotSession(name, lines),
+    snapshotRichSession: async (name: string) => runner.snapshotRichSession(name),
+    summarizeSession: async (name: string) => runner.summarizeSession(name),
+    analyzeSession: async (name: string) => runner.analyzeSession(name),
+    attachSession: () => {},
+    attachRichSession: () => {},
+  };
+}
+
+// Create a mock registry that returns the mock executor for any ID
+function createMockRegistry() {
+  const mockExec = createMockExecutor();
+  return {
+    getRemoteExecutor: () => mockExec,
+    getSessionLiveness: () => undefined,
+    isExecutorOnline: () => false,
+    listExecutorsForUser: () => [],
+  };
+}
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "sessions-test-"));
@@ -42,7 +75,12 @@ afterEach(() => {
 import { getSessionManager } from "./sessions";
 
 function mgr() {
-  return getSessionManager();
+  const m = getSessionManager();
+  // Inject mock registry so getExecutor("local") works via TmuxRunner
+  if (!m.registry) {
+    m.setRegistry(createMockRegistry() as any);
+  }
+  return m;
 }
 
 describe("SessionManager", () => {
@@ -51,23 +89,44 @@ describe("SessionManager", () => {
       expect(mgr().list("local")).toEqual([]);
     });
 
-    it("auto-cleans dead sessions from DB", async () => {
+    it("shows sessions as dead when executor is offline", async () => {
       // Create a session (tmux mock succeeds for new-session)
       await mgr().create("", "bash");
-      // has-session returns 1 (dead) by default, so list should clean it up
-      expect(mgr().list("local")).toEqual([]);
+      // Default mock registry: isExecutorOnline=false, no liveness data
+      // Session should show as alive=false (executor offline)
+      const sessions = mgr().list("local");
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].alive).toBe(false);
     });
 
-    it("returns alive sessions with alive=true", async () => {
-      const created = await mgr().create("desc", "bash");
-      // Make has-session return 0 (alive) for this session
-      vi.mocked(spawnSync).mockImplementation((_cmd, args) => {
-        if (args && (args as string[]).includes("has-session")) {
-          return { status: 0 } as any;
-        }
-        return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
-      });
-      const sessions = mgr().list("local");
+    it("auto-cleans dead sessions when executor online but session missing from heartbeat", async () => {
+      const m = mgr();
+      const created = await m.create("", "bash");
+      // Set executor online but session not in heartbeat — session older than 60s gets cleaned
+      m.setRegistry({
+        getRemoteExecutor: () => createMockExecutor(),
+        getSessionLiveness: () => undefined,
+        isExecutorOnline: () => true,
+        listExecutorsForUser: () => [],
+      } as any);
+      // Backdate created_at so it's older than 60s
+      (m as any).db.prepare("UPDATE sessions SET created_at = datetime('now', '-2 minutes') WHERE name = ?")
+        .run(created.name);
+      expect(m.list("local")).toEqual([]);
+    });
+
+    it("returns alive sessions with alive=true from heartbeat data", async () => {
+      const m = mgr();
+      const created = await m.create("desc", "bash");
+      // Mock registry returns liveness data for this session
+      m.setRegistry({
+        getRemoteExecutor: () => createMockExecutor(),
+        getSessionLiveness: (_exec: string, name: string) =>
+          name === created.name ? { name: created.name, alive: true, last_activity: Math.floor(Date.now() / 1000) } : undefined,
+        isExecutorOnline: () => true,
+        listExecutorsForUser: () => [],
+      } as any);
+      const sessions = m.list("local");
       expect(sessions).toHaveLength(1);
       expect(sessions[0].name).toBe(created.name);
       expect(sessions[0].alive).toBe(true);
@@ -163,13 +222,7 @@ describe("SessionManager", () => {
     it("removes session from DB", async () => {
       const m = mgr();
       const created = await m.create("", "bash");
-      // Make session alive so list returns it
-      vi.mocked(spawnSync).mockImplementation((_cmd, args) => {
-        if (args && (args as string[]).includes("has-session")) {
-          return { status: 0 } as any;
-        }
-        return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
-      });
+      // With executor offline, session shows as alive=false but is still returned
       expect(m.list("local")).toHaveLength(1);
 
       await m.delete(created.name, "local");
@@ -598,14 +651,7 @@ describe("SessionManager", () => {
 
       const forked = await m.fork(sourceName, "local");
 
-      // Make has-session return 0 so list shows sessions
-      vi.mocked(spawnSync).mockImplementation((_cmd, args) => {
-        if (args && (args as string[]).includes("has-session")) {
-          return { status: 0 } as any;
-        }
-        return { status: 0, stdout: "", stderr: Buffer.from("") } as any;
-      });
-
+      // With executor offline (default), sessions show as alive=false but are still listed
       const sessions = m.list("local");
       const found = sessions.find((s: any) => s.name === forked.name);
       expect(found).toBeDefined();

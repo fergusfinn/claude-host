@@ -168,10 +168,11 @@ export class ExecutorRegistry {
     }));
   }
 
-  /** List connected executors owned by a specific user */
+  /** List connected executors owned by a specific user.
+   *  The "local" executor (spawned by the server) is visible to all users. */
   listExecutorsForUser(userId: string): ExecutorInfo[] {
     return Array.from(this.executors.values())
-      .filter((e) => e.userId === userId)
+      .filter((e) => e.userId === userId || e.info.id === "local")
       .map((e) => ({
         ...e.info,
         sessionCount: e.sessions.length,

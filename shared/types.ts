@@ -69,13 +69,11 @@ export interface ExecutorInfo {
 //
 // Each pair has implementations in:
 //   - TmuxRunner          (executor/tmux-runner.ts)   — tmux subprocess operations
-//   - LocalExecutor       (lib/executor-interface.ts) — delegates to TmuxRunner + bridge
 //   - RemoteExecutor      (lib/executor-interface.ts) — RPC over WebSocket to executor
 //   - SessionManager      (lib/sessions.ts)           — DB + routing to executor
 //   - server.ts           — WebSocket upgrade handlers (/ws/sessions vs /ws/rich)
 //
-// Additionally, local vs remote is a second axis of duplication. When changing
-// LocalExecutor, check if RemoteExecutor needs the same change.
+// All executors (including the locally-spawned one) use the RemoteExecutor codepath.
 
 export interface SessionAnalysis {
   description: string;

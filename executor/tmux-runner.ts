@@ -1,6 +1,6 @@
 /**
  * TmuxRunner: all tmux subprocess operations, zero DB dependency.
- * Used by both LocalExecutor (in-process) and standalone executor process.
+ * Used by the executor process (both locally-spawned and remote).
  */
 
 import { spawnSync, execSync, spawn } from "child_process";
@@ -252,18 +252,15 @@ export class TmuxRunner {
       claudeArgs.push("--dangerously-skip-permissions");
     }
 
-    // PARALLEL: keep in sync with lib/claude-bridge.ts ensureTmuxSession()
-    // Auto-approve confirmation-only tools that can't be resolved via
-    // stream-json input (no tool_result support). Prevents infinite loops
-    // where ExitPlanMode keeps prompting even under bypassPermissions mode.
+    // Disallow plan mode tools — ExitPlanMode always fails with
+    // is_error in -p/stream-json mode (no interactive UI to approve the
+    // plan), which leaves Claude stuck in plan mode unable to use tools.
+    // --allowedTools does NOT fix it; the CLI still returns an error.
+    claudeArgs.push("--disallowedTools", "EnterPlanMode,ExitPlanMode");
+
     const allowedToolsMatch = command.match(/--(?:allowedTools|allowed-tools)\s+'([^']+)'/);
     if (allowedToolsMatch) {
       claudeArgs.push("--allowedTools", allowedToolsMatch[1]);
-    } else {
-      claudeArgs.push(
-        "--allowedTools",
-        "ExitPlanMode,EnterPlanMode,TodoWrite,Skill",
-      );
     }
 
     const settingsMatch = command.match(/--settings\s+'([^']+)'/);
@@ -407,7 +404,9 @@ export class TmuxRunner {
   }
 
   forkSession(opts: ForkSessionOpts): { name: string; command: string } {
-    const { sourceName, newName, sourceCommand, sourceCwd, forkHooks } = opts;
+    const { sourceName, newName, sourceCommand, forkHooks } = opts;
+    // Auto-resolve CWD from the source tmux pane if not provided
+    const sourceCwd = opts.sourceCwd ?? this.getPaneCwd(sourceName);
 
     if (!/^[a-zA-Z0-9_-]+$/.test(newName)) {
       throw new Error("Name must be alphanumeric, hyphens, underscores only");

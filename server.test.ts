@@ -66,9 +66,11 @@ vi.mock("next", () => ({
   })),
 }));
 
+const mockChildProcess = { on: vi.fn(), kill: vi.fn() };
 vi.mock("child_process", () => ({
   execFileSync: vi.fn(() => "/usr/local/bin/tmux\n"),
   spawnSync: vi.fn(() => ({ stdout: "tmux 3.4" })),
+  spawn: vi.fn(() => mockChildProcess),
 }));
 
 import { execFileSync, spawnSync } from "child_process";

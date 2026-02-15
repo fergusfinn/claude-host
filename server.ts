@@ -1,7 +1,8 @@
 import { createServer } from "http";
 import next from "next";
 import { WebSocketServer } from "ws";
-import { spawnSync } from "child_process";
+import { spawn, spawnSync } from "child_process";
+import { randomBytes } from "crypto";
 import { getSessionManager } from "./lib/sessions";
 import { ExecutorRegistry } from "./lib/executor-registry";
 import { getAuthUser } from "./lib/auth";
@@ -10,6 +11,8 @@ import { TMUX } from "./shared/tmux";
 const dev = process.env.NODE_ENV !== "production";
 const AUTH_DISABLED = process.env.AUTH_DISABLED === "1";
 const EXECUTOR_TOKEN = process.env.EXECUTOR_TOKEN || "";
+const LOCAL_EXECUTOR_DISABLED = process.env.DISABLE_LOCAL_EXECUTOR === "1";
+const LOOPBACK_TOKEN = randomBytes(32).toString("hex");
 const VALID_SESSION_NAME = /^[a-zA-Z0-9_-]+$/;
 
 // Preflight: check auth secret (skip if auth is disabled entirely)
@@ -41,6 +44,9 @@ try {
 function validateExecutorToken(req: { headers: Record<string, string | string[] | undefined> }): { valid: boolean; userId?: string; keyId?: string } {
   const token = req.headers["x-executor-token"];
   if (!token || typeof token !== "string") return { valid: false };
+
+  // Loopback token for locally-spawned executor
+  if (token === LOOPBACK_TOKEN) return { valid: true, userId: "local" };
 
   // Try per-user key validation first
   const result = getSessionManager().validateExecutorKey(token);
@@ -158,5 +164,33 @@ app.prepare().then(() => {
     console.log(`Claude Host running at http://localhost:${port}`);
     if (EXECUTOR_TOKEN) console.log(`Legacy EXECUTOR_TOKEN configured (migrate to per-user keys)`);
     console.log(`Executor connections via per-user keys`);
+
+    // Spawn local executor as a subprocess connecting back over loopback
+    if (!LOCAL_EXECUTOR_DISABLED) {
+      const localExec = spawn(
+        process.execPath,
+        [
+          ...process.execArgv,
+          "executor/index.ts",
+          "--url", `ws://localhost:${port}`,
+          "--token", LOOPBACK_TOKEN,
+          "--id", "local",
+          "--name", "local",
+          "--no-upgrade",
+        ],
+        { stdio: "inherit", cwd: process.cwd() },
+      );
+      localExec.on("exit", (code) => {
+        if (code !== null && code !== 0) {
+          console.error(`Local executor exited with code ${code}`);
+        }
+      });
+
+      const shutdownLocal = () => {
+        try { localExec.kill(); } catch {}
+      };
+      process.on("SIGINT", shutdownLocal);
+      process.on("SIGTERM", shutdownLocal);
+    }
   });
 });

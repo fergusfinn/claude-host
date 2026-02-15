@@ -28,7 +28,8 @@ export function openRichChannel(opts: RichChannelOpts): void {
     ? __dirname
     : dirname(fileURLToPath(import.meta.url));
   const repoRoot = resolve(thisDir, "..");
-  const dataDir = join(repoRoot, "data", "rich", opts.sessionName);
+  const baseDataDir = process.env.DATA_DIR || join(repoRoot, "data");
+  const dataDir = join(baseDataDir, "rich", opts.sessionName);
   const eventsFile = join(dataDir, "events.ndjson");
   const fifoPath = join(dataDir, "prompt.fifo");
 

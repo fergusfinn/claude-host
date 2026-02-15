@@ -34,19 +34,34 @@ export async function startServer(): Promise<ServerHandle> {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  // Wait for the server to be ready
+  // Wait for server + local executor to be ready.
+  // The server prints "Claude Host running at" first, then the local executor
+  // subprocess connects and the registry logs "Executor registered: local".
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error("Server failed to start within 30s"));
     }, 30000);
 
     let stderr = "";
+    let serverReady = false;
+    let executorReady = false;
+
+    const maybeResolve = () => {
+      if (serverReady && executorReady) {
+        clearTimeout(timeout);
+        resolve();
+      }
+    };
 
     proc.stdout?.on("data", (data: Buffer) => {
       const text = data.toString();
       if (text.includes("Claude Host running at")) {
-        clearTimeout(timeout);
-        resolve();
+        serverReady = true;
+        maybeResolve();
+      }
+      if (text.includes("Executor registered: local")) {
+        executorReady = true;
+        maybeResolve();
       }
     });
 

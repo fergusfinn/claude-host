@@ -11,7 +11,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["lib/**/*.ts", "app/api/**/*.ts", "server.ts"],
-      exclude: ["lib/claude-bridge.ts", "lib/markdown.tsx", "lib/themes.ts"],
+      exclude: ["lib/markdown.tsx", "lib/themes.ts"],
     },
   },
   resolve: {

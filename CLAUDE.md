@@ -91,13 +91,17 @@ Executor authentication is migrating from a single shared `EXECUTOR_TOKEN` env v
 
 **Key format:** `chk_<64 hex chars>` — SHA-256 hashed in the DB, 8-char prefix stored for lookup.
 
-## Session architecture: parallel codepaths
+## Session architecture
 
-Sessions have two axes of duplication: **terminal vs rich** (mode) and **local vs remote** (executor). These run as fully separate codepaths — different WebSocket endpoints, different bridge modules, different tmux naming conventions. When changing one codepath, you must check if the parallel codepath needs the same change.
+### Executor model
+
+All executors (including the local one) use the same `RemoteExecutor` codepath — RPC over WebSocket. The server auto-spawns a local executor process (`executor/index.ts --id local`) on startup with a loopback token. This eliminates the previous local-vs-remote code duplication.
+
+Set `DISABLE_LOCAL_EXECUTOR=1` to skip spawning the local executor (e.g. when all sessions run on remote machines).
 
 ### Terminal vs Rich pairs
 
-Methods marked `// PARALLEL:` in the code cross-reference their counterpart:
+Sessions have one axis of duplication: **terminal vs rich** (mode). Methods marked `// PARALLEL:` in the code cross-reference their counterpart:
 
 | Terminal | Rich | What it does |
 |----------|------|-------------|
@@ -106,23 +110,19 @@ Methods marked `// PARALLEL:` in the code cross-reference their counterpart:
 | `snapshotSession` | `snapshotRichSession` | Capture current state |
 | `attachSession` | `attachRichSession` | Bridge browser WS to session |
 
-### Where the pairs are implemented
-
-Each pair has implementations across these files (all annotated with `// PARALLEL:` comments):
+Each pair has implementations across these files:
 
 - **`shared/types.ts`** — `ExecutorInterface` definition
 - **`executor/tmux-runner.ts`** — tmux subprocess operations
-- **`lib/executor-interface.ts`** — `LocalExecutor` (delegates to TmuxRunner + bridge) and `RemoteExecutor` (RPC over WebSocket)
+- **`lib/executor-interface.ts`** — `RemoteExecutor` (RPC over WebSocket to executor)
 - **`lib/sessions.ts`** — `SessionManager` (DB + routing, branches on `mode`)
 - **`server.ts`** — WebSocket upgrade handlers (`/ws/sessions/<name>` vs `/ws/rich/<name>`)
 
 ### Key differences between the modes
 
-- **Terminal**: tmux session created eagerly, named directly (e.g. `fuzzy-ocean`), bridged via `lib/pty-bridge.ts` (node-pty, raw binary)
-- **Rich**: tmux session created lazily on first prompt, named `rich-<name>`, bridged via `lib/claude-bridge.ts` (FIFO + events.ndjson, structured JSON)
+- **Terminal**: tmux session created eagerly, named directly (e.g. `fuzzy-ocean`), bridged via `executor/terminal-channel.ts` (node-pty, raw binary)
+- **Rich**: tmux session created lazily on first prompt, named `rich-<name>`, bridged via `executor/rich-channel.ts` (FIFO + events.ndjson, structured JSON)
 - **Rich tmux sessions are filtered from `listSessions()`** to avoid double-counting — the `rich-` prefix is load-bearing
-
-### Local vs Remote
 
 `RemoteExecutor.attachSession()` and `RemoteExecutor.attachRichSession()` contain nearly identical WS bridging logic (channel setup, message buffering, cleanup). Changes to one should be applied to the other.
 
@@ -131,9 +131,9 @@ Each pair has implementations across these files (all annotated with `// PARALLE
 - `server.ts` — HTTP + WebSocket server entry point
 - `app/` — Next.js App Router pages and API routes
 - `components/` — React components (dashboard, terminal view, tab bar, etc.)
-- `lib/` — Shared utilities (sessions, pty-bridge, themes, shortcuts, layout)
+- `lib/` — Shared utilities (sessions, themes, shortcuts, layout)
 - `hooks/` — React hooks
 - `tests/e2e/` — E2E integration tests
-- `executor/` — Remote executor client
+- `executor/` — Executor process (local and remote)
 - `tui/` — TUI-related code
 - `data/` — SQLite database (gitignored)

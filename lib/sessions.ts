@@ -1,12 +1,8 @@
 import Database from "better-sqlite3";
-import { mkdirSync, existsSync, readFileSync } from "fs";
+import { mkdirSync, readFileSync, existsSync } from "fs";
 import { dirname, join } from "path";
-import { execFileSync } from "child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import type { Session, ExecutorInfo, SessionLiveness } from "../shared/types";
-import { LocalExecutor } from "./executor-interface";
-import { cleanupRichSession, setRichDb } from "./claude-bridge";
-import { snapshotRichEvents } from "../shared/rich-snapshot";
 import { generateName } from "./names";
 import { DEFAULT_COMMAND } from "../shared/constants";
 
@@ -20,21 +16,10 @@ export interface ExecutorKeyInfo {
   revoked: boolean;
 }
 
-// Cache local git version at startup
-let localVersion: string | undefined;
-try {
-  localVersion = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf-8" }).trim();
-} catch {
-  // Not a git repo or git not available
-}
-
 export type { Session };
-
-const LOCAL_EXECUTOR_ENABLED = process.env.DISABLE_LOCAL_EXECUTOR !== "1";
 
 class SessionManager {
   private db: Database.Database;
-  private localExecutor = LOCAL_EXECUTOR_ENABLED ? new LocalExecutor() : null;
   private _registry: import("./executor-registry").ExecutorRegistry | null = null;
 
   constructor(dbPath: string) {
@@ -126,7 +111,7 @@ class SessionManager {
         PRIMARY KEY (user_id, key)
       )
     `);
-    // Rich session state (shared with claude-bridge module)
+    // Rich session state (kept for fork session_id lookup)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS rich_sessions (
         name TEXT PRIMARY KEY,
@@ -136,14 +121,6 @@ class SessionManager {
         updated_at INTEGER DEFAULT (unixepoch())
       )
     `);
-    // Migration: add byte_offset column if missing (older schemas)
-    try {
-      this.db.exec(`ALTER TABLE rich_sessions ADD COLUMN byte_offset INTEGER DEFAULT 0`);
-    } catch {
-      // Column already exists
-    }
-    // Share this DB connection with the rich-session bridge module
-    setRichDb(this.db);
     // Executor keys table for per-user executor authentication
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS executor_keys (
@@ -246,12 +223,9 @@ class SessionManager {
     return this._registry;
   }
 
-  // NOTE: Liveness logic differs by mode AND executor. Four cases:
-  //   local+terminal  — tmux has-session check, auto-delete dead sessions
-  //   local+rich      — always alive (tmux session is lazily created)
-  //   remote+terminal — heartbeat-cached liveness from ExecutorRegistry
-  //   remote+rich     — always alive (rich tmux sessions filtered from heartbeat)
-  // When modifying liveness logic, ensure all four cases are handled.
+  // NOTE: Liveness logic differs by mode. Two cases:
+  //   rich     — always alive (rich tmux sessions are lazily created, filtered from heartbeat)
+  //   terminal — heartbeat-cached liveness from ExecutorRegistry
   list(userId: string): Session[] {
     const rows = this.db
       .prepare("SELECT * FROM sessions WHERE user_id = ? ORDER BY position ASC, created_at DESC")
@@ -261,104 +235,67 @@ class SessionManager {
     for (const row of rows) {
       const executor = row.executor || "local";
       const mode = row.mode || "terminal";
-      if (executor === "local") {
-        // Rich sessions use tmux via wrapper — alive as long as the DB row exists
-        if (mode === "rich") {
-          alive.push({
-            ...row,
-            mode,
-            parent: row.parent || null,
-            executor: "local",
-            last_activity: row.last_activity || Math.floor(new Date(row.created_at).getTime() / 1000),
-            alive: true,
-            job_prompt: row.job_prompt || null,
-            job_max_iterations: row.job_max_iterations || null,
-            needs_input: false,
-          });
-          continue;
-        }
-        if (!this.localExecutor) { deadNames.push(row.name); continue; }
-        // Direct tmux check (existing behavior)
-        if (this.localExecutor.tmuxExists(row.name)) {
-          alive.push({
-            ...row,
-            mode,
-            parent: row.parent || null,
-            executor: "local",
-            last_activity: this.localExecutor.getPaneActivity(row.name),
-            alive: true,
-            job_prompt: row.job_prompt || null,
-            job_max_iterations: row.job_max_iterations || null,
-            needs_input: false,
-          });
-        } else {
-          deadNames.push(row.name);
-        }
+
+      // Rich sessions — always alive (tmux session is lazily created)
+      if (mode === "rich") {
+        alive.push({
+          ...row,
+          mode,
+          parent: row.parent || null,
+          executor,
+          last_activity: row.last_activity || Math.floor(new Date(row.created_at).getTime() / 1000),
+          alive: true,
+          job_prompt: row.job_prompt || null,
+          job_max_iterations: row.job_max_iterations || null,
+          needs_input: false,
+        });
+        continue;
+      }
+
+      // Terminal sessions — use heartbeat-cached liveness data
+      const liveness = this._registry?.getSessionLiveness(executor, row.name);
+      if (liveness) {
+        alive.push({
+          ...row,
+          parent: row.parent || null,
+          executor,
+          last_activity: liveness.last_activity,
+          alive: liveness.alive,
+          job_prompt: row.job_prompt || null,
+          job_max_iterations: row.job_max_iterations || null,
+          needs_input: false,
+        });
       } else {
-        // Rich sessions on remote executors — alive as long as the DB row exists
-        // (rich tmux sessions are filtered from heartbeat liveness, so we can't
-        // rely on the heartbeat to report them)
-        if (mode === "rich") {
-          alive.push({
-            ...row,
-            mode,
-            parent: row.parent || null,
-            executor,
-            last_activity: row.last_activity || Math.floor(new Date(row.created_at).getTime() / 1000),
-            alive: true,
-            job_prompt: row.job_prompt || null,
-            job_max_iterations: row.job_max_iterations || null,
-            needs_input: false,
-          });
-          continue;
-        }
-        // Remote executor: use heartbeat-cached liveness data
-        const liveness = this._registry?.getSessionLiveness(executor, row.name);
-        if (liveness) {
+        // Executor offline or session not reported
+        const executorOnline = this._registry?.isExecutorOnline(executor) ?? false;
+        if (!executorOnline) {
           alive.push({
             ...row,
             parent: row.parent || null,
             executor,
-            last_activity: liveness.last_activity,
-            alive: liveness.alive,
+            last_activity: 0,
+            alive: false,
             job_prompt: row.job_prompt || null,
             job_max_iterations: row.job_max_iterations || null,
             needs_input: false,
           });
         } else {
-          // Executor offline or session not reported — show as offline
-          const executorOnline = this._registry?.isExecutorOnline(executor) ?? false;
-          if (!executorOnline) {
+          // Executor online but session not in heartbeat yet — grace period
+          const createdAt = new Date(row.created_at).getTime();
+          const ageMs = Date.now() - createdAt;
+          if (ageMs > 60_000) {
+            deadNames.push(row.name);
+          } else {
             alive.push({
               ...row,
               parent: row.parent || null,
               executor,
-              last_activity: 0,
-              alive: false,
+              last_activity: Math.floor(createdAt / 1000),
+              alive: true,
               job_prompt: row.job_prompt || null,
               job_max_iterations: row.job_max_iterations || null,
               needs_input: false,
             });
-          } else {
-            // Executor online but session not in heartbeat yet.
-            // Grace period: keep recently-created sessions (heartbeat may
-            // not have reported them yet).
-            const createdAt = new Date(row.created_at).getTime();
-            const ageMs = Date.now() - createdAt;
-            if (ageMs > 60_000) {
-              deadNames.push(row.name);
-            } else {
-              alive.push({
-                ...row,
-                parent: row.parent || null,
-                executor,
-                last_activity: Math.floor(createdAt / 1000),
-                alive: true,
-                job_prompt: row.job_prompt || null,
-                job_max_iterations: row.job_max_iterations || null,
-                needs_input: false,
-              });
-            }
           }
         }
       }
@@ -460,17 +397,12 @@ class SessionManager {
     };
   }
 
-  // NOTE: Branches on mode (terminal vs rich). Rich path has extra cleanup
-  // (cleanupRichSession for in-memory state + deleteRichSession for files/tmux).
   async delete(name: string, userId: string): Promise<void> {
     if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
     const mode = this.getMode(name);
     const executor = this.getSessionExecutorId(name);
     const exec = this.getExecutor(executor);
     if (mode === "rich") {
-      // Clean up local in-memory bridge state (tailing, health checks, WS clients)
-      cleanupRichSession(name);
-      // Clean up tmux session + data files on the executor (local or remote)
       await exec.deleteRichSession(name);
     } else {
       await exec.deleteSession(name);
@@ -499,42 +431,26 @@ class SessionManager {
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   }
 
-  // NOTE: Branches on mode (terminal vs rich) AND executor (local vs remote).
   async snapshot(name: string, userId: string): Promise<string> {
     if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
     const mode = this.getMode(name);
-    const executor = this.getSessionExecutorId(name);
-    const exec = this.getExecutor(executor);
-    if (mode === "rich") {
-      if (executor === "local") return this.snapshotRichSession(name);
-      return exec.snapshotRichSession(name);
-    }
+    const exec = this.getExecutor(this.getSessionExecutorId(name));
+    if (mode === "rich") return exec.snapshotRichSession(name);
     return exec.snapshotSession(name);
   }
 
-  // NOTE: Branches on mode (terminal vs rich) AND executor (local vs remote).
-  // Snapshot source and prompt text differ by mode.
   async summarize(name: string, userId: string): Promise<string> {
     if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
     const mode = this.getMode(name);
-    const executor = this.getSessionExecutorId(name);
-    const exec = this.getExecutor(executor);
+    const exec = this.getExecutor(this.getSessionExecutorId(name));
 
     let snapshotText: string;
-    if (mode === "rich") {
-      try {
-        snapshotText = executor === "local"
-          ? this.snapshotRichSession(name, 200)
-          : await exec.snapshotRichSession(name);
-      } catch {
-        return "";
-      }
-    } else {
-      try {
-        snapshotText = await exec.snapshotSession(name, 200);
-      } catch {
-        return "";
-      }
+    try {
+      snapshotText = mode === "rich"
+        ? await exec.snapshotRichSession(name)
+        : await exec.snapshotSession(name, 200);
+    } catch {
+      return "";
     }
     if (!snapshotText.trim()) return "";
 
@@ -560,12 +476,6 @@ class SessionManager {
       this.db.prepare("UPDATE sessions SET description = ? WHERE name = ?").run(description, name);
     }
     return description;
-  }
-
-
-  private snapshotRichSession(name: string, maxLines = 50): string {
-    const dataDir = process.env.DATA_DIR || join(process.cwd(), "data");
-    return snapshotRichEvents(dataDir, name, maxLines);
   }
 
   /** Get configured fork hooks: command prefix -> hook script path */
@@ -607,18 +517,12 @@ class SessionManager {
     // Fork targets the same executor as the source
     const exec = this.getExecutor(sourceExecutor);
 
-    // Get source CWD (for local executor, direct tmux query)
-    let sourceCwd: string | null = null;
-    if (sourceExecutor === "local" && this.localExecutor) {
-      sourceCwd = this.localExecutor.getPaneCwd(sourceName);
-    }
-
     const hooks = this.getForkHooks(userId);
     const result = await exec.forkSession({
       sourceName,
       newName,
       sourceCommand,
-      sourceCwd,
+      sourceCwd: null, // TmuxRunner resolves CWD from the source tmux pane
       forkHooks: hooks,
     });
 
@@ -643,12 +547,10 @@ class SessionManager {
   }
 
   private async forkRichSession(sourceName: string, newName: string, sourceCommand: string, sourceExecutor: string, userId: string): Promise<Session> {
-    // Get the Claude session_id from rich_sessions table
-    const richRow = this.db
-      .prepare("SELECT session_id FROM rich_sessions WHERE name = ?")
-      .get(sourceName) as { session_id: string | null } | undefined;
+    // Get the Claude session_id from events.ndjson
+    const sessionId = this.getRichSessionId(sourceName);
 
-    if (!richRow?.session_id) {
+    if (!sessionId) {
       throw new Error(`Cannot fork rich session "${sourceName}": no session ID found (session may not have been started yet)`);
     }
 
@@ -661,7 +563,7 @@ class SessionManager {
       .replace(/\s+/g, " ")
       .trim();
 
-    const forkCommand = `${cleanCommand} --resume ${richRow.session_id} --fork-session`;
+    const forkCommand = `${cleanCommand} --resume ${sessionId} --fork-session`;
 
     // Create runtime directory for the new rich session
     const dataDir = process.env.DATA_DIR || join(process.cwd(), "data");
@@ -704,11 +606,11 @@ class SessionManager {
     exec.attachRichSession(name, command, userWs);
   }
 
-  /** Diagnose a remote rich session via its executor */
+  /** Diagnose a rich session via its executor */
   async diagnoseSession(name: string): Promise<{ error?: string; [key: string]: unknown }> {
     const executor = this.getSessionExecutorId(name);
-    if (!this._registry || executor === "local") {
-      return { error: "Only works for remote sessions" };
+    if (!this._registry) {
+      return { error: "No executor registry available" };
     }
     const { rpcId } = await import("../shared/protocol");
     return this._registry.sendRpc(executor, {
@@ -720,15 +622,8 @@ class SessionManager {
 
   /** List registered executors */
   listExecutors(userId: string): ExecutorInfo[] {
-    const executors: ExecutorInfo[] = [];
-    if (this.localExecutor) {
-      const localCount = (this.db.prepare("SELECT COUNT(*) as c FROM sessions WHERE executor = 'local' AND user_id = ?").get(userId) as any).c;
-      executors.push({ id: "local", name: "local", labels: [], status: "online", last_seen: Math.floor(Date.now() / 1000), version: localVersion, sessionCount: localCount });
-    }
-    if (this._registry) {
-      executors.push(...this._registry.listExecutorsForUser(userId));
-    }
-    return executors;
+    if (!this._registry) return [];
+    return this._registry.listExecutorsForUser(userId);
   }
 
   /** Update executor info in DB (called by registry on register/heartbeat) */
@@ -790,6 +685,25 @@ class SessionManager {
 
   // --- Private helpers ---
 
+  /** Extract session_id from a rich session's events.ndjson file */
+  private getRichSessionId(name: string): string | null {
+    const dataDir = process.env.DATA_DIR || join(process.cwd(), "data");
+    const eventsFile = join(dataDir, "rich", name, "events.ndjson");
+    if (!existsSync(eventsFile)) return null;
+    try {
+      const content = readFileSync(eventsFile, "utf-8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const event = JSON.parse(trimmed);
+          if (event.session_id) return event.session_id;
+        } catch {}
+      }
+    } catch {}
+    return null;
+  }
+
   /** Generate a unique slug, retrying on collision */
   private uniqueName(): string {
     for (let i = 0; i < 10; i++) {
@@ -818,17 +732,13 @@ class SessionManager {
   }
 
   private getExecutor(id: string): import("../shared/types").ExecutorInterface {
-    if (id === "local") {
-      if (!this.localExecutor) throw new Error("Local executor is disabled (DISABLE_LOCAL_EXECUTOR=1)");
-      return this.localExecutor;
-    }
-    if (!this._registry) throw new Error(`No executor registry available`);
+    if (!this._registry) throw new Error("No executor registry available");
     return this._registry.getRemoteExecutor(id);
   }
 }
 
 // Singleton — survives Next.js hot reloads in dev
-const SCHEMA_VERSION = 10; // bump to force re-creation after class changes
+const SCHEMA_VERSION = 11; // bump to force re-creation after class changes
 const globalForSessions = globalThis as unknown as {
   __sessions?: SessionManager;
   __sessionsVersion?: number;
