@@ -172,8 +172,8 @@ describe("claude-bridge (tmux-backed)", () => {
     });
 
     it("serves earlier events via replay_range for backfill", () => {
-      // Create 60 events so tail (50) doesn't cover all
-      const events = Array.from({ length: 60 }, (_, i) => ({
+      // Create 110 events so tail (100) doesn't cover all
+      const events = Array.from({ length: 110 }, (_, i) => ({
         type: "assistant",
         message: { role: "assistant", content: [{ type: "text", text: `msg ${i}` }] },
       }));
@@ -190,8 +190,8 @@ describe("claude-bridge (tmux-backed)", () => {
 
       let calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const replayInfo = calls.find((c: any) => c.type === "replay_info");
-      expect(replayInfo.totalEvents).toBe(60);
-      expect(replayInfo.tailEvents).toHaveLength(50);
+      expect(replayInfo.totalEvents).toBe(110);
+      expect(replayInfo.tailEvents).toHaveLength(100);
 
       // Request the earlier 10 events via backfill
       ws.emit("message", JSON.stringify({ type: "replay_range", start: 0, end: 10 }));
