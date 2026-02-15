@@ -111,16 +111,6 @@ class SessionManager {
         PRIMARY KEY (user_id, key)
       )
     `);
-    // Rich session state (kept for fork session_id lookup)
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS rich_sessions (
-        name TEXT PRIMARY KEY,
-        session_id TEXT,
-        events TEXT NOT NULL DEFAULT '[]',
-        byte_offset INTEGER DEFAULT 0,
-        updated_at INTEGER DEFAULT (unixepoch())
-      )
-    `);
     // Executor keys table for per-user executor authentication
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS executor_keys (
