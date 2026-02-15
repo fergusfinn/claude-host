@@ -53,6 +53,8 @@ interface RichState {
   // Health check
   healthCheckTimer: ReturnType<typeof setInterval> | null;
   lastProcessAlive: boolean;
+  // Parsed replay events for chunked replay
+  replayEvents: object[] | null;
 }
 
 // --- SQLite persistence ---
@@ -129,6 +131,7 @@ function getOrCreate(name: string, command = "claude"): RichState {
       lastInterruptTime: 0,
       healthCheckTimer: null,
       lastProcessAlive: false,
+      replayEvents: null,
     };
 
     // Migrate old SQLite-stored events to file if needed
@@ -328,8 +331,9 @@ function processEventChunk(name: string, state: RichState, chunk: string): void 
   }
 }
 
-/** Replay all events from file to a WebSocket client */
-function replayEventsFromFile(state: RichState, ws: WebSocket): void {
+/** Parse all replayable events from the events file into state.replayEvents */
+function parseReplayEvents(state: RichState): void {
+  state.replayEvents = [];
   if (!existsSync(state.eventsFilePath)) return;
 
   let content: string;
@@ -339,7 +343,6 @@ function replayEventsFromFile(state: RichState, ws: WebSocket): void {
     return;
   }
 
-  // Track init for dedup during replay
   let initSeen = false;
 
   for (const line of content.split("\n")) {
@@ -357,11 +360,23 @@ function replayEventsFromFile(state: RichState, ws: WebSocket): void {
         initSeen = true;
       }
 
-      send(ws, { type: "event", event });
+      state.replayEvents.push(event);
     } catch {
       // Skip unparseable lines
     }
   }
+}
+
+/** Send a range of replay events [start, end) to a WebSocket client */
+function sendReplayRange(state: RichState, ws: WebSocket, start: number, end: number): void {
+  const events = state.replayEvents;
+  if (!events) return;
+  const s = Math.max(0, start);
+  const e = Math.min(events.length, end);
+  for (let i = s; i < e; i++) {
+    send(ws, { type: "event", event: events[i] });
+  }
+  send(ws, { type: "replay_range_complete", start: s, end: e });
 }
 
 /** Start tailing the events file for live updates */
@@ -468,8 +483,9 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
   // Add this client to the set
   state.clients.add(ws);
 
-  // Replay events from the file to this new client
-  replayEventsFromFile(state, ws);
+  // Parse replay events and send metadata for chunked replay
+  parseReplayEvents(state);
+  send(ws, { type: "replay_info", totalEvents: state.replayEvents?.length ?? 0 });
 
   // If this is the first client, start tailing from current file position
   if (state.clients.size === 1) {
@@ -492,11 +508,20 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
   // Handle incoming messages
   ws.on("message", (msg: Buffer | string) => {
     const str = msg.toString();
+    console.log(`[rich:${sessionName}] WS message received: ${str.slice(0, 200)}`);
     let parsed: { type: string; text?: string };
     try {
       parsed = JSON.parse(str);
     } catch {
       send(ws, { type: "error", message: "Invalid JSON" });
+      return;
+    }
+
+    if (parsed.type === "replay_range") {
+      const { start, end } = parsed as any;
+      if (typeof start === "number" && typeof end === "number") {
+        sendReplayRange(state, ws, start, end);
+      }
       return;
     }
 

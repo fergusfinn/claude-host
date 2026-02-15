@@ -124,11 +124,13 @@ describe("claude-bridge (tmux-backed)", () => {
   });
 
   describe("bridgeRichSession", () => {
-    it("connects and sends session_state", () => {
+    it("connects and sends replay_info and session_state", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const replayInfo = calls.find((c: any) => c.type === "replay_info");
+      expect(replayInfo).toEqual({ type: "replay_info", totalEvents: 0 });
       const sessionState = calls.find((c: any) => c.type === "session_state");
       expect(sessionState).toEqual({ type: "session_state", streaming: false, process_alive: false });
     });
@@ -145,7 +147,7 @@ describe("claude-bridge (tmux-backed)", () => {
       expect(ws2.close).not.toHaveBeenCalled();
     });
 
-    it("replays events from file on reconnect", () => {
+    it("sends replay_info and serves events via replay_range", () => {
       const events = [
         { type: "system", subtype: "init", session_id: "s1" },
         { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Hello" }] } },
@@ -161,9 +163,23 @@ describe("claude-bridge (tmux-backed)", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
-      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const eventMessages = calls.filter((c: any) => c.type === "event");
+      let calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const replayInfo = calls.find((c: any) => c.type === "replay_info");
+      expect(replayInfo).toEqual({ type: "replay_info", totalEvents: 2 });
+
+      // No events sent yet — client must request a range
+      let eventMessages = calls.filter((c: any) => c.type === "event");
+      expect(eventMessages.length).toBe(0);
+
+      // Request all events
+      ws.emit("message", JSON.stringify({ type: "replay_range", start: 0, end: 2 }));
+
+      calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      eventMessages = calls.filter((c: any) => c.type === "event");
       expect(eventMessages.length).toBe(2);
+
+      const rangeComplete = calls.find((c: any) => c.type === "replay_range_complete");
+      expect(rangeComplete).toEqual({ type: "replay_range_complete", start: 0, end: 2 });
     });
 
     it("handles invalid JSON gracefully", () => {
@@ -279,7 +295,7 @@ describe("claude-bridge (tmux-backed)", () => {
       expect(sendKeysCalls.length).toBeGreaterThanOrEqual(1);
     });
 
-    it("forwards subagent events during replay", () => {
+    it("forwards subagent events via replay_range", () => {
       const events = [
         { type: "assistant", message: { role: "assistant", content: [] } },
         { type: "assistant", parent_tool_use_id: "tool-1", message: { role: "assistant", content: [] } },
@@ -294,6 +310,9 @@ describe("claude-bridge (tmux-backed)", () => {
 
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
+
+      // Request all events
+      ws.emit("message", JSON.stringify({ type: "replay_range", start: 0, end: 2 }));
 
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const eventMessages = calls.filter((c: any) => c.type === "event");
@@ -317,7 +336,15 @@ describe("claude-bridge (tmux-backed)", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
-      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      // replay_info should report 2 events (deduped init + assistant)
+      let calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const replayInfo = calls.find((c: any) => c.type === "replay_info");
+      expect(replayInfo.totalEvents).toBe(2);
+
+      // Request all events and verify only one init
+      ws.emit("message", JSON.stringify({ type: "replay_range", start: 0, end: 2 }));
+
+      calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const inits = calls.filter((c: any) =>
         c.type === "event" && c.event.type === "system" && c.event.subtype === "init"
       );
@@ -341,7 +368,15 @@ describe("claude-bridge (tmux-backed)", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
-      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      // replay_info should report 2 events (stream_event filtered out)
+      let calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const replayInfo = calls.find((c: any) => c.type === "replay_info");
+      expect(replayInfo.totalEvents).toBe(2);
+
+      // Request all events
+      ws.emit("message", JSON.stringify({ type: "replay_range", start: 0, end: 2 }));
+
+      calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const streamEvents = calls.filter((c: any) =>
         c.type === "event" && c.event.type === "stream_event"
       );

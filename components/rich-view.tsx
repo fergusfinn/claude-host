@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback, useMemo, useReducer } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useReducer } from "react";
 import { type TerminalTheme, type TerminalFont } from "@/lib/themes";
 import { renderMarkdown, MemoizedMarkdown } from "@/lib/markdown";
 import {
@@ -178,12 +178,35 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   isStreamingRef.current = isStreaming;
 
+  // Chunked replay state
+  const replayTotalRef = useRef<number | null>(null);
+  const replayLoadedFromRef = useRef<number>(0); // lowest event index loaded so far
+  const replayChunkBufferRef = useRef<ClaudeEvent[]>([]);
+  const replayBackfillingRef = useRef(false); // true while prepending earlier chunks
+  const backfillScrollCompensationRef = useRef<number | null>(null); // scrollHeight before prepend
+  const [backfillTick, setBackfillTick] = useState(0); // triggers useLayoutEffect for scroll compensation
+
   const scrollToBottom = useCallback(() => {
     if (userScrolledUpRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, []);
+
+  const BACKFILL_CHUNK_SIZE = 20;
+  function requestBackfillChunk(ws: WebSocket, loadedFrom: number) {
+    const start = Math.max(0, loadedFrom - BACKFILL_CHUNK_SIZE);
+    const end = loadedFrom;
+    if (start >= end) return;
+    replayBackfillingRef.current = true;
+    replayChunkBufferRef.current = [];
+    // Small delay to let the initial/previous chunk render first
+    requestAnimationFrame(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "replay_range", start, end }));
+      }
+    });
+  }
 
   const jumpToBottom = useCallback(() => {
     userScrolledUpRef.current = false;
@@ -233,7 +256,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
     if (!el) return;
     let rafId: number | null = null;
     const observer = new MutationObserver(() => {
-      if (rafId !== null || userScrolledUpRef.current) return;
+      if (rafId !== null || userScrolledUpRef.current || replayBackfillingRef.current) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
         if (!userScrolledUpRef.current) {
@@ -247,6 +270,17 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, []);
+
+  // Scroll compensation after backfill prepend — runs synchronously before paint
+  useLayoutEffect(() => {
+    if (backfillScrollCompensationRef.current === null) return;
+    const el = scrollRef.current;
+    if (el) {
+      const delta = el.scrollHeight - backfillScrollCompensationRef.current;
+      el.scrollTop += delta;
+    }
+    backfillScrollCompensationRef.current = null;
+  }, [backfillTick]);
 
   const nextId = () => `msg-${++msgIdCounter.current}`;
 
@@ -330,9 +364,15 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
         if (isReconnect) {
           // Clear state — server replays all events on reconnect
           setMessages([]);
+          setSubagentMessages(new Map());
           streamingTextRef.current = "";
           bumpStreamingTick();
         }
+        // Reset replay state for fresh or reconnect
+        replayTotalRef.current = null;
+        replayLoadedFromRef.current = 0;
+        replayChunkBufferRef.current = [];
+        replayBackfillingRef.current = false;
       };
 
       ws.onmessage = (e) => {
@@ -344,8 +384,80 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
           return;
         }
 
-        if (msg.type === "event") {
-          handleEvent(msg.event);
+        if (msg.type === "replay_info") {
+          const total = msg.totalEvents as number;
+          replayTotalRef.current = total;
+          if (total === 0) {
+            // Empty session — nothing to replay
+            replayLoadedFromRef.current = 0;
+            return;
+          }
+          // Request the last chunk (initial load)
+          const INITIAL_CHUNK = 10;
+          const start = Math.max(0, total - INITIAL_CHUNK);
+          replayLoadedFromRef.current = total; // will be updated on range_complete
+          replayChunkBufferRef.current = [];
+          ws!.send(JSON.stringify({ type: "replay_range", start, end: total }));
+        } else if (msg.type === "event") {
+          if (replayBackfillingRef.current) {
+            // Buffer events during backfill chunk loading
+            replayChunkBufferRef.current.push(msg.event);
+          } else {
+            handleEvent(msg.event);
+          }
+        } else if (msg.type === "replay_range_complete") {
+          const { start, end } = msg as { start: number; end: number; type: string };
+          const isInitialChunk = replayLoadedFromRef.current >= (replayTotalRef.current ?? 0);
+
+          if (isInitialChunk) {
+            // Initial chunk (tail) — events were processed via handleEvent() already
+            replayLoadedFromRef.current = start;
+            // Scroll to bottom immediately
+            requestAnimationFrame(() => {
+              const el = scrollRef.current;
+              if (el) el.scrollTop = el.scrollHeight;
+            });
+            // Start backfilling older chunks
+            if (start > 0) {
+              requestBackfillChunk(ws!, start);
+            }
+          } else {
+            // Backfill chunk — convert buffered events to messages and prepend
+            const buffered = replayChunkBufferRef.current;
+            replayChunkBufferRef.current = [];
+            replayBackfillingRef.current = false;
+
+            if (buffered.length > 0) {
+              const { msgs: newMsgs, subagent: newSubagent } = eventsToMessages(buffered);
+              if (newMsgs.length > 0) {
+                // Record scroll height before prepend — useLayoutEffect will compensate
+                backfillScrollCompensationRef.current = scrollRef.current?.scrollHeight ?? 0;
+
+                setMessages((prev) => [...newMsgs, ...prev]);
+
+                // Merge subagent messages
+                if (newSubagent.size > 0) {
+                  setSubagentMessages((prev) => {
+                    const next = new Map(prev);
+                    for (const [id, msgs] of newSubagent) {
+                      const existing = next.get(id) || [];
+                      next.set(id, [...msgs, ...existing]);
+                    }
+                    return next;
+                  });
+                }
+
+                // Trigger scroll compensation via useLayoutEffect
+                setBackfillTick((n) => n + 1);
+              }
+            }
+
+            replayLoadedFromRef.current = start;
+            // Continue backfilling
+            if (start > 0) {
+              requestBackfillChunk(ws!, start);
+            }
+          }
         } else if (msg.type === "turn_complete") {
           setIsStreaming(false);
           streamingStartRef.current = 0;
@@ -401,6 +513,102 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       }
     };
   }, [sessionName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Convert a batch of chronological events into RenderedMessage[] (pure, no React state). */
+  function eventsToMessages(events: ClaudeEvent[]): { msgs: RenderedMessage[]; subagent: Map<string, RenderedMessage[]> } {
+    const msgs: RenderedMessage[] = [];
+    const subagent = new Map<string, RenderedMessage[]>();
+
+    for (const event of events) {
+      const parentId = (event as any).parent_tool_use_id as string | undefined;
+      if (parentId != null) {
+        if (event.type === "assistant" || event.type === "user") {
+          const msg = event as MessageEvent;
+          const existing = subagent.get(parentId) || [];
+          existing.push({
+            id: `sub-${parentId}-${existing.length}`,
+            role: msg.type,
+            blocks: msg.message.content,
+            timestamp: Date.now(),
+          });
+          subagent.set(parentId, existing);
+        }
+        continue;
+      }
+
+      if (event.type === "stream_event") continue;
+
+      if (event.type === "assistant") {
+        const msg = event as MessageEvent;
+        const blocks = msg.message.content;
+        const isToolOnly = blocks.length > 0 && blocks.every((b) => b.type === "tool_use");
+
+        if (isToolOnly) {
+          // Try to merge with previous tool-only assistant message
+          let mergeIdx = -1;
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            const m = msgs[i];
+            if (m.role === "assistant" && m.blocks.every((b) => b.type === "tool_use")) {
+              mergeIdx = i;
+              break;
+            }
+            if (m.role === "user" && m.blocks.every((b) => b.type === "tool_result")) continue;
+            break;
+          }
+          if (mergeIdx >= 0) {
+            const target = msgs[mergeIdx];
+            const existingIds = new Set(
+              target.blocks
+                .filter((b): b is ContentBlockToolUse => b.type === "tool_use")
+                .map((b) => b.id)
+            );
+            const newBlocks = blocks.filter(
+              (b) => b.type === "tool_use" && !existingIds.has((b as ContentBlockToolUse).id)
+            );
+            if (newBlocks.length > 0) {
+              msgs[mergeIdx] = { ...target, blocks: [...target.blocks, ...newBlocks] };
+            }
+            continue;
+          }
+        }
+
+        // Check if this supersedes the last assistant message
+        if (!isToolOnly && msgs.length > 0) {
+          const last = msgs[msgs.length - 1];
+          if (last.role === "assistant") {
+            const lastTexts = last.blocks.filter((b) => b.type === "text");
+            const newTexts = blocks.filter((b) => b.type === "text");
+            const lastHasTools = last.blocks.some((b) => b.type === "tool_use");
+            const newHasTools = blocks.some((b) => b.type === "tool_use");
+            if (!lastHasTools && newHasTools && lastTexts.length === newTexts.length &&
+                lastTexts.every((lt, i) => lt.type === "text" && newTexts[i].type === "text" &&
+                  (lt as ContentBlockText).text === (newTexts[i] as ContentBlockText).text)) {
+              msgs[msgs.length - 1] = { ...last, blocks };
+              continue;
+            }
+          }
+        }
+
+        msgs.push({ id: nextId(), role: "assistant", blocks, timestamp: Date.now() });
+      } else if (event.type === "user") {
+        const msg = event as MessageEvent;
+        const queued = !!(event as any).queued;
+        msgs.push({ id: nextId(), role: "user", blocks: msg.message.content, timestamp: Date.now(), queued });
+      } else if (event.type === "result") {
+        const result = event as ResultEvent;
+        msgs.push({ id: nextId(), role: "result", blocks: [], result, timestamp: Date.now() });
+      } else if (event.type === "system") {
+        const sys = event as SystemEvent;
+        if (sys.subtype === "init") {
+          msgs.push({ id: nextId(), role: "system", blocks: [{ type: "text", text: "Session initialized" }], timestamp: Date.now() });
+        } else if (sys.subtype === "restart") {
+          msgs.push({ id: nextId(), role: "system", blocks: [{ type: "text", text: (sys as any).message || "Claude process restarted" }], timestamp: Date.now() });
+        }
+      }
+    }
+
+    return { msgs, subagent };
+  }
 
   function handleEvent(event: ClaudeEvent) {
     // Route subagent internal events into the subagentMessages map

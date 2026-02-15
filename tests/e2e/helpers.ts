@@ -239,6 +239,10 @@ export function connectRich(
         try {
           const msg = JSON.parse(data.toString());
           events.push(msg);
+          // Auto-request all replay events when replay_info arrives
+          if (msg.type === "replay_info" && msg.totalEvents > 0) {
+            ws.send(JSON.stringify({ type: "replay_range", start: 0, end: msg.totalEvents }));
+          }
         } catch {}
       });
 
