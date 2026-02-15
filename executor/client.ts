@@ -26,6 +26,7 @@ export class ExecutorClient {
   private runner = new TmuxRunner();
   private reconnectDelay = 1000;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private reconnectScheduled = false;
   private destroyed = false;
   private upgrading = false;
 
@@ -88,10 +89,9 @@ export class ExecutorClient {
       this.scheduleReconnect();
     });
 
+    // error is always followed by close in ws — just log, don't double-schedule
     this.ws.on("error", (err) => {
       console.error(`WebSocket error: ${err.message}`);
-      this.cleanup();
-      this.scheduleReconnect();
     });
   }
 
@@ -104,10 +104,14 @@ export class ExecutorClient {
   }
 
   private scheduleReconnect(): void {
-    if (this.destroyed) return;
+    if (this.destroyed || this.reconnectScheduled) return;
+    this.reconnectScheduled = true;
     console.log(`Reconnecting in ${this.reconnectDelay / 1000}s...`);
-    setTimeout(() => this.connect(), this.reconnectDelay);
-    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+    setTimeout(() => {
+      this.reconnectScheduled = false;
+      this.connect();
+    }, this.reconnectDelay);
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 5000);
   }
 
   private send(msg: ExecutorToControlMessage): void {
