@@ -192,17 +192,14 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
     el.scrollTop = el.scrollHeight;
   }, []);
 
-  const BACKFILL_CHUNK_SIZE = 20;
-  function requestBackfillChunk(ws: WebSocket, loadedFrom: number) {
-    const start = Math.max(0, loadedFrom - BACKFILL_CHUNK_SIZE);
-    const end = loadedFrom;
-    if (start >= end) return;
+  function requestBackfill(ws: WebSocket, loadedFrom: number) {
+    if (loadedFrom <= 0) return;
     replayBackfillingRef.current = true;
     replayChunkBufferRef.current = [];
-    // Small delay to let the initial/previous chunk render first
+    // Request all remaining events in one shot — single prepend, single scroll compensation
     requestAnimationFrame(() => {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "replay_range", start, end }));
+        ws.send(JSON.stringify({ type: "replay_range", start: 0, end: loadedFrom }));
       }
     });
   }
@@ -403,7 +400,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
           const tailStart = total - tailEvents.length;
           replayLoadedFromRef.current = tailStart;
           if (tailStart > 0) {
-            requestBackfillChunk(ws!, tailStart);
+            requestBackfill(ws!, tailStart);
           }
         } else if (msg.type === "event") {
           if (replayBackfillingRef.current) {
@@ -445,10 +442,6 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
           }
 
           replayLoadedFromRef.current = start;
-          // Continue backfilling
-          if (start > 0) {
-            requestBackfillChunk(ws!, start);
-          }
         } else if (msg.type === "turn_complete") {
           setIsStreaming(false);
           streamingStartRef.current = 0;
