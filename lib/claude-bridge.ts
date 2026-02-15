@@ -55,6 +55,7 @@ interface RichState {
   lastProcessAlive: boolean;
   // Parsed replay events for chunked replay
   replayEvents: object[] | null;
+  replayEventsParsedSize: number; // file size when replayEvents was last parsed
 }
 
 // --- SQLite persistence ---
@@ -132,6 +133,7 @@ function getOrCreate(name: string, command = "claude"): RichState {
       healthCheckTimer: null,
       lastProcessAlive: false,
       replayEvents: null,
+      replayEventsParsedSize: 0,
     };
 
     // Migrate old SQLite-stored events to file if needed
@@ -331,10 +333,31 @@ function processEventChunk(name: string, state: RichState, chunk: string): void 
   }
 }
 
-/** Parse all replayable events from the events file into state.replayEvents */
+/** Parse all replayable events from the events file into state.replayEvents.
+ *  Skips re-parsing if the file size hasn't changed since last parse. */
 function parseReplayEvents(state: RichState): void {
+  if (!existsSync(state.eventsFilePath)) {
+    state.replayEvents = [];
+    state.replayEventsParsedSize = 0;
+    return;
+  }
+
+  // Check if file has changed since last parse
+  let fileSize: number;
+  try {
+    fileSize = statSync(state.eventsFilePath).size;
+  } catch {
+    state.replayEvents = [];
+    state.replayEventsParsedSize = 0;
+    return;
+  }
+
+  if (state.replayEvents !== null && fileSize === state.replayEventsParsedSize) {
+    return; // cached parse is still valid
+  }
+
   state.replayEvents = [];
-  if (!existsSync(state.eventsFilePath)) return;
+  state.replayEventsParsedSize = fileSize;
 
   let content: string;
   try {
@@ -367,8 +390,11 @@ function parseReplayEvents(state: RichState): void {
   }
 }
 
-/** Send a range of replay events [start, end) to a WebSocket client */
+/** Send a range of replay events [start, end) to a WebSocket client.
+ *  Lazily parses the full events file on first call. */
 function sendReplayRange(state: RichState, ws: WebSocket, start: number, end: number): void {
+  // Lazy full parse — only happens when client requests backfill
+  parseReplayEvents(state);
   const events = state.replayEvents;
   if (!events) return;
   const s = Math.max(0, start);
@@ -483,9 +509,15 @@ export function bridgeRichSession(ws: WebSocket, sessionName: string, command = 
   // Add this client to the set
   state.clients.add(ws);
 
-  // Parse replay events and send metadata for chunked replay
+  // Parse replay events (cached — skips if file hasn't changed).
+  // Send tail events inline so client renders the bottom immediately
+  // without a round-trip.
   parseReplayEvents(state);
-  send(ws, { type: "replay_info", totalEvents: state.replayEvents?.length ?? 0 });
+  const events = state.replayEvents ?? [];
+  const TAIL_COUNT = 10;
+  const tailStart = Math.max(0, events.length - TAIL_COUNT);
+  const tailEvents = events.slice(tailStart);
+  send(ws, { type: "replay_info", totalEvents: events.length, tailEvents });
 
   // If this is the first client, start tailing from current file position
   if (state.clients.size === 1) {

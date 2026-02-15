@@ -179,7 +179,6 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
   isStreamingRef.current = isStreaming;
 
   // Chunked replay state
-  const replayTotalRef = useRef<number | null>(null);
   const replayLoadedFromRef = useRef<number>(0); // lowest event index loaded so far
   const replayChunkBufferRef = useRef<ClaudeEvent[]>([]);
   const replayBackfillingRef = useRef(false); // true while prepending earlier chunks
@@ -369,7 +368,6 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
           bumpStreamingTick();
         }
         // Reset replay state for fresh or reconnect
-        replayTotalRef.current = null;
         replayLoadedFromRef.current = 0;
         replayChunkBufferRef.current = [];
         replayBackfillingRef.current = false;
@@ -386,18 +384,27 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
 
         if (msg.type === "replay_info") {
           const total = msg.totalEvents as number;
-          replayTotalRef.current = total;
-          if (total === 0) {
+          const tailEvents = msg.tailEvents as any[] | undefined;
+          if (total === 0 || !tailEvents || tailEvents.length === 0) {
             // Empty session — nothing to replay
             replayLoadedFromRef.current = 0;
             return;
           }
-          // Request the last chunk (initial load)
-          const INITIAL_CHUNK = 10;
-          const start = Math.max(0, total - INITIAL_CHUNK);
-          replayLoadedFromRef.current = total; // will be updated on range_complete
-          replayChunkBufferRef.current = [];
-          ws!.send(JSON.stringify({ type: "replay_range", start, end: total }));
+          // Process tail events immediately — no round-trip needed
+          for (const event of tailEvents) {
+            handleEvent(event);
+          }
+          // Scroll to bottom immediately
+          requestAnimationFrame(() => {
+            const el = scrollRef.current;
+            if (el) el.scrollTop = el.scrollHeight;
+          });
+          // Start backfilling older events
+          const tailStart = total - tailEvents.length;
+          replayLoadedFromRef.current = tailStart;
+          if (tailStart > 0) {
+            requestBackfillChunk(ws!, tailStart);
+          }
         } else if (msg.type === "event") {
           if (replayBackfillingRef.current) {
             // Buffer events during backfill chunk loading
@@ -406,57 +413,41 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
             handleEvent(msg.event);
           }
         } else if (msg.type === "replay_range_complete") {
-          const { start, end } = msg as { start: number; end: number; type: string };
-          const isInitialChunk = replayLoadedFromRef.current >= (replayTotalRef.current ?? 0);
+          const { start } = msg as { start: number; type: string };
+          // Backfill chunk — convert buffered events to messages and prepend
+          const buffered = replayChunkBufferRef.current;
+          replayChunkBufferRef.current = [];
+          replayBackfillingRef.current = false;
 
-          if (isInitialChunk) {
-            // Initial chunk (tail) — events were processed via handleEvent() already
-            replayLoadedFromRef.current = start;
-            // Scroll to bottom immediately
-            requestAnimationFrame(() => {
-              const el = scrollRef.current;
-              if (el) el.scrollTop = el.scrollHeight;
-            });
-            // Start backfilling older chunks
-            if (start > 0) {
-              requestBackfillChunk(ws!, start);
-            }
-          } else {
-            // Backfill chunk — convert buffered events to messages and prepend
-            const buffered = replayChunkBufferRef.current;
-            replayChunkBufferRef.current = [];
-            replayBackfillingRef.current = false;
+          if (buffered.length > 0) {
+            const { msgs: newMsgs, subagent: newSubagent } = eventsToMessages(buffered);
+            if (newMsgs.length > 0) {
+              // Record scroll height before prepend — useLayoutEffect will compensate
+              backfillScrollCompensationRef.current = scrollRef.current?.scrollHeight ?? 0;
 
-            if (buffered.length > 0) {
-              const { msgs: newMsgs, subagent: newSubagent } = eventsToMessages(buffered);
-              if (newMsgs.length > 0) {
-                // Record scroll height before prepend — useLayoutEffect will compensate
-                backfillScrollCompensationRef.current = scrollRef.current?.scrollHeight ?? 0;
+              setMessages((prev) => [...newMsgs, ...prev]);
 
-                setMessages((prev) => [...newMsgs, ...prev]);
-
-                // Merge subagent messages
-                if (newSubagent.size > 0) {
-                  setSubagentMessages((prev) => {
-                    const next = new Map(prev);
-                    for (const [id, msgs] of newSubagent) {
-                      const existing = next.get(id) || [];
-                      next.set(id, [...msgs, ...existing]);
-                    }
-                    return next;
-                  });
-                }
-
-                // Trigger scroll compensation via useLayoutEffect
-                setBackfillTick((n) => n + 1);
+              // Merge subagent messages
+              if (newSubagent.size > 0) {
+                setSubagentMessages((prev) => {
+                  const next = new Map(prev);
+                  for (const [id, msgs] of newSubagent) {
+                    const existing = next.get(id) || [];
+                    next.set(id, [...msgs, ...existing]);
+                  }
+                  return next;
+                });
               }
-            }
 
-            replayLoadedFromRef.current = start;
-            // Continue backfilling
-            if (start > 0) {
-              requestBackfillChunk(ws!, start);
+              // Trigger scroll compensation via useLayoutEffect
+              setBackfillTick((n) => n + 1);
             }
+          }
+
+          replayLoadedFromRef.current = start;
+          // Continue backfilling
+          if (start > 0) {
+            requestBackfillChunk(ws!, start);
           }
         } else if (msg.type === "turn_complete") {
           setIsStreaming(false);

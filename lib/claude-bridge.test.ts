@@ -130,7 +130,7 @@ describe("claude-bridge (tmux-backed)", () => {
 
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const replayInfo = calls.find((c: any) => c.type === "replay_info");
-      expect(replayInfo).toEqual({ type: "replay_info", totalEvents: 0 });
+      expect(replayInfo).toEqual({ type: "replay_info", totalEvents: 0, tailEvents: [] });
       const sessionState = calls.find((c: any) => c.type === "session_state");
       expect(sessionState).toEqual({ type: "session_state", streaming: false, process_alive: false });
     });
@@ -147,7 +147,7 @@ describe("claude-bridge (tmux-backed)", () => {
       expect(ws2.close).not.toHaveBeenCalled();
     });
 
-    it("sends replay_info and serves events via replay_range", () => {
+    it("sends tail events inline with replay_info", () => {
       const events = [
         { type: "system", subtype: "init", session_id: "s1" },
         { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Hello" }] } },
@@ -163,23 +163,45 @@ describe("claude-bridge (tmux-backed)", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
+      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const replayInfo = calls.find((c: any) => c.type === "replay_info");
+      expect(replayInfo.totalEvents).toBe(2);
+      expect(replayInfo.tailEvents).toHaveLength(2);
+      expect(replayInfo.tailEvents[0].type).toBe("system");
+      expect(replayInfo.tailEvents[1].type).toBe("assistant");
+    });
+
+    it("serves earlier events via replay_range for backfill", () => {
+      // Create 15 events so tail (10) doesn't cover all
+      const events = Array.from({ length: 15 }, (_, i) => ({
+        type: "assistant",
+        message: { role: "assistant", content: [{ type: "text", text: `msg ${i}` }] },
+      }));
+      const content = events.map(e => JSON.stringify(e)).join("\n") + "\n";
+
+      _mockState.fsExistsSync.mockImplementation((p: string) =>
+        typeof p === "string" && p.includes("events.ndjson")
+      );
+      _mockState.fsReadFileSync.mockReturnValue(content);
+      _mockState.fsStatSync.mockReturnValue({ size: Buffer.byteLength(content) });
+
+      const ws = createMockWs();
+      bridgeRichSession(ws, "test-session");
+
       let calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const replayInfo = calls.find((c: any) => c.type === "replay_info");
-      expect(replayInfo).toEqual({ type: "replay_info", totalEvents: 2 });
+      expect(replayInfo.totalEvents).toBe(15);
+      expect(replayInfo.tailEvents).toHaveLength(10);
 
-      // No events sent yet — client must request a range
-      let eventMessages = calls.filter((c: any) => c.type === "event");
-      expect(eventMessages.length).toBe(0);
-
-      // Request all events
-      ws.emit("message", JSON.stringify({ type: "replay_range", start: 0, end: 2 }));
+      // Request the earlier 5 events via backfill
+      ws.emit("message", JSON.stringify({ type: "replay_range", start: 0, end: 5 }));
 
       calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      eventMessages = calls.filter((c: any) => c.type === "event");
-      expect(eventMessages.length).toBe(2);
+      const eventMessages = calls.filter((c: any) => c.type === "event");
+      expect(eventMessages).toHaveLength(5);
 
       const rangeComplete = calls.find((c: any) => c.type === "replay_range_complete");
-      expect(rangeComplete).toEqual({ type: "replay_range_complete", start: 0, end: 2 });
+      expect(rangeComplete).toEqual({ type: "replay_range_complete", start: 0, end: 5 });
     });
 
     it("handles invalid JSON gracefully", () => {
@@ -295,7 +317,7 @@ describe("claude-bridge (tmux-backed)", () => {
       expect(sendKeysCalls.length).toBeGreaterThanOrEqual(1);
     });
 
-    it("forwards subagent events via replay_range", () => {
+    it("includes subagent events in tail replay", () => {
       const events = [
         { type: "assistant", message: { role: "assistant", content: [] } },
         { type: "assistant", parent_tool_use_id: "tool-1", message: { role: "assistant", content: [] } },
@@ -311,12 +333,9 @@ describe("claude-bridge (tmux-backed)", () => {
       const ws = createMockWs();
       bridgeRichSession(ws, "test-session");
 
-      // Request all events
-      ws.emit("message", JSON.stringify({ type: "replay_range", start: 0, end: 2 }));
-
       const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const eventMessages = calls.filter((c: any) => c.type === "event");
-      expect(eventMessages).toHaveLength(2);
+      const replayInfo = calls.find((c: any) => c.type === "replay_info");
+      expect(replayInfo.tailEvents).toHaveLength(2);
     });
 
     it("skips duplicate init events during replay", () => {
@@ -337,16 +356,13 @@ describe("claude-bridge (tmux-backed)", () => {
       bridgeRichSession(ws, "test-session");
 
       // replay_info should report 2 events (deduped init + assistant)
-      let calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const replayInfo = calls.find((c: any) => c.type === "replay_info");
       expect(replayInfo.totalEvents).toBe(2);
 
-      // Request all events and verify only one init
-      ws.emit("message", JSON.stringify({ type: "replay_range", start: 0, end: 2 }));
-
-      calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const inits = calls.filter((c: any) =>
-        c.type === "event" && c.event.type === "system" && c.event.subtype === "init"
+      // tailEvents should contain only one init (deduped)
+      const inits = replayInfo.tailEvents.filter(
+        (e: any) => e.type === "system" && e.subtype === "init"
       );
       expect(inits).toHaveLength(1);
     });
@@ -369,16 +385,13 @@ describe("claude-bridge (tmux-backed)", () => {
       bridgeRichSession(ws, "test-session");
 
       // replay_info should report 2 events (stream_event filtered out)
-      let calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+      const calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
       const replayInfo = calls.find((c: any) => c.type === "replay_info");
       expect(replayInfo.totalEvents).toBe(2);
 
-      // Request all events
-      ws.emit("message", JSON.stringify({ type: "replay_range", start: 0, end: 2 }));
-
-      calls = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
-      const streamEvents = calls.filter((c: any) =>
-        c.type === "event" && c.event.type === "stream_event"
+      // tailEvents should not contain any stream_events
+      const streamEvents = replayInfo.tailEvents.filter(
+        (e: any) => e.type === "stream_event"
       );
       expect(streamEvents).toHaveLength(0);
     });
