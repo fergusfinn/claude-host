@@ -95,6 +95,13 @@ interface RenderPlanEntry {
   items: RenderItem[] | null; // null = render as-is (system/result), [] = skip (pure tool_result user msg)
 }
 
+interface BackgroundTaskInfo {
+  taskId: string;
+  description: string;
+  resolvedOutput: string | null; // last TaskOutput result content, or null if still running
+  status: "running" | "completed" | "timeout" | "error";
+}
+
 // ---- Connection state ----
 
 type ConnectionState = "connecting" | "connected" | "disconnected" | "reconnecting";
@@ -331,8 +338,13 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
 
   const nextId = () => `msg-${++msgIdCounter.current}`;
 
-  // --- Render plan: build result map and render items in a single pass ---
-  const renderPlan = useMemo((): RenderPlanEntry[] => {
+  // --- Render plan: build result map, background task map, and render items ---
+  const BG_TASK_RE = /Command running in background with ID: ([a-f0-9]+)\./;
+
+  const { renderPlan, backgroundTaskMap } = useMemo((): {
+    renderPlan: RenderPlanEntry[];
+    backgroundTaskMap: Map<string, BackgroundTaskInfo>;
+  } => {
     // First pass: collect tool_result blocks into a map
     const resultMap = new Map<string, ContentBlockToolResult>();
     for (const msg of messages) {
@@ -342,8 +354,84 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       }
     }
 
-    // Second pass: build render items using the result map
-    return messages.map((msg) => {
+    // Second pass: build background task index
+    // Maps: taskId -> source Bash tool_use id, and source tool_use id -> BackgroundTaskInfo
+    const taskIdToSourceId = new Map<string, string>(); // e.g. "b22fc18" -> "toolu_01Wfyh..."
+    const bgMap = new Map<string, BackgroundTaskInfo>(); // keyed by source Bash tool_use id
+    const taskOutputToolIds = new Set<string>(); // tool_use ids of TaskOutput calls to hide
+
+    // Find background Bash commands by checking their results
+    for (const msg of messages) {
+      if (msg.role !== "assistant") continue;
+      for (const block of msg.blocks) {
+        if (block.type !== "tool_use" || block.name !== "Bash") continue;
+        if (!block.input?.run_in_background) continue;
+        const result = resultMap.get(block.id);
+        if (!result) continue;
+        const resultText = typeof result.content === "string"
+          ? result.content
+          : Array.isArray(result.content) ? result.content.map((c) => c.text || "").join("") : "";
+        const m = BG_TASK_RE.exec(resultText);
+        if (m) {
+          const taskId = m[1];
+          taskIdToSourceId.set(taskId, block.id);
+          bgMap.set(block.id, {
+            taskId,
+            description: (block.input.description as string) || (block.input.command as string) || "",
+            resolvedOutput: null,
+            status: "running",
+          });
+        }
+      }
+    }
+
+    // Find TaskOutput calls and attach their results to the source Bash command
+    for (const msg of messages) {
+      if (msg.role !== "assistant") continue;
+      for (const block of msg.blocks) {
+        if (block.type !== "tool_use" || block.name !== "TaskOutput") continue;
+        const taskId = block.input?.task_id as string;
+        if (!taskId) continue;
+        const sourceId = taskIdToSourceId.get(taskId);
+        if (!sourceId) continue;
+        taskOutputToolIds.add(block.id);
+        const result = resultMap.get(block.id);
+        if (!result) continue;
+        const resultText = typeof result.content === "string"
+          ? result.content
+          : Array.isArray(result.content) ? result.content.map((c) => c.text || "").join("") : "";
+        // Parse status from the XML-ish output
+        const info = bgMap.get(sourceId)!;
+        if (resultText.includes("<status>completed</status>")) {
+          info.status = "completed";
+        } else if (resultText.includes("<status>running</status>")) {
+          info.status = resultText.includes("<retrieval_status>timeout</retrieval_status>") ? "timeout" : "running";
+        }
+        // Extract actual output content from <output>...</output> tags
+        const outputMatch = resultText.match(/<output>\n?([\s\S]*?)\n?<\/output>/);
+        if (outputMatch) {
+          info.resolvedOutput = outputMatch[1];
+        } else {
+          // Fallback: use the full text
+          info.resolvedOutput = resultText;
+        }
+      }
+    }
+
+    // Also hide TaskStop tool calls for background tasks
+    for (const msg of messages) {
+      if (msg.role !== "assistant") continue;
+      for (const block of msg.blocks) {
+        if (block.type !== "tool_use" || block.name !== "TaskStop") continue;
+        const taskId = block.input?.task_id as string;
+        if (taskId && taskIdToSourceId.has(taskId)) {
+          taskOutputToolIds.add(block.id);
+        }
+      }
+    }
+
+    // Third pass: build render items, filtering out TaskOutput/TodoWrite
+    const plan = messages.map((msg) => {
       if (msg.role === "result" || msg.role === "system") {
         return { msg, items: null };
       }
@@ -351,25 +439,32 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       if (msg.role === "assistant") {
         const items = buildRenderItems(msg.blocks, resultMap)
           .filter((item) => {
-            // Hide TodoWrite tool calls — surfaced in the todo bar instead
             if (item.kind === "tool_pair" && item.toolUse.name === "TodoWrite") return false;
             if (item.kind === "tool_group" && item.name === "TodoWrite") return false;
+            // Hide TaskOutput/TaskStop that we've absorbed into background task info
+            if (item.kind === "tool_pair" && taskOutputToolIds.has(item.toolUse.id)) return false;
+            if (item.kind === "tool_group" && (item.name === "TaskOutput" || item.name === "TaskStop")) {
+              // Hide group if all pairs are absorbed
+              const allAbsorbed = item.pairs.every((p) => taskOutputToolIds.has(p.toolUse.id));
+              if (allAbsorbed) return false;
+            }
             return true;
           });
         return { msg, items };
       }
 
-      // user messages: keep text blocks, skip pure tool_result messages
       if (msg.role === "user") {
         const textBlocks = msg.blocks.filter((b): b is ContentBlockText => b.type === "text");
         if (textBlocks.length === 0) {
-          return { msg, items: [] }; // pure tool_result — skip
+          return { msg, items: [] };
         }
         return { msg, items: textBlocks.map((b) => ({ kind: "text" as const, block: b })) };
       }
 
       return { msg, items: null };
     });
+
+    return { renderPlan: plan, backgroundTaskMap: bgMap };
   }, [messages]);
 
 
@@ -1112,7 +1207,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
                             onToggle={toggleTool}
                             resultExpanded={expandedResults.has(item.toolUse.id)}
                             onToggleResult={toggleResultExpanded}
-
+                            backgroundTask={backgroundTaskMap.get(item.toolUse.id)}
                           />
                         );
                       case "tool_group":
@@ -1126,7 +1221,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
                             onToggle={toggleTool}
                             expandedResults={expandedResults}
                             onToggleResult={toggleResultExpanded}
-
+                            backgroundTaskMap={backgroundTaskMap}
                           />
                         );
                       case "subagent":
@@ -1340,6 +1435,7 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
   compact,
   resultExpanded,
   onToggleResult,
+  backgroundTask,
 }: {
   toolUse: ContentBlockToolUse;
   toolResult: ContentBlockToolResult | null;
@@ -1349,18 +1445,37 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
   compact?: boolean;
   resultExpanded?: boolean;
   onToggleResult?: (id: string) => void;
+  backgroundTask?: BackgroundTaskInfo;
 }) {
   const toolColor = getToolColor(toolUse.name, theme);
   const isEditTool = toolUse.name === "Edit" && toolUse.input.old_string != null;
-  const { content: resultContent, lines: resultLines, isLong: isResultLong, isExpanded, display: displayResult } = getResultDisplay(toolResult, resultExpanded);
+
+  // For background tasks, show the resolved output instead of the "Command running in background" result
+  const effectiveResultContent = backgroundTask?.resolvedOutput ?? null;
+  const effectiveResult = backgroundTask
+    ? (effectiveResultContent != null
+        ? { ...toolResult!, content: effectiveResultContent, is_error: backgroundTask.status === "error" }
+        : toolResult)
+    : toolResult;
+
+  const { content: resultContent, lines: resultLines, isLong: isResultLong, isExpanded, display: displayResult } = getResultDisplay(effectiveResult, resultExpanded);
 
   // Done hint for collapsed state
-  const doneHint = collapsed && toolResult
-    ? toolResult.is_error
+  const doneHint = collapsed && effectiveResult
+    ? effectiveResult.is_error
       ? "error"
-      : resultLines.length > 1
-        ? `${resultLines.length} lines`
-        : "\u2713"
+      : backgroundTask
+        ? backgroundTask.status === "completed" ? "\u2713" : backgroundTask.status
+        : resultLines.length > 1
+          ? `${resultLines.length} lines`
+          : "\u2713"
+    : null;
+
+  const bgStatusColor = backgroundTask
+    ? backgroundTask.status === "completed" ? theme.green
+      : backgroundTask.status === "running" ? theme.yellow
+      : backgroundTask.status === "error" ? theme.red
+      : theme.foreground
     : null;
 
   return (
@@ -1375,7 +1490,12 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
         <span className={styles.toolSummary} style={{ color: `${theme.foreground}80` }}>
           {getToolSummary(toolUse.name, toolUse.input)}
         </span>
-        {collapsed && toolResult === null && (
+        {backgroundTask && (
+          <span className={styles.bgTaskBadge} style={{ background: `${bgStatusColor}20`, color: bgStatusColor! }}>
+            {backgroundTask.status === "running" ? "bg \u2022 running" : backgroundTask.status === "completed" ? "bg \u2022 done" : `bg \u2022 ${backgroundTask.status}`}
+          </span>
+        )}
+        {collapsed && effectiveResult === null && (
           <span className={styles.toolPending}>
             <span className={styles.toolPendingDot} style={{ background: toolColor }} />
           </span>
@@ -1406,19 +1526,19 @@ const ToolPairBlock = React.memo(function ToolPairBlock({
           )}
 
           {/* Inline result */}
-          {toolResult === null ? (
+          {effectiveResult === null ? (
             <div className={styles.toolPairRunning} style={{ color: toolColor }}>
               <span className={styles.toolPendingDot} style={{ background: toolColor }} />
-              <span>{"running…"}</span>
+              <span>{backgroundTask ? "running in background…" : "running…"}</span>
             </div>
           ) : resultContent && resultContent.trim() ? (
             <div className={styles.toolPairResult}>
               <pre
-                className={`${styles.toolResultContent} ${toolResult.is_error ? styles.toolResultError : ""}`}
+                className={`${styles.toolResultContent} ${effectiveResult.is_error ? styles.toolResultError : ""}`}
                 style={{
-                  background: toolResult.is_error ? `${theme.red}10` : `${theme.foreground}05`,
-                  color: toolResult.is_error ? theme.red : `${theme.foreground}90`,
-                  borderColor: toolResult.is_error ? `${theme.red}25` : `${theme.foreground}10`,
+                  background: effectiveResult.is_error ? `${theme.red}10` : `${theme.foreground}05`,
+                  color: effectiveResult.is_error ? theme.red : `${theme.foreground}90`,
+                  borderColor: effectiveResult.is_error ? `${theme.red}25` : `${theme.foreground}10`,
                 }}
               >
                 {displayResult}
@@ -1518,6 +1638,7 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
   onToggle,
   expandedResults,
   onToggleResult,
+  backgroundTaskMap,
 }: {
   name: string;
   pairs: Array<{ toolUse: ContentBlockToolUse; toolResult: ContentBlockToolResult | null }>;
@@ -1526,6 +1647,7 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
   onToggle: (id: string) => void;
   expandedResults: Set<string>;
   onToggleResult: (id: string) => void;
+  backgroundTaskMap?: Map<string, BackgroundTaskInfo>;
 }) {
   const toolColor = getToolColor(name, theme);
   const groupKey = `group-${pairs[0].toolUse.id}`;
@@ -1566,6 +1688,7 @@ const ToolGroupBlock = React.memo(function ToolGroupBlock({
               onToggle={onToggle}
               resultExpanded={expandedResults.has(pair.toolUse.id)}
               onToggleResult={onToggleResult}
+              backgroundTask={backgroundTaskMap?.get(pair.toolUse.id)}
               compact
             />
           ))}

@@ -351,6 +351,15 @@
   flex-shrink: 0;
 }
 
+.bgTaskBadge {
+  font-size: 10px;
+  font-family: var(--mono);
+  padding: 1px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
 /* Tool header (shared by pair and group) */
 
 .toolHeader {
