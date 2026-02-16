@@ -174,6 +174,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
   // Subagent child messages keyed by parent tool_use_id
   const [subagentMessages, setSubagentMessages] = useState<Map<string, RenderedMessage[]>>(new Map());
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [slashCommands, setSlashCommands] = useState<string[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -768,6 +769,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
         const sys = event as SystemEvent;
         if (sys.subtype === "init") {
           msgs.push({ id: nextId(), role: "system", blocks: [{ type: "text", text: "Session initialized" }], timestamp: Date.now() });
+          if (Array.isArray(sys.slash_commands)) {
+            setSlashCommands(sys.slash_commands);
+          }
         } else if (sys.subtype === "restart") {
           msgs.push({ id: nextId(), role: "system", blocks: [{ type: "text", text: (sys as any).message || "Claude process restarted" }], timestamp: Date.now() });
         }
@@ -920,6 +924,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
     } else if (event.type === "system") {
       const sys = event as SystemEvent;
       if (sys.subtype === "init") {
+        if (Array.isArray(sys.slash_commands)) {
+          setSlashCommands(sys.slash_commands);
+        }
         setMessages((prev) => [
           ...prev,
           {
@@ -980,7 +987,60 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
     wsRef.current?.send(JSON.stringify({ type: "restart" }));
   }
 
+  // ---- Slash command autocomplete ----
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
+  const slashMatch = inputValue.match(/^\/(\S*)$/);
+  const slashPrefix = slashMatch ? slashMatch[1].toLowerCase() : null;
+  const slashSuggestions = useMemo(() => {
+    if (slashPrefix === null) return [];
+    return slashCommands.filter((cmd) => cmd.toLowerCase().startsWith(slashPrefix));
+  }, [slashPrefix, slashCommands]);
+  const showSlashMenu = slashSuggestions.length > 0 && slashPrefix !== null;
+
+  // Reset selected index when suggestions change
+  useEffect(() => {
+    setSlashSelectedIndex(0);
+  }, [slashSuggestions.length, slashPrefix]);
+
+  function acceptSlashSuggestion(cmd: string) {
+    const text = "/" + cmd;
+    setInputValue(text);
+    inputRef.current?.focus();
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
+    if (showSlashMenu) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashSelectedIndex((i) => (i + 1) % slashSuggestions.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashSelectedIndex((i) => (i - 1 + slashSuggestions.length) % slashSuggestions.length);
+        return;
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        acceptSlashSuggestion(slashSuggestions[slashSelectedIndex]);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        // If input already matches the selected suggestion exactly, send it
+        if (inputValue === "/" + slashSuggestions[slashSelectedIndex]) {
+          sendPrompt(inputValue);
+        } else {
+          acceptSlashSuggestion(slashSuggestions[slashSelectedIndex]);
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setInputValue("");
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendPrompt(inputValue);
@@ -1298,22 +1358,63 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       {/* Input */}
       <div className={styles.inputArea}>
         <div className={styles.inputInner}>
-        <textarea
-          ref={inputRef}
-          className={styles.input}
-          value={inputValue}
-          onChange={(e) => {
-            setInputValue(e.target.value);
-            autoResize(e.target);
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder={isStreaming ? "Type to queue a follow-up\u2026" : "Type a message\u2026"}
-          disabled={!connected}
-          rows={1}
-          style={{
-            color: theme.foreground,
-          }}
-        />
+        {/* Autocomplete dropdown */}
+        {showSlashMenu && (
+          <div
+            className={styles.slashMenu}
+            style={{
+              background: theme.background,
+              borderColor: `${theme.foreground}30`,
+            }}
+          >
+            {slashSuggestions.map((cmd, i) => (
+              <button
+                key={cmd}
+                className={`${styles.slashMenuItem} ${i === slashSelectedIndex ? styles.slashMenuItemSelected : ""}`}
+                style={{
+                  color: theme.foreground,
+                  background: i === slashSelectedIndex ? `${theme.cursor}20` : "transparent",
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  acceptSlashSuggestion(cmd);
+                }}
+                onMouseEnter={() => setSlashSelectedIndex(i)}
+              >
+                <span style={{ color: theme.cyan }}>/{cmd}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className={styles.inputWrap}>
+          {/* Highlight overlay for slash command colouring */}
+          {slashMatch && (
+            <div
+              className={styles.inputHighlight}
+              aria-hidden
+              style={{ color: "transparent" }}
+            >
+              <span style={{ color: theme.cyan }}>/{slashMatch[1]}</span>
+            </div>
+          )}
+          <textarea
+            ref={inputRef}
+            className={styles.input}
+            value={inputValue}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              autoResize(e.target);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={isStreaming ? "Type to queue a follow-up\u2026" : "Type a message\u2026"}
+            disabled={!connected}
+            rows={1}
+            style={{
+              color: slashMatch ? "transparent" : theme.foreground,
+              caretColor: theme.foreground,
+            }}
+          />
+        </div>
         {isStreaming && (
           <button
             className={styles.stopBtn}

@@ -875,6 +875,7 @@
   background: var(--bg-2);
   box-shadow: 0 1px 3px var(--shadow-dropdown);
   transition: border-color 0.15s, box-shadow 0.15s;
+  position: relative;
 }
 
 .inputInner:focus-within {
@@ -882,8 +883,70 @@
   box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
-.input {
+/* Slash command autocomplete menu */
+
+.slashMenu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  border: 1px solid;
+  border-radius: 10px;
+  padding: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 20;
+  box-shadow: 0 -2px 12px var(--shadow-dropdown);
+}
+
+.slashMenuItem {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+
+.slashMenuItem:hover {
+  background: var(--bg-2);
+}
+
+.slashMenuItemSelected {
+  /* background set inline */
+}
+
+/* Input wrapper for highlight overlay */
+
+.inputWrap {
   flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+.inputHighlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 5px 0 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+.input {
+  width: 100%;
   background: transparent;
   border: none;
   outline: none;
@@ -894,6 +957,7 @@
   padding: 5px 0 6px;
   min-height: 0;
   max-height: 200px;
+  position: relative;
 }
 
 .input::placeholder {
