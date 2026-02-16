@@ -86,6 +86,26 @@ interface SystemEvent {
 
 type ClaudeEvent = MessageEvent | ResultEvent | SystemEvent | { type: string; [key: string]: any };
 
+/** Strip CLI-injected XML tags like <local-command-stdout>...</local-command-stdout> from text. */
+function stripCliTags(text: string): string {
+  return text.replace(/<\/?(?:local-command-stdout|local-command-caveat|command-name|command-message|command-args|system-reminder)[^>]*>/g, "").trim();
+}
+
+/** Normalize message content — API can send a string or an array. */
+function normalizeBlocks(content: any): ContentBlock[] {
+  if (Array.isArray(content)) {
+    return content.map((block: any) => {
+      if (block.type === "text" && typeof block.text === "string") {
+        const cleaned = stripCliTags(block.text);
+        return cleaned !== block.text ? { ...block, text: cleaned } : block;
+      }
+      return block;
+    });
+  }
+  if (typeof content === "string") return [{ type: "text", text: stripCliTags(content) }];
+  return [];
+}
+
 // ---- Rendered message types ----
 
 interface RenderedMessage {
@@ -696,7 +716,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
           existing.push({
             id: `sub-${parentId}-${existing.length}`,
             role: msg.type,
-            blocks: msg.message.content,
+            blocks: normalizeBlocks(msg.message.content),
             timestamp: Date.now(),
           });
           subagent.set(parentId, existing);
@@ -708,7 +728,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
 
       if (event.type === "assistant") {
         const msg = event as MessageEvent;
-        const blocks = msg.message.content;
+        const blocks = normalizeBlocks(msg.message.content);
         const isToolOnly = blocks.length > 0 && blocks.every((b) => b.type === "tool_use");
 
         if (isToolOnly) {
@@ -761,7 +781,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       } else if (event.type === "user") {
         const msg = event as MessageEvent;
         const queued = !!(event as any).queued;
-        msgs.push({ id: nextId(), role: "user", blocks: msg.message.content, timestamp: Date.now(), queued });
+        msgs.push({ id: nextId(), role: "user", blocks: normalizeBlocks(msg.message.content), timestamp: Date.now(), queued });
       } else if (event.type === "result") {
         const result = event as ResultEvent;
         msgs.push({ id: nextId(), role: "result", blocks: [], result, timestamp: Date.now() });
@@ -774,6 +794,8 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
           }
         } else if (sys.subtype === "restart") {
           msgs.push({ id: nextId(), role: "system", blocks: [{ type: "text", text: (sys as any).message || "Claude process restarted" }], timestamp: Date.now() });
+        } else if (sys.subtype === "compact_boundary") {
+          msgs.push({ id: nextId(), role: "system", blocks: [{ type: "text", text: "Conversation compacted" }], timestamp: Date.now() });
         }
       }
     }
@@ -792,7 +814,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
           const existing = next.get(parentId) || [];
           next.set(parentId, [
             ...existing,
-            { id: `sub-${parentId}-${existing.length}`, role: msg.type, blocks: msg.message.content, timestamp: Date.now() },
+            { id: `sub-${parentId}-${existing.length}`, role: msg.type, blocks: normalizeBlocks(msg.message.content), timestamp: Date.now() },
           ]);
           return next;
         });
@@ -828,7 +850,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       streamingTextRef.current = "";
       bumpStreamingTick();
       const msg = event as MessageEvent;
-      const blocks = msg.message.content;
+      const blocks = normalizeBlocks(msg.message.content);
       const isToolOnly = blocks.length > 0 && blocks.every((b) => b.type === "tool_use");
 
       setMessages((prev) => {
@@ -900,7 +922,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
         {
           id: nextId(),
           role: "user",
-          blocks: msg.message.content,
+          blocks: normalizeBlocks(msg.message.content),
           timestamp: Date.now(),
           queued,
         },
@@ -948,6 +970,31 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
             timestamp: Date.now(),
           },
         ]);
+      } else if (sys.subtype === "status") {
+        const status = (sys as any).status;
+        if (status === "compacting") {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: "system",
+              blocks: [{ type: "text", text: "Compacting conversation\u2026" }],
+              timestamp: Date.now(),
+            },
+          ]);
+          scrollToBottom();
+        }
+      } else if (sys.subtype === "compact_boundary") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: "system",
+            blocks: [{ type: "text", text: "Conversation compacted" }],
+            timestamp: Date.now(),
+          },
+        ]);
+        scrollToBottom();
       }
     }
   }
@@ -989,6 +1036,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
 
   // ---- Slash command autocomplete ----
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
+  const slashMenuRef = useRef<HTMLDivElement>(null);
   const slashMatch = inputValue.match(/^\/(\S*)$/);
   const slashPrefix = slashMatch ? slashMatch[1].toLowerCase() : null;
   const slashSuggestions = useMemo(() => {
@@ -1001,6 +1049,15 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
   useEffect(() => {
     setSlashSelectedIndex(0);
   }, [slashSuggestions.length, slashPrefix]);
+
+  // Scroll selected slash menu item into view
+  useEffect(() => {
+    if (!showSlashMenu || !slashMenuRef.current) return;
+    const items = slashMenuRef.current.children;
+    if (items[slashSelectedIndex]) {
+      (items[slashSelectedIndex] as HTMLElement).scrollIntoView({ block: "nearest" });
+    }
+  }, [slashSelectedIndex, showSlashMenu]);
 
   function acceptSlashSuggestion(cmd: string) {
     const text = "/" + cmd;
@@ -1361,6 +1418,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
         {/* Autocomplete dropdown */}
         {showSlashMenu && (
           <div
+            ref={slashMenuRef}
             className={styles.slashMenu}
             style={{
               background: theme.background,
