@@ -6,3 +6,4 @@ data/
 coverage/
 tsconfig.tsbuildinfo
 tui/claude-tui
+.mcp.json
