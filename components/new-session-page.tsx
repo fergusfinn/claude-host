@@ -430,6 +430,23 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
             )}
           </div>
         )}
+
+        {/* Working directory */}
+        {!forkSource && (
+          <div className={styles.cwdWrap}>
+            <Folder size={12} style={{ opacity: 0.4, flexShrink: 0, color: theme.foreground }} />
+            <input
+              className={styles.cwdInput}
+              type="text"
+              value={cwd}
+              onChange={(e) => setCwd(e.target.value)}
+              placeholder="Working directory"
+              autoComplete="off"
+              spellCheck={false}
+              style={{ color: theme.foreground, borderColor: `${theme.foreground}20` }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Welcome area */}
@@ -445,21 +462,6 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
             {welcomeHint}
           </p>
         </div>
-        {!forkSource && (
-          <div className={styles.cwdRow}>
-            <Folder size={14} style={{ opacity: 0.4, flexShrink: 0, color: theme.foreground }} />
-            <input
-              className={styles.cwdInput}
-              type="text"
-              value={cwd}
-              onChange={(e) => setCwd(e.target.value)}
-              placeholder="Working directory (default)"
-              autoComplete="off"
-              spellCheck={false}
-              style={{ color: theme.foreground, borderColor: `${theme.foreground}20` }}
-            />
-          </div>
-        )}
       </div>
 
       {/* Input area — varies by mode */}
