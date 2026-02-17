@@ -5,5 +5,6 @@ data/
 *.db
 coverage/
 tsconfig.tsbuildinfo
+next-env.d.ts
 tui/claude-tui
 .mcp.json
