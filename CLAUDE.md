@@ -27,34 +27,12 @@ npm run test:coverage # with coverage
 
 190 unit tests across 13 files. All mock external boundaries (database, child_process, node-pty, WebSocket). Fast (~1s).
 
-### E2E tests
-
-```bash
-npm run test:e2e
-```
-
-14 integration tests across 4 files (~30s). Start a real server on a random port with `AUTH_DISABLED=1` and an isolated temp `DATA_DIR`, then exercise the full stack through HTTP API and WebSocket connections.
-
-- `tests/e2e/sessions.test.ts` — terminal session CRUD, multi-client WebSocket, fork, reorder, jobs
-- `tests/e2e/config.test.ts` — config persistence round-trip
-- `tests/e2e/rich-sessions.test.ts` — rich session lifecycle with real `claude` CLI (create, prompt, response, reconnect+replay)
-- `tests/e2e/remote-executor.test.ts` — remote executor registration and session via executor
-
-Run a single file:
-```bash
-npx vitest run --config vitest.config.e2e.ts tests/e2e/sessions.test.ts
-```
-
-Rich session tests require the `claude` CLI to be available on `PATH`.
-
-Note: you may be running on `gotenks` (the deploy target) rather than a local dev machine. Check `hostname` if unsure.
-
 ## Deployment
 
-**Always run both unit and E2E tests before deploying:**
+**Run unit tests before deploying:**
 
 ```bash
-npm test && npm run test:e2e
+npm test
 ```
 
 Deploy to `gotenks` (reachable via Tailscale):
@@ -133,7 +111,6 @@ Each pair has implementations across these files:
 - `components/` — React components (dashboard, terminal view, tab bar, etc.)
 - `lib/` — Shared utilities (sessions, themes, shortcuts, layout)
 - `hooks/` — React hooks
-- `tests/e2e/` — E2E integration tests
 - `executor/` — Executor process (local and remote)
 - `tui/` — TUI-related code
 - `data/` — SQLite database (gitignored)
