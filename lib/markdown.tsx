@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import katex from "katex";
 import type { TerminalTheme } from "./themes";
 
 // ---------------------------------------------------------------------------
@@ -36,6 +37,7 @@ export const MemoizedMarkdown = React.memo(function MemoizedMarkdown({
 
 export type Block =
   | { type: "code"; lang: string; content: string }
+  | { type: "math_block"; content: string }
   | { type: "heading"; level: number; inline: InlineNode[] }
   | { type: "blockquote"; inline: InlineNode[] }
   | { type: "ul"; items: InlineNode[][] }
@@ -51,6 +53,7 @@ export type InlineNode =
   | { type: "italic"; children: InlineNode[] }
   | { type: "bold_italic"; children: InlineNode[] }
   | { type: "code"; text: string }
+  | { type: "math_inline"; text: string }
   | { type: "link"; text: string; href: string }
   | { type: "strikethrough"; children: InlineNode[] };
 
@@ -65,6 +68,29 @@ export function parseBlocks(text: string): Block[] {
 
   while (i < lines.length) {
     const line = lines[i];
+
+    // Display math ($$...$$)
+    if (line.match(/^\$\$/)) {
+      // Check for single-line $$...$$
+      if (line.match(/^\$\$(.+)\$\$\s*$/)) {
+        const content = line.replace(/^\$\$/, "").replace(/\$\$\s*$/, "");
+        blocks.push({ type: "math_block", content });
+        i++;
+        continue;
+      }
+      // Multi-line $$...$$
+      const mathLines: string[] = [];
+      const firstLine = line.slice(2).trim();
+      if (firstLine) mathLines.push(firstLine);
+      i++;
+      while (i < lines.length && !lines[i].match(/^\$\$/)) {
+        mathLines.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) i++; // skip closing $$
+      blocks.push({ type: "math_block", content: mathLines.join("\n") });
+      continue;
+    }
 
     // Code fence
     if (line.match(/^```/)) {
@@ -186,6 +212,7 @@ export function parseBlocks(text: string): Block[] {
       i < lines.length &&
       lines[i].trim() !== "" &&
       !lines[i].match(/^```/) &&
+      !lines[i].match(/^\$\$/) &&
       !lines[i].match(/^#{1,6}\s+/) &&
       !lines[i].match(/^>\s?/) &&
       !lines[i].match(/^\s*[-*]\s+/) &&
@@ -213,12 +240,23 @@ export function parseBlocks(text: string): Block[] {
 
 export function parseInline(text: string): InlineNode[] {
   const nodes: InlineNode[] = [];
+  // Inline math: $...$  where content is non-empty and doesn't start/end with space.
+  // Must not be preceded by $ (to avoid matching inside $$) or followed by $.
   const pattern =
-    /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;
+    /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\$([^\s$](?:[^$]*[^\s$])?)\$)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
   while ((match = pattern.exec(text)) !== null) {
+    // For inline math, skip if preceded by $ or followed by $ (part of $$...$$)
+    if (match[9] !== undefined) {
+      const before = match.index > 0 ? text[match.index - 1] : "";
+      const after = match.index + match[0].length < text.length ? text[match.index + match[0].length] : "";
+      if (before === "$" || after === "$") {
+        continue;
+      }
+    }
+
     if (match.index > lastIndex) {
       pushText(nodes, text.slice(lastIndex, match.index));
     }
@@ -235,6 +273,8 @@ export function parseInline(text: string): InlineNode[] {
       nodes.push({ type: "code", text: match[6] });
     } else if (match[7] !== undefined && match[8] !== undefined) {
       nodes.push({ type: "link", text: match[7], href: match[8] });
+    } else if (match[9] !== undefined) {
+      nodes.push({ type: "math_inline", text: match[9] });
     }
 
     lastIndex = match.index + match[0].length;
@@ -263,6 +303,9 @@ function renderBlock(
   switch (block.type) {
     case "code":
       return <CodeBlock key={key} lang={block.lang} content={block.content} theme={theme} />;
+
+    case "math_block":
+      return <MathBlock key={key} content={block.content} theme={theme} />;
 
     case "heading": {
       const sizes: Record<number, number> = { 1: 1.15, 2: 1.08, 3: 1.0, 4: 0.95, 5: 0.9, 6: 0.85 };
@@ -507,6 +550,33 @@ function CodeBlock({ lang, content, theme }: { lang: string; content: string; th
 }
 
 // ---------------------------------------------------------------------------
+// Math rendering (KaTeX)
+// ---------------------------------------------------------------------------
+
+function renderKatex(tex: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(tex, { displayMode, throwOnError: false });
+  } catch {
+    return katex.renderToString(tex, { displayMode, throwOnError: false });
+  }
+}
+
+function MathBlock({ content, theme }: { content: string; theme: TerminalTheme }) {
+  const html = useMemo(() => renderKatex(content, true), [content]);
+  return (
+    <div
+      style={{ margin: "0.5em 0", overflowX: "auto", color: theme.foreground }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
+function MathInline({ text }: { text: string }) {
+  const html = useMemo(() => renderKatex(text, false), [text]);
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+// ---------------------------------------------------------------------------
 // Inline rendering
 // ---------------------------------------------------------------------------
 
@@ -567,6 +637,9 @@ function renderInlineNode(
           {node.text}
         </code>
       );
+
+    case "math_inline":
+      return <MathInline key={key} text={node.text} />;
 
     case "link":
       return (

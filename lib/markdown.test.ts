@@ -258,3 +258,86 @@ describe("parseBlocks", () => {
     ]);
   });
 });
+
+describe("math parsing", () => {
+  describe("parseBlocks — display math ($$...$$)", () => {
+    it("parses multi-line display math", () => {
+      const blocks = parseBlocks("$$\nx^2 + y^2 = z^2\n$$");
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toEqual({ type: "math_block", content: "x^2 + y^2 = z^2" });
+    });
+
+    it("parses single-line display math", () => {
+      const blocks = parseBlocks("$$E = mc^2$$");
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toEqual({ type: "math_block", content: "E = mc^2" });
+    });
+
+    it("parses multi-line display math with multiple lines", () => {
+      const blocks = parseBlocks("$$\n\\frac{a}{b}\n+ \\frac{c}{d}\n$$");
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toEqual({
+        type: "math_block",
+        content: "\\frac{a}{b}\n+ \\frac{c}{d}",
+      });
+    });
+
+    it("handles unterminated display math (streaming)", () => {
+      const blocks = parseBlocks("$$\nx^2 + y^2");
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toEqual({ type: "math_block", content: "x^2 + y^2" });
+    });
+
+    it("does not consume $$ as paragraph text", () => {
+      const blocks = parseBlocks("Hello\n\n$$\nx = 1\n$$\n\nWorld");
+      const types = blocks.map((b) => b.type);
+      expect(types).toEqual(["paragraph", "math_block", "paragraph"]);
+    });
+  });
+
+  describe("parseInline — inline math ($...$)", () => {
+    it("parses inline math", () => {
+      const result = parseInline("The equation $x^2$ is quadratic");
+      expect(result).toHaveLength(3);
+      expect(result[0]).toEqual({ type: "text", text: "The equation " });
+      expect(result[1]).toEqual({ type: "math_inline", text: "x^2" });
+      expect(result[2]).toEqual({ type: "text", text: " is quadratic" });
+    });
+
+    it("parses multiple inline math expressions", () => {
+      const result = parseInline("$a$ and $b$");
+      expect(result).toHaveLength(3);
+      expect(result[0]).toEqual({ type: "math_inline", text: "a" });
+      expect(result[1]).toEqual({ type: "text", text: " and " });
+      expect(result[2]).toEqual({ type: "math_inline", text: "b" });
+    });
+
+    it("does not match $ with spaces at boundaries", () => {
+      const result = parseInline("costs $ 5 and $ 10");
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ type: "text", text: "costs $ 5 and $ 10" });
+    });
+
+    it("does not match empty $$ as inline math", () => {
+      const result = parseInline("a $$ b");
+      // $$ should not be matched as inline math
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ type: "text", text: "a $$ b" });
+    });
+
+    it("parses inline math mixed with other formatting", () => {
+      const result = parseInline("Use $E=mc^2$ for **energy**");
+      expect(result).toHaveLength(4);
+      expect(result[0]).toEqual({ type: "text", text: "Use " });
+      expect(result[1]).toEqual({ type: "math_inline", text: "E=mc^2" });
+      expect(result[2]).toEqual({ type: "text", text: " for " });
+      expect(result[3]).toEqual({ type: "bold", children: [{ type: "text", text: "energy" }] });
+    });
+
+    it("handles single character math", () => {
+      const result = parseInline("$x$");
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ type: "math_inline", text: "x" });
+    });
+  });
+});
