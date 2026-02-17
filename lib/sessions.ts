@@ -311,7 +311,7 @@ class SessionManager {
 
   // NOTE: Branches on mode (terminal vs rich) — changes to one branch likely
   // need mirroring in the other. Also see createJob() (terminal-only).
-  async create(description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal", userId: string = "local", provider: RichProvider = "claude"): Promise<Session> {
+  async create(description = "", command = "claude", executor = "local", mode: "terminal" | "rich" = "terminal", userId: string = "local", provider: RichProvider = "claude", cwd?: string): Promise<Session> {
     const name = this.uniqueName();
 
     // Inject theme settings for claude commands
@@ -322,7 +322,7 @@ class SessionManager {
 
     if (mode === "rich") {
       const exec = this.getExecutor(executor);
-      await exec.createRichSession({ name, command: finalCommand, provider });
+      await exec.createRichSession({ name, command: finalCommand, provider, cwd });
 
       this.db
         .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, mode, provider, position, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
@@ -347,7 +347,7 @@ class SessionManager {
 
     const exec = this.getExecutor(executor);
 
-    const result = await exec.createSession({ name, description, command: finalCommand });
+    const result = await exec.createSession({ name, description, command: finalCommand, cwd });
 
     this.db
       .prepare("INSERT OR REPLACE INTO sessions (name, description, command, executor, position, user_id) VALUES (?, ?, ?, ?, ?, ?)")

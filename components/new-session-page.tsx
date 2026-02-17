@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowUp, Sparkles, GitFork, ChevronDown, Terminal, Play, Diamond } from "lucide-react";
+import { ArrowUp, Sparkles, GitFork, ChevronDown, Terminal, Play, Diamond, Folder } from "lucide-react";
 import type { TerminalTheme } from "@/lib/themes";
 import { getRichFontFamily, ensureRichFontLoaded } from "./rich-view";
 import { activityAgo } from "@/lib/ui-utils";
@@ -32,6 +32,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
   const [provider, setProvider] = useState<RichProvider>("claude");
   const [providerOpen, setProviderOpen] = useState(false);
   const [customCmd, setCustomCmd] = useState("");
+  const [cwd, setCwd] = useState("");
   const [skipPermissions, setSkipPermissions] = useState(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const cmdRef = useRef<HTMLInputElement>(null);
@@ -136,6 +137,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
             executor,
             mode: "rich",
             provider,
+            cwd: cwd.trim() || undefined,
           }),
         });
         if (!res.ok) {
@@ -151,7 +153,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
       console.warn("failed to create session", e);
       setSubmitting(false);
     }
-  }, [inputValue, submitting, forkSource, executor, provider, onSessionCreated]);
+  }, [inputValue, submitting, forkSource, executor, provider, cwd, onSessionCreated]);
 
   const handleSubmitTerminal = useCallback(async () => {
     if (submitting) return;
@@ -167,6 +169,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
           command,
           executor,
           mode: "terminal",
+          cwd: cwd.trim() || undefined,
         }),
       });
       if (!res.ok) {
@@ -179,7 +182,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
       console.warn("failed to create session", e);
       setSubmitting(false);
     }
-  }, [submitting, skipPermissions, executor, onSessionCreated]);
+  }, [submitting, skipPermissions, executor, cwd, onSessionCreated]);
 
   const handleSubmitCustom = useCallback(async () => {
     const cmd = customCmd.trim();
@@ -195,6 +198,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
           command: cmd,
           executor,
           mode: "terminal",
+          cwd: cwd.trim() || undefined,
         }),
       });
       if (!res.ok) {
@@ -207,7 +211,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
       console.warn("failed to create session", e);
       setSubmitting(false);
     }
-  }, [customCmd, submitting, executor, onSessionCreated]);
+  }, [customCmd, submitting, executor, cwd, onSessionCreated]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -441,6 +445,21 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
             {welcomeHint}
           </p>
         </div>
+        {!forkSource && (
+          <div className={styles.cwdRow}>
+            <Folder size={14} style={{ opacity: 0.4, flexShrink: 0, color: theme.foreground }} />
+            <input
+              className={styles.cwdInput}
+              type="text"
+              value={cwd}
+              onChange={(e) => setCwd(e.target.value)}
+              placeholder="Working directory (default)"
+              autoComplete="off"
+              spellCheck={false}
+              style={{ color: theme.foreground, borderColor: `${theme.foreground}20` }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Input area — varies by mode */}

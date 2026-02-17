@@ -9,7 +9,7 @@
     "executor": "tsx executor/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.57.1",

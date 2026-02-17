@@ -24,6 +24,7 @@ export interface CreateSessionOpts {
   name: string;
   description?: string;
   command?: string;
+  cwd?: string;
 }
 
 export interface CreateJobOpts {
@@ -87,6 +88,7 @@ export interface CreateRichSessionOpts {
   name: string;
   command?: string;
   provider?: RichProvider;
+  cwd?: string;
 }
 
 export interface ExecutorInterface {

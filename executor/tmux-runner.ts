@@ -70,7 +70,7 @@ export class TmuxRunner {
     }
 
     const tmuxArgs = ["new-session", "-d", "-s", name, "-x", "200", "-y", "50"];
-    const cwd = process.cwd();
+    const cwd = opts.cwd || process.cwd();
     tmuxArgs.push("-c", cwd);
 
     const r = spawnSync(TMUX, tmuxArgs, { stdio: "pipe" });
@@ -227,7 +227,7 @@ export class TmuxRunner {
   // PARALLEL: terminal equivalent is createSession() above.
   // Changes here (e.g. tmux options, validation, env vars) may need mirroring.
   createRichSession(opts: CreateRichSessionOpts): { name: string; command: string } {
-    const { name, command = "claude", provider = "claude" } = opts;
+    const { name, command = "claude", provider = "claude", cwd = REPO_ROOT } = opts;
 
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
       throw new Error("Name must be alphanumeric, hyphens, underscores only");
@@ -257,7 +257,7 @@ export class TmuxRunner {
 
       const r = spawnSync(TMUX, [
         "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
-        "-c", REPO_ROOT,
+        "-c", cwd,
         "bash", "-l", wrapperScript, eventsFile, fifoPath, ...codexArgs,
       ], { stdio: "pipe" });
 
@@ -292,7 +292,7 @@ export class TmuxRunner {
 
       const r = spawnSync(TMUX, [
         "new-session", "-d", "-s", tName, "-x", "200", "-y", "50",
-        "-c", REPO_ROOT,
+        "-c", cwd,
         "bash", "-l", wrapperScript, eventsFile, fifoPath, ...claudeArgs,
       ], { stdio: "pipe" });
 
