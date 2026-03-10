@@ -84,6 +84,7 @@ WorkingDirectory=/home/fergus/claude-host
 ExecStart=${NVM_NODE_DIR}/npx tsx server.ts
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=10
 Environment=NODE_ENV=production
 Environment=ADMIN_EMAIL=fergus.finn@doubleword.ai
 Environment=BETTER_AUTH_TRUSTED_ORIGINS=http://gotenks:3000

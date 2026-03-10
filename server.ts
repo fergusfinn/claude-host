@@ -120,7 +120,12 @@ app.prepare().then(() => {
       const cols = parseInt(parsed.searchParams.get("cols") || "") || 0;
       const rows = parseInt(parsed.searchParams.get("rows") || "") || 0;
       wss.handleUpgrade(req, socket, head, (ws) => {
-        sessionManager.attachSession(sessionName, ws, cols, rows);
+        try {
+          sessionManager.attachSession(sessionName, ws, cols, rows);
+        } catch (e: any) {
+          console.warn(`attachSession failed for ${sessionName}: ${e.message}`);
+          ws.close(1011, e.message);
+        }
       });
       return;
     }
@@ -136,7 +141,12 @@ app.prepare().then(() => {
       if (!VALID_SESSION_NAME.test(sessionName)) { socket.write("HTTP/1.1 400 Bad Request\r\n\r\n"); socket.destroy(); return; }
       if (!sessionManager.isOwnedBy(sessionName, user.userId)) { socket.write("HTTP/1.1 403 Forbidden\r\n\r\n"); socket.destroy(); return; }
       wss.handleUpgrade(req, socket, head, (ws) => {
-        sessionManager.attachRichSession(sessionName, ws);
+        try {
+          sessionManager.attachRichSession(sessionName, ws);
+        } catch (e: any) {
+          console.warn(`attachRichSession failed for ${sessionName}: ${e.message}`);
+          ws.close(1011, e.message);
+        }
       });
       return;
     }
