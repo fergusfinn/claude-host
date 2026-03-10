@@ -9,3 +9,4 @@ next-env.d.ts
 tui/claude-tui
 .mcp.json
 .claude/
+mteb-eval/
