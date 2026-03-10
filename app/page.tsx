@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Dashboard, SettingsForm } from "@/components/dashboard";
 import { ExecutorsPage } from "@/components/executors-page";
+import { SymphonyPage } from "@/components/symphony-page";
 import { PaneLayout } from "@/components/pane-layout";
 import { TabBar } from "@/components/tab-bar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
@@ -52,6 +53,8 @@ export default function Home() {
     const path = window.location.pathname;
     if (path === "/executors") {
       setActiveTabId("executors");
+    } else if (path === "/symphony") {
+      setActiveTabId("symphony");
     } else if (path !== "/") {
       const session = decodeURIComponent(path.slice(1));
       const tab = createTab(session);
@@ -241,7 +244,7 @@ export default function Home() {
 
   // If active tab got removed, switch to another (skip special pages)
   useEffect(() => {
-    if (activeTabId !== null && activeTabId !== "executors" && !tabs.some((t) => t.id === activeTabId)) {
+    if (activeTabId !== null && activeTabId !== "executors" && activeTabId !== "symphony" && !tabs.some((t) => t.id === activeTabId)) {
       setActiveTabId(tabs.length > 0 ? tabs[tabs.length - 1].id : null);
     }
   }, [tabs, activeTabId]);
@@ -251,6 +254,10 @@ export default function Home() {
     if (activeTabId === "executors") {
       if (window.location.pathname !== "/executors") {
         window.history.replaceState(null, "", "/executors");
+      }
+    } else if (activeTabId === "symphony") {
+      if (window.location.pathname !== "/symphony") {
+        window.history.replaceState(null, "", "/symphony");
       }
     } else if (activeTab === null) {
       if (window.location.pathname !== "/") {
@@ -605,6 +612,16 @@ export default function Home() {
         </div>
         <div className="app-header-right">
           <button
+            className={`app-header-settings ${activeTabId === "symphony" ? "app-header-settings-active" : ""}`}
+            onClick={() => setActiveTabId(activeTabId === "symphony" ? null : "symphony")}
+            title="Symphony"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          </button>
+          <button
             className={`app-header-settings ${activeTabId === "executors" ? "app-header-settings-active" : ""}`}
             onClick={() => setActiveTabId(activeTabId === "executors" ? null : "executors")}
             title="Executors"
@@ -732,6 +749,13 @@ export default function Home() {
           flexDirection: "column",
         }}>
           <ExecutorsPage />
+        </div>
+        <div style={{
+          position: "absolute", inset: 0,
+          display: activeTabId === "symphony" ? "flex" : "none",
+          flexDirection: "column",
+        }}>
+          <SymphonyPage />
         </div>
         {tabs.map((tab) => (
           <div

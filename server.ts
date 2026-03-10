@@ -1,4 +1,4 @@
-import { createServer } from "http";
+import { createServer, request as httpRequest } from "http";
 import next from "next";
 import { WebSocketServer } from "ws";
 import { spawn, spawnSync } from "child_process";
@@ -63,8 +63,29 @@ function validateExecutorToken(req: { headers: Record<string, string | string[] 
 const app = next({ dev, dir: process.cwd() });
 const handle = app.getRequestHandler();
 
+const SYMPHONY_PORT = 4001;
+
 app.prepare().then(() => {
   const server = createServer((req, res) => {
+    // Proxy /symphony/* to symphony subprocess
+    if (req.url?.startsWith("/symphony/") || req.url === "/symphony") {
+      const targetPath = req.url.slice("/symphony".length) || "/";
+      const proxyReq = httpRequest(
+        `http://127.0.0.1:${SYMPHONY_PORT}${targetPath}`,
+        { method: req.method, headers: { ...req.headers, host: `127.0.0.1:${SYMPHONY_PORT}` } },
+        (proxyRes) => {
+          res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+          proxyRes.pipe(res);
+        },
+      );
+      proxyReq.on("error", () => {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "symphony_unavailable", message: "Symphony service is not running" }));
+      });
+      req.pipe(proxyReq);
+      return;
+    }
+
     handle(req, res);
   });
 

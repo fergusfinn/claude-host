@@ -55,6 +55,10 @@ deploy() {
   echo "  -> npm install"
   npm install --omit=dev
 
+  echo "  -> npm install (symphony)"
+  cd "$REMOTE_DIR/symphony" && npm install --omit=dev
+  cd "$REMOTE_DIR"
+
   echo "  -> next build (to staging dir)"
   NEXT_DIST_DIR=".next-staging" npx next build
 
@@ -97,11 +101,49 @@ EOF
   echo "  -> Waiting for service to start..."
   sleep 2
   if systemctl --user is-active --quiet claude-host; then
-    echo "==> Deployed successfully. Running at http://gotenks:3000"
+    echo "==> Claude Host deployed. Running at http://gotenks:3000"
   else
     echo "==> Service failed to start. Logs:"
     journalctl --user -u claude-host --no-pager -n 20
     exit 1
+  fi
+
+  # Set up symphony systemd user service (independent lifecycle)
+  SYMPHONY_SERVICE="$HOME/.config/systemd/user/symphony.service"
+  cat > "$SYMPHONY_SERVICE" <<SEOF
+[Unit]
+Description=Symphony - Linear issue orchestrator
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fergus/claude-host/symphony
+ExecStart=${NVM_NODE_DIR}/npx tsx src/index.ts --port 4001
+Restart=on-failure
+RestartSec=10
+Environment=NODE_ENV=production
+Environment=PATH=${NVM_NODE_DIR}:/home/fergus/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/home/fergus/.symphony-env
+
+[Install]
+WantedBy=default.target
+SEOF
+
+  systemctl --user daemon-reload
+  systemctl --user enable symphony
+
+  # Only restart symphony if it's not currently running (preserve agent sessions)
+  if ! systemctl --user is-active --quiet symphony; then
+    systemctl --user start symphony
+    sleep 1
+    if systemctl --user is-active --quiet symphony; then
+      echo "  -> Symphony started at :4001 (proxied via /symphony/)"
+    else
+      echo "  -> Symphony failed to start (non-fatal)"
+      journalctl --user -u symphony --no-pager -n 10
+    fi
+  else
+    echo "  -> Symphony already running (not restarted to preserve agent sessions)"
   fi
 }
 
