@@ -214,13 +214,31 @@ export function openRichChannel(opts: RichChannelOpts): void {
   }
 
   ws.on("open", () => {
-    // Parse events and send tail inline for instant bottom-of-chat rendering
+    // Parse events and stream tail individually to avoid giant JSON payloads
     replayEventsParsed = parseReplayEvents();
     const TAIL_COUNT = 100;
-    const tailStart = Math.max(0, replayEventsParsed.length - TAIL_COUNT);
-    const tailEvents = replayEventsParsed.slice(tailStart);
+    const MAX_TAIL_BYTES = 512 * 1024; // 512 KB
+
+    // Walk backwards to find tailStart, respecting both count and size limits
+    let tailStart = replayEventsParsed.length;
+    let totalBytes = 0;
+    for (let i = replayEventsParsed.length - 1; i >= 0 && (replayEventsParsed.length - i) <= TAIL_COUNT; i--) {
+      const serialized = JSON.stringify(replayEventsParsed[i]);
+      if (totalBytes + serialized.length > MAX_TAIL_BYTES && i < replayEventsParsed.length - 1) break;
+      totalBytes += serialized.length;
+      tailStart = i;
+    }
+
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "replay_info", totalEvents: replayEventsParsed.length, tailEvents }));
+      ws.send(JSON.stringify({ type: "replay_info", totalEvents: replayEventsParsed.length, tailStart }));
+
+      // Stream each tail event as an individual message
+      for (let i = tailStart; i < replayEventsParsed.length; i++) {
+        ws.send(JSON.stringify({ type: "event", event: replayEventsParsed[i] }));
+      }
+
+      const count = replayEventsParsed.length - tailStart;
+      ws.send(JSON.stringify({ type: "replay_tail_complete", tailStart, count }));
     }
 
     // Wait briefly for the tmux session to be ready (it may have just been spawned)

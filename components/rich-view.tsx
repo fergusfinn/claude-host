@@ -217,6 +217,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
   const replayLoadedFromRef = useRef<number>(0); // lowest event index loaded so far
   const replayChunkBufferRef = useRef<ClaudeEvent[]>([]);
   const replayBackfillingRef = useRef(false); // true while prepending earlier chunks
+  const replayingTailRef = useRef(false); // true while receiving streamed tail events
   const backfillScrollCompensationRef = useRef<number | null>(null); // scrollHeight before prepend
   const [backfillTick, setBackfillTick] = useState(0); // triggers useLayoutEffect for scroll compensation
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -570,6 +571,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
         replayLoadedFromRef.current = 0;
         replayChunkBufferRef.current = [];
         replayBackfillingRef.current = false;
+        replayingTailRef.current = false;
         setHasMoreHistory(false);
         setIsBackfilling(false);
       };
@@ -586,24 +588,39 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
         if (msg.type === "replay_info") {
           const total = msg.totalEvents as number;
           const tailEvents = msg.tailEvents as any[] | undefined;
-          if (total === 0 || !tailEvents || tailEvents.length === 0) {
-            // Empty session — nothing to replay
-            replayLoadedFromRef.current = 0;
-            return;
+          if (tailEvents) {
+            // Backward compatible: server sent inline tailEvents (e.g. rolling deploy)
+            if (total === 0 || tailEvents.length === 0) {
+              replayLoadedFromRef.current = 0;
+              return;
+            }
+            for (const event of tailEvents) {
+              handleEvent(event);
+            }
+            requestAnimationFrame(() => {
+              const el = scrollRef.current;
+              if (el) el.scrollTop = el.scrollHeight;
+            });
+            const tailStart = total - tailEvents.length;
+            replayLoadedFromRef.current = tailStart;
+            setHasMoreHistory(tailStart > 0);
+          } else {
+            // New streamed protocol: tail events arrive as individual messages
+            if (total === 0) {
+              replayLoadedFromRef.current = 0;
+              return;
+            }
+            replayingTailRef.current = true;
           }
-          // Process tail events immediately — no round-trip needed
-          for (const event of tailEvents) {
-            handleEvent(event);
-          }
-          // Scroll to bottom immediately
+        } else if (msg.type === "replay_tail_complete") {
+          const { tailStart, count } = msg as { tailStart: number; count: number; type: string };
+          replayingTailRef.current = false;
+          replayLoadedFromRef.current = tailStart;
+          setHasMoreHistory(tailStart > 0);
           requestAnimationFrame(() => {
             const el = scrollRef.current;
             if (el) el.scrollTop = el.scrollHeight;
           });
-          // Record how far back we've loaded — user can tap "Load earlier" to backfill
-          const tailStart = total - tailEvents.length;
-          replayLoadedFromRef.current = tailStart;
-          setHasMoreHistory(tailStart > 0);
         } else if (msg.type === "event") {
           if (replayBackfillingRef.current) {
             // Buffer events during backfill chunk loading

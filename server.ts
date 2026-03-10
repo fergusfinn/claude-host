@@ -207,11 +207,23 @@ app.prepare().then(() => {
         }
       });
 
-      const shutdownLocal = () => {
+      const shutdown = () => {
+        console.log("Shutting down...");
         try { localExec.kill(); } catch {}
+        server.close(() => process.exit(0));
+        // Force exit if server doesn't close within 5s
+        setTimeout(() => process.exit(1), 5000).unref();
       };
-      process.on("SIGINT", shutdownLocal);
-      process.on("SIGTERM", shutdownLocal);
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    } else {
+      const shutdown = () => {
+        console.log("Shutting down...");
+        server.close(() => process.exit(0));
+        setTimeout(() => process.exit(1), 5000).unref();
+      };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
     }
   });
 });
