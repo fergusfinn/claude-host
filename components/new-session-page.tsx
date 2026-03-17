@@ -5,6 +5,7 @@ import { ArrowUp, Sparkles, GitFork, ChevronDown, Terminal, Play, Diamond, Folde
 import type { TerminalTheme } from "@/lib/themes";
 import { getRichFontFamily, ensureRichFontLoaded } from "./rich-view";
 import { activityAgo } from "@/lib/ui-utils";
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import styles from "./new-session-page.module.css";
 import type { Session, ExecutorInfo, RichProvider } from "@/shared/types";
 import { DEFAULT_COMMAND, DEFAULT_CODEX_COMMAND } from "@/shared/constants";
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: Props) {
+  const keyboardInset = useKeyboardInset();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [executors, setExecutors] = useState<ExecutorInfo[]>([]);
   const [forkSource, setForkSource] = useState<string | null>(null);
@@ -449,7 +451,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
 
       {/* Input area — varies by mode */}
       {sessionMode === "rich" && (
-        <div className={styles.inputArea}>
+        <div className={styles.inputArea} style={keyboardInset > 0 ? { paddingBottom: keyboardInset } : undefined}>
           <div className={styles.inputInner}>
             <textarea
               ref={inputRef}
@@ -482,7 +484,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
       )}
 
       {sessionMode === "terminal" && (
-        <div className={styles.inputArea}>
+        <div className={styles.inputArea} style={keyboardInset > 0 ? { paddingBottom: keyboardInset } : undefined}>
           <div className={styles.createActions}>
             <label className={styles.checkLabel} style={{ color: `${theme.foreground}80` }}>
               <input
@@ -510,7 +512,7 @@ export function NewSessionPage({ theme, richFont, onSessionCreated, onCancel }: 
       )}
 
       {sessionMode === "custom" && (
-        <div className={styles.inputArea}>
+        <div className={styles.inputArea} style={keyboardInset > 0 ? { paddingBottom: keyboardInset } : undefined}>
           <div className={styles.inputInner}>
             <input
               ref={cmdRef}

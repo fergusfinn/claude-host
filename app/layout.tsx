@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "katex/dist/katex.min.css";
 import "./globals.css";
-import { ViewportHeight } from "@/components/viewport-height";
 
 export const metadata: Metadata = {
   title: "Claude Host",
@@ -36,7 +35,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <ViewportHeight />
         {children}
       </body>
     </html>

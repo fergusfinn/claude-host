@@ -1259,8 +1259,4 @@
     min-height: 40px;
   }
 
-  /* When keyboard is open, safe-area-inset-bottom is behind the keyboard — don't add extra padding */
-  .inputArea:focus-within {
-    padding-bottom: 10px;
-  }
 }

@@ -15,6 +15,7 @@ import {
   type RenderItem,
 } from "@/lib/rich-render";
 import { ArrowUp, Square, FileText, Pencil, FilePlus, Terminal, LayoutGrid, Search, ListTree, Globe, CircleHelp, SquarePlus, Diamond, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import styles from "./rich-view.module.css";
 
 export const RICH_FONT_OPTIONS: Record<string, { label: string; fontFamily: string; googleFontsUrl?: string }> = {
@@ -179,6 +180,7 @@ class MessageErrorBoundary extends React.Component<
 // ---- Component ----
 
 export function RichView({ sessionName, isActive, theme, font, richFont, initialPrompt, onInitialPromptSent }: Props) {
+  const keyboardInset = useKeyboardInset();
   // Ensure the selected rich font is loaded
   useEffect(() => {
     if (richFont) ensureRichFontLoaded(richFont);
@@ -1430,7 +1432,7 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
       </div>
 
       {/* Input */}
-      <div className={styles.inputArea}>
+      <div className={styles.inputArea} style={keyboardInset > 0 ? { paddingBottom: keyboardInset } : undefined}>
         <div className={styles.inputInner}>
         {/* Autocomplete dropdown */}
         {showSlashMenu && (
