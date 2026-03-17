@@ -1134,7 +1134,6 @@
 
   .inputArea {
     padding: 8px 10px;
-    padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
   .inputInner {
@@ -1194,7 +1193,6 @@
 
   .inputArea {
     padding: 8px 6px;
-    padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
   .questionBlock {

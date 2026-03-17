@@ -186,7 +186,6 @@
 /* Input area - pinned to bottom */
 .inputArea {
   padding: 8px 12px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
   flex-shrink: 0;
   animation: inputIn 0.4s ease-out 0.1s both;
 }
