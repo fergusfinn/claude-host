@@ -602,7 +602,7 @@ export default function Home() {
   if (!configLoaded) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div className="app-header">
         <div className="app-header-left" onClick={() => setActiveTabId(null)}>
           <div className="app-header-logo" />

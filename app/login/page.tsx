@@ -83,7 +83,7 @@ export default function LoginPage() {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      height: "100dvh",
+      height: "100%",
       fontFamily: "var(--mono)",
     }}>
       <div style={{
