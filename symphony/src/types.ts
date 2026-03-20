@@ -79,6 +79,12 @@ export interface ClaudeConfig {
   stall_timeout_ms: number;
 }
 
+export interface HeartbeatConfig {
+  enabled: boolean;
+  interval_ms: number;
+  command: string;
+}
+
 export interface ServerConfig {
   port: number | null;
 }
@@ -91,6 +97,7 @@ export interface ServiceConfig {
   agent: AgentConfig;
   codex: CodexConfig;
   claude: ClaudeConfig;
+  heartbeat: HeartbeatConfig;
   server: ServerConfig;
 }
 
