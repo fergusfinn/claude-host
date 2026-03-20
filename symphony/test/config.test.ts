@@ -73,6 +73,37 @@ describe("parseConfig", () => {
     const cfg = parseConfig({ hooks: { timeout_ms: -1 } });
     expect(cfg.hooks.timeout_ms).toBe(60000);
   });
+
+  it("heartbeat disabled by default (no command)", () => {
+    const cfg = parseConfig({});
+    expect(cfg.heartbeat.enabled).toBe(false);
+    expect(cfg.heartbeat.command).toBe("");
+    expect(cfg.heartbeat.interval_ms).toBe(60000);
+    expect(cfg.heartbeat.prompt_template).toBe("");
+  });
+
+  it("heartbeat auto-enables when command is set", () => {
+    const cfg = parseConfig({ heartbeat: { command: "claude -p" } });
+    expect(cfg.heartbeat.enabled).toBe(true);
+    expect(cfg.heartbeat.command).toBe("claude -p");
+  });
+
+  it("heartbeat can be explicitly disabled even with command", () => {
+    const cfg = parseConfig({ heartbeat: { command: "claude -p", enabled: false } });
+    expect(cfg.heartbeat.enabled).toBe(false);
+  });
+
+  it("heartbeat parses custom interval and template", () => {
+    const cfg = parseConfig({
+      heartbeat: {
+        command: "my-cli --pipe",
+        interval_ms: 120000,
+        prompt_template: "Custom {{ issue.identifier }}",
+      },
+    });
+    expect(cfg.heartbeat.interval_ms).toBe(120000);
+    expect(cfg.heartbeat.prompt_template).toBe("Custom {{ issue.identifier }}");
+  });
 });
 
 describe("validateDispatchConfig", () => {
@@ -111,5 +142,24 @@ describe("validateDispatchConfig", () => {
     const result = validateDispatchConfig(cfg);
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes("project_slug"))).toBe(true);
+  });
+
+  it("fails when heartbeat enabled without command", () => {
+    const cfg = parseConfig({
+      tracker: { kind: "linear", api_key: "key", project_slug: "p" },
+      heartbeat: { enabled: true },
+    });
+    const result = validateDispatchConfig(cfg);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("heartbeat.command"))).toBe(true);
+  });
+
+  it("passes when heartbeat enabled with command", () => {
+    const cfg = parseConfig({
+      tracker: { kind: "linear", api_key: "key", project_slug: "p" },
+      heartbeat: { command: "claude -p" },
+    });
+    const result = validateDispatchConfig(cfg);
+    expect(result.ok).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ import { LinearClient } from "./linear-client.js";
 import { WorkspaceManager } from "./workspace.js";
 import { AgentRunner, type AgentSession } from "./agent-runner.js";
 import { ClaudeCodeRunner } from "./claude-code-runner.js";
+import { HeartbeatManager } from "./heartbeat.js";
 import type {
   ServiceConfig,
   Issue,
@@ -27,6 +28,7 @@ export class Orchestrator {
   private watcher: FSWatcher | null = null;
   private tickTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
+  private heartbeat: HeartbeatManager | null = null;
 
   constructor(workflowPath: string) {
     this.workflowPath = workflowPath;
@@ -61,6 +63,12 @@ export class Orchestrator {
     this.state.poll_interval_ms = this.config.polling.interval_ms;
     this.state.max_concurrent_agents = this.config.agent.max_concurrent_agents;
 
+    // Initialize heartbeat manager
+    if (this.config.heartbeat.enabled) {
+      this.heartbeat = new HeartbeatManager(this.config.heartbeat, this.config.tracker);
+      logger.info("Heartbeat enabled", { interval_ms: this.config.heartbeat.interval_ms });
+    }
+
     // Start workflow file watch — §6.2
     this.watcher = watch(this.workflowPath, { ignoreInitial: true });
     this.watcher.on("change", () => {
@@ -91,6 +99,9 @@ export class Orchestrator {
       this.tickTimer = null;
     }
     this.watcher?.close();
+
+    // Stop all heartbeats
+    this.heartbeat?.stopAll();
 
     // Terminate all running workers
     for (const [issueId, entry] of this.state.running) {
@@ -292,6 +303,9 @@ export class Orchestrator {
 
     this.state.running.set(issue.id, runningEntry);
 
+    // Start heartbeat for this issue
+    this.heartbeat?.start(issue.id, issue.identifier, issue.title);
+
     // Spawn worker (async, fire and forget)
     this.runWorker(issue, attempt, runningEntry, abort.signal).catch((e) => {
       logger.error("Worker crashed", {
@@ -434,6 +448,9 @@ export class Orchestrator {
   private onWorkerExit(issueId: string, reason: string): void {
     const entry = this.state.running.get(issueId);
     if (!entry) return;
+
+    // Stop heartbeat for this issue
+    this.heartbeat?.stop(issueId);
 
     // Add runtime seconds to totals
     const runtimeSec = (Date.now() - entry.started_at.getTime()) / 1000;
@@ -637,6 +654,9 @@ export class Orchestrator {
   private handleAgentEvent(issueId: string, event: AgentEvent): void {
     const entry = this.state.running.get(issueId);
     if (!entry) return;
+
+    // Feed event to heartbeat
+    this.heartbeat?.appendEvent(issueId, event);
 
     entry.last_codex_event = event.event;
     entry.last_codex_timestamp = event.timestamp;

@@ -48,6 +48,7 @@ export function parseConfig(raw: Record<string, unknown>): ServiceConfig {
   const agent = (raw.agent ?? {}) as Record<string, unknown>;
   const codex = (raw.codex ?? {}) as Record<string, unknown>;
   const claude = (raw.claude ?? {}) as Record<string, unknown>;
+  const heartbeat = (raw.heartbeat ?? {}) as Record<string, unknown>;
   const server = (raw.server ?? {}) as Record<string, unknown>;
 
   // Tracker
@@ -145,6 +146,12 @@ export function parseConfig(raw: Record<string, unknown>): ServiceConfig {
       turn_timeout_ms: toInt(claude.turn_timeout_ms, 3600000),
       stall_timeout_ms: toInt(claude.stall_timeout_ms, 300000),
     },
+    heartbeat: {
+      enabled: heartbeat.enabled === true || (heartbeat.enabled !== false && typeof heartbeat.command === "string"),
+      interval_ms: toInt(heartbeat.interval_ms, 60000),
+      command: (heartbeat.command as string) ?? "",
+      prompt_template: (heartbeat.prompt_template as string) ?? "",
+    },
     server: {
       port: server.port !== undefined ? toInt(server.port, 0) : null,
     },
@@ -179,6 +186,10 @@ export function validateDispatchConfig(config: ServiceConfig): ValidationResult 
   }
   if (config.agent.kind === "claude" && !config.claude.command) {
     errors.push("claude.command must be non-empty");
+  }
+
+  if (config.heartbeat.enabled && !config.heartbeat.command) {
+    errors.push("heartbeat.command is required when heartbeat is enabled");
   }
 
   return { ok: errors.length === 0, errors };

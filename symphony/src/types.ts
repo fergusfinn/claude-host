@@ -83,6 +83,7 @@ export interface HeartbeatConfig {
   enabled: boolean;
   interval_ms: number;
   command: string;
+  prompt_template: string;
 }
 
 export interface ServerConfig {

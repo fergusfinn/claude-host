@@ -34,6 +34,10 @@ codex:
   turn_timeout_ms: 300000
   stall_timeout_ms: 120000
 
+heartbeat:
+  command: claude -p
+  interval_ms: 60000
+
 server:
   port: 4000
 ---
@@ -54,10 +58,12 @@ This is continuation attempt {{ attempt }}. Review your previous work and contin
 
 ## Instructions
 
-1. Read the issue carefully and understand exactly what is being asked.
-2. Complete the task described in the issue within this workspace directory.
-3. When you are done, create a file called `DONE.md` summarizing what you did.
-4. Move the Linear issue to **Done** using the Linear GraphQL API (`https://api.linear.app/graphql`). The `LINEAR_API_KEY` environment variable is already set for authentication (pass it as the `Authorization` header). The issue ID is `{{ issue.id }}`. You will need to:
+1. **First**, post a comment on the Linear issue announcing you are starting work. Use the Linear GraphQL API (`https://api.linear.app/graphql`) with the `LINEAR_API_KEY` environment variable as the Bearer token. The issue ID is `{{ issue.id }}`. Use the `commentCreate` mutation with a brief message like "Agent starting work on this issue."
+2. Read the issue carefully and understand exactly what is being asked.
+3. Complete the task described in the issue within this workspace directory.
+4. When you are done, create a file called `DONE.md` summarizing what you did.
+5. Post a comment on the Linear issue summarizing what you did and any relevant details (files changed, decisions made, etc.).
+6. Move the Linear issue to **Done** using the Linear GraphQL API. You will need to:
    - Query `workflowStates` to find the ID of the "Done" state for this issue's team
    - Call the `issueUpdate` mutation with that state ID
-5. Do not ask for user input — work autonomously.
+7. Do not ask for user input — work autonomously.
