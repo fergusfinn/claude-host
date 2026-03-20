@@ -659,6 +659,84 @@ describe("SessionManager", () => {
     });
   });
 
+  describe("fork rich session", () => {
+    // Helper: create a rich source session in the DB and set up mock registry with sendRpc
+    async function createRichSource(m: ReturnType<typeof mgr>, command = "claude") {
+      const source = await m.create("", command, undefined, "rich");
+      vi.mocked(spawnSync).mockReset();
+      vi.mocked(spawnSync).mockImplementation((_cmd, args) => {
+        if (args && (args as string[]).includes("has-session")) {
+          return { status: 1, stdout: "", stderr: Buffer.from(""), pid: 0, output: [], signal: null } as any;
+        }
+        return { status: 0, stdout: "", stderr: Buffer.from(""), pid: 0, output: [], signal: null } as any;
+      });
+      return source.name;
+    }
+
+    function mgrWithRpc(rpcResponse: unknown) {
+      const m = mgr();
+      // Patch registry to include sendRpc
+      const registry = m.registry!;
+      (registry as any).sendRpc = vi.fn().mockResolvedValue(rpcResponse);
+      return m;
+    }
+
+    it("fetches session ID via RPC and builds fork command", async () => {
+      const m = mgrWithRpc("sess_abc123");
+      const sourceName = await createRichSource(m, "claude --settings ~/.config");
+
+      const session = await m.fork(sourceName, "local");
+
+      expect(session.mode).toBe("rich");
+      expect(session.command).toContain("--resume sess_abc123");
+      expect(session.command).toContain("--fork-session");
+      expect(session.description).toBe(`forked from ${sourceName}`);
+    });
+
+    it("strips existing --resume and --fork-session from source command", async () => {
+      const m = mgrWithRpc("sess_new");
+      const sourceName = await createRichSource(m, "claude --resume sess_old --fork-session --settings foo");
+
+      const session = await m.fork(sourceName, "local");
+
+      // Should not contain old resume/fork flags
+      expect(session.command).not.toContain("sess_old");
+      expect(session.command).toContain("--resume sess_new");
+      expect(session.command).toContain("--fork-session");
+      expect(session.command).toContain("--settings foo");
+    });
+
+    it("throws when RPC returns null (no session ID)", async () => {
+      const m = mgrWithRpc(null);
+      const sourceName = await createRichSource(m);
+
+      await expect(m.fork(sourceName, "local")).rejects.toThrow("no session ID found");
+    });
+
+    it("sends RPC to correct executor", async () => {
+      const m = mgrWithRpc("sess_xyz");
+      const sourceName = await createRichSource(m);
+
+      await m.fork(sourceName, "local");
+
+      const sendRpc = (m.registry as any).sendRpc;
+      expect(sendRpc).toHaveBeenCalledWith("local", expect.objectContaining({
+        type: "get_rich_session_id",
+        name: sourceName,
+      }));
+    });
+
+    it("creates data directory for new rich session", async () => {
+      const m = mgrWithRpc("sess_abc");
+      const sourceName = await createRichSource(m);
+
+      const session = await m.fork(sourceName, "local");
+
+      const dataDir = join(tempDir, "data", "rich", session.name);
+      expect(existsSync(dataDir)).toBe(true);
+    });
+  });
+
   describe("executor keys", () => {
     it("creates a key and returns token with chk_ prefix", () => {
       const m = mgr();

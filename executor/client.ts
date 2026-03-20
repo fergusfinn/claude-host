@@ -233,6 +233,12 @@ export class ExecutorClient {
           break;
         }
 
+        case "get_rich_session_id": {
+          const sessionId = this.runner.getRichSessionId(msg.name);
+          this.send({ type: "response", id, ok: true, data: sessionId });
+          break;
+        }
+
         case "upgrade": {
           if (this.opts.noUpgrade) {
             console.log(`Upgrade requested but --no-upgrade is set, ignoring`);

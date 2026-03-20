@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync, readFileSync, existsSync } from "fs";
+import { mkdirSync } from "fs";
 import { dirname, join } from "path";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import type { Session, ExecutorInfo, SessionLiveness, RichProvider } from "../shared/types";
@@ -117,6 +117,22 @@ class SessionManager {
     } catch {
       // Column already exists
     }
+    // Migration: add status column for active/closed sessions
+    try {
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN status TEXT DEFAULT 'active'`);
+    } catch {
+      // Column already exists
+    }
+    // Migration: add metadata columns for closed-session browsing
+    try {
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN last_activity INTEGER DEFAULT 0`);
+    } catch { /* Column already exists */ }
+    try {
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN message_count INTEGER DEFAULT 0`);
+    } catch { /* Column already exists */ }
+    try {
+      this.db.exec(`ALTER TABLE sessions ADD COLUMN total_cost REAL DEFAULT 0`);
+    } catch { /* Column already exists */ }
     // Executor keys table for per-user executor authentication
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS executor_keys (
@@ -224,7 +240,7 @@ class SessionManager {
   //   terminal — heartbeat-cached liveness from ExecutorRegistry
   list(userId: string): Session[] {
     const rows = this.db
-      .prepare("SELECT * FROM sessions WHERE user_id = ? ORDER BY position ASC, created_at DESC")
+      .prepare("SELECT * FROM sessions WHERE user_id = ? AND (status IS NULL OR status = 'active') ORDER BY position ASC, created_at DESC")
       .all(userId) as any[];
     const alive: Session[] = [];
     const deadNames: string[] = [];
@@ -553,8 +569,13 @@ class SessionManager {
   }
 
   private async forkRichSession(sourceName: string, newName: string, sourceCommand: string, sourceExecutor: string, userId: string, provider: RichProvider = "claude"): Promise<Session> {
-    // Get the Claude session_id from events.ndjson
-    const sessionId = this.getRichSessionId(sourceName);
+    // Get the Claude session_id via RPC to the executor (where events.ndjson lives)
+    const { rpcId } = await import("../shared/protocol");
+    const sessionId = await this._registry!.sendRpc<string | null>(sourceExecutor, {
+      type: "get_rich_session_id",
+      id: rpcId(),
+      name: sourceName,
+    });
 
     if (!sessionId) {
       throw new Error(`Cannot fork rich session "${sourceName}": no session ID found (session may not have been started yet)`);
@@ -700,24 +721,6 @@ class SessionManager {
 
   // --- Private helpers ---
 
-  /** Extract session_id from a rich session's events.ndjson file */
-  private getRichSessionId(name: string): string | null {
-    const dataDir = process.env.DATA_DIR || join(process.cwd(), "data");
-    const eventsFile = join(dataDir, "rich", name, "events.ndjson");
-    if (!existsSync(eventsFile)) return null;
-    try {
-      const content = readFileSync(eventsFile, "utf-8");
-      for (const line of content.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const event = JSON.parse(trimmed);
-          if (event.session_id) return event.session_id;
-        } catch {}
-      }
-    } catch {}
-    return null;
-  }
 
   /** Generate a unique slug, retrying on collision */
   private uniqueName(): string {
@@ -753,7 +756,7 @@ class SessionManager {
 }
 
 // Singleton — survives Next.js hot reloads in dev
-const SCHEMA_VERSION = 12; // bump to force re-creation after class changes
+const SCHEMA_VERSION = 13; // bump to force re-creation after class changes
 const globalForSessions = globalThis as unknown as {
   __sessions?: SessionManager;
   __sessionsVersion?: number;

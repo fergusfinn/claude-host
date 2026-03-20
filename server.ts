@@ -67,9 +67,9 @@ const SYMPHONY_PORT = 4001;
 
 app.prepare().then(() => {
   const server = createServer((req, res) => {
-    // Proxy /symphony/* to symphony subprocess
-    if (req.url?.startsWith("/symphony/") || req.url === "/symphony") {
-      const targetPath = req.url.slice("/symphony".length) || "/";
+    // Proxy /symphony/api/* to symphony subprocess (not /symphony itself — that's the Next.js UI)
+    if (req.url?.startsWith("/symphony/api/")) {
+      const targetPath = req.url.slice("/symphony".length);
       const proxyReq = httpRequest(
         `http://127.0.0.1:${SYMPHONY_PORT}${targetPath}`,
         { method: req.method, headers: { ...req.headers, host: `127.0.0.1:${SYMPHONY_PORT}` } },

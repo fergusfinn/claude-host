@@ -55,6 +55,7 @@ export interface HooksConfig {
 }
 
 export interface AgentConfig {
+  kind: "codex" | "claude";
   max_concurrent_agents: number;
   max_turns: number;
   max_retry_backoff_ms: number;
@@ -71,6 +72,13 @@ export interface CodexConfig {
   stall_timeout_ms: number;
 }
 
+export interface ClaudeConfig {
+  command: string;
+  model: string | null;
+  turn_timeout_ms: number;
+  stall_timeout_ms: number;
+}
+
 export interface ServerConfig {
   port: number | null;
 }
@@ -82,6 +90,7 @@ export interface ServiceConfig {
   hooks: HooksConfig;
   agent: AgentConfig;
   codex: CodexConfig;
+  claude: ClaudeConfig;
   server: ServerConfig;
 }
 

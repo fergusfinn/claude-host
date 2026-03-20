@@ -8,6 +8,7 @@ import { renderPrompt } from "./prompt.js";
 import { LinearClient } from "./linear-client.js";
 import { WorkspaceManager } from "./workspace.js";
 import { AgentRunner, type AgentSession } from "./agent-runner.js";
+import { ClaudeCodeRunner } from "./claude-code-runner.js";
 import type {
   ServiceConfig,
   Issue,
@@ -332,15 +333,19 @@ export class Orchestrator {
       // Validate workspace cwd
       wsManager.validateWorkspaceCwd(workspace.path);
 
-      logger.info("Workspace ready, launching codex app-server", { ...logCtx, workspace: workspace.path });
+      const agentKind = this.config.agent.kind;
+      logger.info(`Workspace ready, launching ${agentKind} agent`, { ...logCtx, workspace: workspace.path });
 
-      // Start agent session
-      const runner = new AgentRunner(this.config.codex);
+      // Start agent session — pick runner based on config
+      const runner: AgentRunner | ClaudeCodeRunner =
+        agentKind === "claude"
+          ? new ClaudeCodeRunner(this.config.claude)
+          : new AgentRunner(this.config.codex);
       const onEvent = (event: AgentEvent) => this.handleAgentEvent(issue.id, event);
 
       try {
         session = await runner.startSession(workspace.path, onEvent, signal);
-        logger.info("Codex session started", { ...logCtx, thread_id: session.threadId });
+        logger.info(`${agentKind} session started`, { ...logCtx, thread_id: session.threadId });
       } catch (e) {
         this.runHookBestEffort(wsManager, "after_run", workspace.path);
         throw new Error(`agent session startup error: ${e instanceof Error ? e.message : String(e)}`);
@@ -541,12 +546,15 @@ export class Orchestrator {
   // §16.3, §8.5 — Reconcile running issues
   private async reconcileRunningIssues(): Promise<void> {
     // Part A: Stall detection
-    if (this.config.codex.stall_timeout_ms > 0) {
+    const stallTimeout = this.config.agent.kind === "claude"
+      ? this.config.claude.stall_timeout_ms
+      : this.config.codex.stall_timeout_ms;
+    if (stallTimeout > 0) {
       const now = Date.now();
       for (const [issueId, entry] of this.state.running) {
         const lastActivity = entry.last_codex_timestamp ?? entry.started_at;
         const elapsed = now - lastActivity.getTime();
-        if (elapsed > this.config.codex.stall_timeout_ms) {
+        if (elapsed > stallTimeout) {
           logger.warn("Stalled session detected", {
             issue_id: issueId,
             issue_identifier: entry.identifier,

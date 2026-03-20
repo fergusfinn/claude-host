@@ -19,8 +19,7 @@ workspace:
 
 hooks:
   after_create: |
-    echo "workspace initialized" > .symphony
-
+    git clone https://github.com:doublewordai/workspace.git .
 agent:
   max_concurrent_agents: 1
   max_turns: 3

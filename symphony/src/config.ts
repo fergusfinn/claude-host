@@ -47,6 +47,7 @@ export function parseConfig(raw: Record<string, unknown>): ServiceConfig {
   const hooks = (raw.hooks ?? {}) as Record<string, unknown>;
   const agent = (raw.agent ?? {}) as Record<string, unknown>;
   const codex = (raw.codex ?? {}) as Record<string, unknown>;
+  const claude = (raw.claude ?? {}) as Record<string, unknown>;
   const server = (raw.server ?? {}) as Record<string, unknown>;
 
   // Tracker
@@ -96,6 +97,10 @@ export function parseConfig(raw: Record<string, unknown>): ServiceConfig {
   const hookTimeoutRaw = toInt(hooks.timeout_ms, 60000);
   const hookTimeout = hookTimeoutRaw > 0 ? hookTimeoutRaw : 60000;
 
+  // Agent kind — defaults to codex
+  const agentKindRaw = (agent.kind as string) ?? "codex";
+  const agentKind = agentKindRaw === "claude" ? "claude" : "codex";
+
   return {
     tracker: {
       kind: (trackerKind ?? "") as string,
@@ -119,6 +124,7 @@ export function parseConfig(raw: Record<string, unknown>): ServiceConfig {
       timeout_ms: hookTimeout,
     },
     agent: {
+      kind: agentKind,
       max_concurrent_agents: toInt(agent.max_concurrent_agents, 10),
       max_turns: toInt(agent.max_turns, 20),
       max_retry_backoff_ms: toInt(agent.max_retry_backoff_ms, 300000),
@@ -132,6 +138,12 @@ export function parseConfig(raw: Record<string, unknown>): ServiceConfig {
       turn_timeout_ms: toInt(codex.turn_timeout_ms, 3600000),
       read_timeout_ms: toInt(codex.read_timeout_ms, 5000),
       stall_timeout_ms: toInt(codex.stall_timeout_ms, 300000),
+    },
+    claude: {
+      command: (claude.command as string) ?? "claude",
+      model: (claude.model as string) ?? null,
+      turn_timeout_ms: toInt(claude.turn_timeout_ms, 3600000),
+      stall_timeout_ms: toInt(claude.stall_timeout_ms, 300000),
     },
     server: {
       port: server.port !== undefined ? toInt(server.port, 0) : null,
@@ -162,8 +174,11 @@ export function validateDispatchConfig(config: ServiceConfig): ValidationResult 
     errors.push("tracker.project_slug is required for linear tracker");
   }
 
-  if (!config.codex.command) {
+  if (config.agent.kind === "codex" && !config.codex.command) {
     errors.push("codex.command must be non-empty");
+  }
+  if (config.agent.kind === "claude" && !config.claude.command) {
+    errors.push("claude.command must be non-empty");
   }
 
   return { ok: errors.length === 0, errors };

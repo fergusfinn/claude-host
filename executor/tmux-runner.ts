@@ -307,6 +307,24 @@ export class TmuxRunner {
     return { name, command };
   }
 
+  /** Extract session_id from a rich session's events.ndjson file */
+  getRichSessionId(name: string): string | null {
+    const eventsFile = join(DATA_DIR, "rich", name, "events.ndjson");
+    if (!existsSync(eventsFile)) return null;
+    try {
+      const content = readFileSync(eventsFile, "utf-8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const event = JSON.parse(trimmed);
+          if (event.session_id) return event.session_id;
+        } catch {}
+      }
+    } catch {}
+    return null;
+  }
+
   diagnoseRichSession(name: string): Record<string, unknown> {
     const tName = `rich-${name}`;
     const dataDir = join(DATA_DIR, "rich", name);
