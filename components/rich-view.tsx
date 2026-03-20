@@ -596,9 +596,9 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
               replayLoadedFromRef.current = 0;
               return;
             }
-            for (const event of tailEvents) {
-              handleEvent(event);
-            }
+            const { msgs: newMsgs, subagent: newSubagent } = eventsToMessages(tailEvents);
+            if (newMsgs.length > 0) setMessages(newMsgs);
+            if (newSubagent.size > 0) setSubagentMessages(newSubagent);
             requestAnimationFrame(() => {
               const el = scrollRef.current;
               if (el) el.scrollTop = el.scrollHeight;
@@ -617,6 +617,14 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
         } else if (msg.type === "replay_tail_complete") {
           const { tailStart, count } = msg as { tailStart: number; count: number; type: string };
           replayingTailRef.current = false;
+          // Batch-process all buffered tail events at once
+          const bufferedTail = replayChunkBufferRef.current;
+          replayChunkBufferRef.current = [];
+          if (bufferedTail.length > 0) {
+            const { msgs: newMsgs, subagent: newSubagent } = eventsToMessages(bufferedTail);
+            if (newMsgs.length > 0) setMessages(newMsgs);
+            if (newSubagent.size > 0) setSubagentMessages(newSubagent);
+          }
           replayLoadedFromRef.current = tailStart;
           setHasMoreHistory(tailStart > 0);
           requestAnimationFrame(() => {
@@ -624,8 +632,8 @@ export function RichView({ sessionName, isActive, theme, font, richFont, initial
             if (el) el.scrollTop = el.scrollHeight;
           });
         } else if (msg.type === "event") {
-          if (replayBackfillingRef.current) {
-            // Buffer events during backfill chunk loading
+          if (replayBackfillingRef.current || replayingTailRef.current) {
+            // Buffer events during backfill or tail replay
             replayChunkBufferRef.current.push(msg.event);
           } else {
             handleEvent(msg.event);
