@@ -4,12 +4,14 @@ tracker:
   api_key: $LINEAR_API_KEY
   project_slug: ba5d64fc997f
   active_states:
-    - Sprint Backlog
+    - Ready
+  running_states:
+    - Ready
     - In Progress
+    - Human Review
   terminal_states:
     - Done
     - Canceled
-    - Duplicate
 
 polling:
   interval_ms: 15000
@@ -21,8 +23,8 @@ hooks:
   after_create: |
     git clone https://github.com/doublewordai/workspace .
 agent:
-  max_concurrent_agents: 1
-  max_turns: 3
+  max_concurrent_agents: 5
+  max_turns: 10
   max_retry_backoff_ms: 60000
 
 codex:
@@ -31,8 +33,8 @@ codex:
   thread_sandbox: danger-full-access
   turn_sandbox_policy:
     type: dangerFullAccess
-  turn_timeout_ms: 300000
-  stall_timeout_ms: 120000
+  turn_timeout_ms: 1200000
+  stall_timeout_ms: 300000
 
 heartbeat:
   command: claude -p
@@ -52,18 +54,34 @@ You are an autonomous coding agent working on issue **{{ issue.identifier }}**: 
 **Labels:** {{ issue.labels | join: ", " }}
 {% endif %}
 
-{% if attempt %}
-This is continuation attempt {{ attempt }}. Review your previous work and continue from where you left off.
+{% if attempt > 1 %}
+This is attempt {{ attempt }}. The reviewer sent this back — re-read the issue description for updated feedback and continue from where you left off.
 {% endif %}
+
+## Linear API
+
+Use the Linear GraphQL API (`https://api.linear.app/graphql`) with the `LINEAR_API_KEY` environment variable as the Bearer token. The issue ID is `{{ issue.id }}`.
+
+State IDs:
+- In Progress: `af1122c2-b76a-4d7a-b188-c369e13d04d7`
+- Human Review: `1956b7b6-b530-4586-9c9b-361d850cbc9d`
 
 ## Instructions
 
-1. **First**, post a comment on the Linear issue announcing you are starting work. Use the Linear GraphQL API (`https://api.linear.app/graphql`) with the `LINEAR_API_KEY` environment variable as the Bearer token. The issue ID is `{{ issue.id }}`. Use the `commentCreate` mutation with a brief message like "Agent starting work on this issue."
-2. Read the issue carefully and understand exactly what is being asked.
-3. Complete the task described in the issue within this workspace directory.
-4. When you are done, create a file called `DONE.md` summarizing what you did.
-5. Post a comment on the Linear issue summarizing what you did and any relevant details (files changed, decisions made, etc.).
-6. Move the Linear issue to **Done** using the Linear GraphQL API. You will need to:
-   - Query `workflowStates` to find the ID of the "Done" state for this issue's team
-   - Call the `issueUpdate` mutation with that state ID
+1. Move the issue to **In Progress** (`issueUpdate` mutation with the state ID above).
+2. Post a comment: "Agent starting work (attempt {{ attempt | default: 1 }})."
+3. Read the issue description carefully — it contains the task and any reviewer feedback.
+4. Complete the task within this workspace directory.
+5. Post a comment summarizing what you did (files changed, decisions made).
+6. Move the issue to **Human Review**.
 7. Do not ask for user input — work autonomously.
+
+## Long-running commands
+
+Your turn will be killed if a single command runs for more than 20 minutes. For any command that might take a long time (deploying a model, running a benchmark, checkpointing, etc.):
+
+1. Launch it in the background: `nohup <command> > /tmp/output.log 2>&1 &`
+2. Poll for completion: check the log or process periodically (`tail /tmp/output.log`, `ps aux | grep ...`)
+3. Do useful work while waiting (e.g. write up notes, read code, prepare next steps)
+
+Never block on a single long-running command — always background it and poll.

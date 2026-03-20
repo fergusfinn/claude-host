@@ -35,6 +35,7 @@ export interface TrackerConfig {
   api_key: string;
   project_slug: string;
   active_states: string[];
+  running_states: string[];
   terminal_states: string[];
 }
 

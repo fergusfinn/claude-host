@@ -68,6 +68,7 @@ export function parseConfig(raw: Record<string, unknown>): ServiceConfig {
   }
 
   const activeStates = toStringList(tracker.active_states, ["Todo", "In Progress"]);
+  const runningStates = toStringList(tracker.running_states, activeStates);
   const terminalStates = toStringList(tracker.terminal_states, [
     "Closed",
     "Cancelled",
@@ -109,6 +110,7 @@ export function parseConfig(raw: Record<string, unknown>): ServiceConfig {
       api_key: trackerApiKey,
       project_slug: (tracker.project_slug ?? "") as string,
       active_states: activeStates,
+      running_states: runningStates,
       terminal_states: terminalStates,
     },
     polling: {

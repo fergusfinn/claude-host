@@ -413,10 +413,10 @@ export class Orchestrator {
           throw new Error(`issue state refresh error: ${e instanceof Error ? e.message : String(e)}`);
         }
 
-        // Check if issue is still active
+        // Check if issue is still in a valid running state
         const normState = currentIssue.state.trim().toLowerCase();
-        const activeNorm = this.config.tracker.active_states.map((s) => s.trim().toLowerCase());
-        if (!activeNorm.includes(normState)) {
+        const runningNorm = this.config.tracker.running_states.map((s) => s.trim().toLowerCase());
+        if (!runningNorm.includes(normState)) {
           logger.info("Issue no longer active after turn", { ...logCtx, state: currentIssue.state });
           break;
         }
@@ -532,7 +532,7 @@ export class Orchestrator {
     try {
       candidates = await client.fetchCandidateIssues(
         this.config.tracker.project_slug,
-        this.config.tracker.active_states,
+        this.config.tracker.running_states,
       );
     } catch (e) {
       logger.error("Retry poll failed", { ...logCtx, error: e instanceof Error ? e.message : String(e) });
@@ -599,7 +599,7 @@ export class Orchestrator {
     }
 
     const terminalNorm = this.config.tracker.terminal_states.map((s) => s.trim().toLowerCase());
-    const activeNorm = this.config.tracker.active_states.map((s) => s.trim().toLowerCase());
+    const runningNorm = this.config.tracker.running_states.map((s) => s.trim().toLowerCase());
     const wsManager = new WorkspaceManager(this.config.workspace.root);
 
     for (const item of refreshed) {
@@ -617,7 +617,7 @@ export class Orchestrator {
         });
         entry.worker_abort.abort();
         wsManager.removeWorkspace(entry.identifier, this.config.hooks);
-      } else if (activeNorm.includes(normState)) {
+      } else if (runningNorm.includes(normState)) {
         // Still active — update snapshot
         entry.issue = { ...entry.issue, state: item.state };
       } else {
