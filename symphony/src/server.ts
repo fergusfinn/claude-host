@@ -1,6 +1,7 @@
 // Optional HTTP server — spec §13.7
 
 import * as http from "node:http";
+import * as fs from "node:fs";
 import type { Orchestrator } from "./orchestrator.js";
 
 export function createServer(orchestrator: Orchestrator): http.Server {
@@ -40,6 +41,41 @@ export function createServer(orchestrator: Orchestrator): http.Server {
         return;
       }
 
+      // GET /api/v1/workflow — raw WORKFLOW.md content
+      if (pathname === "/api/v1/workflow" && req.method === "GET") {
+        try {
+          const content = fs.readFileSync(orchestrator.getWorkflowPath(), "utf-8");
+          res.end(JSON.stringify({ content, path: orchestrator.getWorkflowPath() }));
+        } catch (e) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: { code: "read_error", message: e instanceof Error ? e.message : "Failed to read workflow file" } }));
+        }
+        return;
+      }
+
+      // PUT /api/v1/workflow — update WORKFLOW.md content
+      if (pathname === "/api/v1/workflow" && req.method === "PUT") {
+        let body = "";
+        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        req.on("end", () => {
+          try {
+            const { content } = JSON.parse(body);
+            if (typeof content !== "string") {
+              res.writeHead(400);
+              res.end(JSON.stringify({ error: { code: "invalid_body", message: "Request body must contain a \"content\" string" } }));
+              return;
+            }
+            fs.writeFileSync(orchestrator.getWorkflowPath(), content, "utf-8");
+            // File watcher will trigger reloadWorkflow automatically
+            res.end(JSON.stringify({ ok: true, path: orchestrator.getWorkflowPath() }));
+          } catch (e) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: "write_error", message: e instanceof Error ? e.message : "Failed to write workflow file" } }));
+          }
+        });
+        return;
+      }
+
       // GET /api/v1/:identifier — per-issue detail
       const issueMatch = pathname.match(/^\/api\/v1\/([A-Za-z0-9_-]+)$/);
       if (issueMatch && req.method === "GET") {
@@ -55,7 +91,7 @@ export function createServer(orchestrator: Orchestrator): http.Server {
       }
 
       // Method not allowed for known routes
-      if (pathname === "/api/v1/state" || pathname === "/api/v1/refresh") {
+      if (pathname === "/api/v1/state" || pathname === "/api/v1/refresh" || pathname === "/api/v1/workflow") {
         res.writeHead(405);
         res.end(JSON.stringify({ error: { code: "method_not_allowed", message: "Method not allowed" } }));
         return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import styles from "./symphony-page.module.css";
 
 interface RunningWorker {
@@ -36,10 +36,13 @@ interface SymphonyState {
   };
 }
 
+type Tab = "monitor" | "workflow";
+
 export function SymphonyPage() {
   const [state, setState] = useState<SymphonyState | null>(null);
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [tab, setTab] = useState<Tab>("monitor");
 
   const load = useCallback(async () => {
     try {
@@ -87,16 +90,43 @@ export function SymphonyPage() {
   return (
     <div className={styles.root}>
       <div className={styles.header}>
-        <span className={styles.title}>Symphony</span>
-        <button
-          className={styles.refreshBtn}
-          onClick={handleRefresh}
-          disabled={refreshing}
-        >
-          {refreshing ? "Polling..." : "Poll now"}
-        </button>
+        <div className={styles.tabs}>
+          <button
+            className={`${styles.tab} ${tab === "monitor" ? styles.tabActive : ""}`}
+            onClick={() => setTab("monitor")}
+          >
+            Monitor
+          </button>
+          <button
+            className={`${styles.tab} ${tab === "workflow" ? styles.tabActive : ""}`}
+            onClick={() => setTab("workflow")}
+          >
+            Workflow
+          </button>
+        </div>
+        {tab === "monitor" && (
+          <button
+            className={styles.refreshBtn}
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? "Polling..." : "Poll now"}
+          </button>
+        )}
       </div>
 
+      {tab === "monitor" ? (
+        <MonitorView state={state} />
+      ) : (
+        <WorkflowEditor />
+      )}
+    </div>
+  );
+}
+
+function MonitorView({ state }: { state: SymphonyState }) {
+  return (
+    <>
       <div className={styles.stats}>
         <Stat label="Running" value={state.counts.running} />
         <Stat label="Retrying" value={state.counts.retrying} />
@@ -124,7 +154,7 @@ export function SymphonyPage() {
                 <span className={styles.colState}>{w.state}</span>
                 <span className={styles.colNarrow}>{w.turn_count}</span>
                 <span className={`${styles.colWide} ${styles.message}`}>
-                  {w.last_message || w.last_event || "—"}
+                  {w.last_message || w.last_event || "\u2014"}
                 </span>
                 <span className={styles.colNarrow}>{formatNum(w.tokens.total_tokens)}</span>
                 <span className={styles.colTime}>{elapsed(w.started_at)}</span>
@@ -151,7 +181,7 @@ export function SymphonyPage() {
                 <span className={styles.colId}>{r.issue_identifier}</span>
                 <span className={styles.colNarrow}>{r.attempt}</span>
                 <span className={styles.colTime}>{formatTime(r.due_at)}</span>
-                <span className={`${styles.colWide} ${styles.message}`}>{r.error || "—"}</span>
+                <span className={`${styles.colWide} ${styles.message}`}>{r.error || "\u2014"}</span>
               </div>
             ))}
           </div>
@@ -161,6 +191,118 @@ export function SymphonyPage() {
       <div className={styles.footer}>
         Updated {formatTime(state.generated_at)}
       </div>
+    </>
+  );
+}
+
+function WorkflowEditor() {
+  const [content, setContent] = useState<string | null>(null);
+  const [savedContent, setSavedContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const loadWorkflow = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/symphony/api/v1/workflow");
+      if (!res.ok) throw new Error("Failed to load workflow");
+      const data = await res.json();
+      setContent(data.content);
+      setSavedContent(data.content);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load workflow");
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadWorkflow();
+  }, [loadWorkflow]);
+
+  async function handleSave() {
+    if (content === null) return;
+    setSaving(true);
+    setError(null);
+    setSaveStatus(null);
+    try {
+      const res = await fetch("/symphony/api/v1/workflow", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error?.message ?? "Failed to save");
+      }
+      setSavedContent(content);
+      setSaveStatus("Saved — config reloaded automatically");
+      setTimeout(() => setSaveStatus(null), 3000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    }
+    setSaving(false);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+      e.preventDefault();
+      handleSave();
+    }
+    // Tab key inserts spaces
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const value = textarea.value;
+      const newValue = value.substring(0, start) + "  " + value.substring(end);
+      setContent(newValue);
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 2;
+      });
+    }
+  }
+
+  const dirty = content !== savedContent;
+
+  if (loading) {
+    return <div className={styles.emptyMsg}>Loading workflow...</div>;
+  }
+
+  return (
+    <div className={styles.editorContainer}>
+      <div className={styles.editorToolbar}>
+        <span className={styles.editorLabel}>WORKFLOW.md</span>
+        <div className={styles.editorActions}>
+          {saveStatus && <span className={styles.saveStatus}>{saveStatus}</span>}
+          {error && <span className={styles.saveError}>{error}</span>}
+          <button
+            className={styles.saveBtn}
+            onClick={handleSave}
+            disabled={saving || !dirty}
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </div>
+      <textarea
+        ref={textareaRef}
+        className={styles.editor}
+        value={content ?? ""}
+        onChange={(e) => setContent(e.target.value)}
+        onKeyDown={handleKeyDown}
+        spellCheck={false}
+      />
+      {dirty && (
+        <div className={styles.editorFooter}>
+          Unsaved changes &middot; Cmd+S to save
+        </div>
+      )}
     </div>
   );
 }

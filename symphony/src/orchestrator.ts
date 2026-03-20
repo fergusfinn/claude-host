@@ -113,6 +113,10 @@ export class Orchestrator {
     return this.config;
   }
 
+  getWorkflowPath(): string {
+    return this.workflowPath;
+  }
+
   // Trigger an immediate poll+reconcile (for /api/v1/refresh)
   triggerRefresh(): void {
     if (this.tickTimer) {

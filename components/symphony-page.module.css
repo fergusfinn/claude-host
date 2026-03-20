@@ -22,6 +22,34 @@
   letter-spacing: 0.05em;
 }
 
+/* Tabs */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.tab {
+  background: transparent;
+  color: var(--text-3);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: none;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.1s;
+}
+.tab:hover {
+  color: var(--text-1);
+  background: var(--bg-1);
+}
+.tabActive {
+  color: var(--text-0);
+  background: var(--bg-1);
+}
+
 .refreshBtn {
   background: transparent;
   color: var(--text-2);
@@ -215,6 +243,90 @@
 }
 .retryBtn:hover {
   background: var(--accent-dim);
+}
+
+/* Workflow editor */
+
+.editorContainer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.editorToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.editorLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+  font-family: var(--mono);
+}
+
+.editorActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.saveStatus {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.saveError {
+  font-size: 11px;
+  color: var(--danger, #e55);
+}
+
+.saveBtn {
+  background: transparent;
+  color: var(--accent);
+  padding: 3px 10px;
+  font-size: 11px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 3px;
+  transition: all 0.1s;
+}
+.saveBtn:hover:not(:disabled) {
+  background: var(--accent-dim);
+}
+.saveBtn:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.editor {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 16px 20px;
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  border: none;
+  outline: none;
+  resize: none;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}
+
+.editorFooter {
+  padding: 4px 20px;
+  font-size: 10px;
+  color: var(--text-3);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 /* Mobile */
