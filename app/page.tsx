@@ -5,6 +5,7 @@ import { authClient } from "@/lib/auth-client";
 import { Dashboard, SettingsForm } from "@/components/dashboard";
 import { ExecutorsPage } from "@/components/executors-page";
 import { SymphonyPage } from "@/components/symphony-page";
+import { ConversationsPage } from "@/components/conversations-page";
 import { PaneLayout } from "@/components/pane-layout";
 import { TabBar } from "@/components/tab-bar";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
@@ -55,6 +56,8 @@ export default function Home() {
       setActiveTabId("executors");
     } else if (path === "/symphony") {
       setActiveTabId("symphony");
+    } else if (path === "/conversations") {
+      setActiveTabId("conversations");
     } else if (path !== "/") {
       const session = decodeURIComponent(path.slice(1));
       const tab = createTab(session);
@@ -244,7 +247,7 @@ export default function Home() {
 
   // If active tab got removed, switch to another (skip special pages)
   useEffect(() => {
-    if (activeTabId !== null && activeTabId !== "executors" && activeTabId !== "symphony" && !tabs.some((t) => t.id === activeTabId)) {
+    if (activeTabId !== null && activeTabId !== "executors" && activeTabId !== "symphony" && activeTabId !== "conversations" && !tabs.some((t) => t.id === activeTabId)) {
       setActiveTabId(tabs.length > 0 ? tabs[tabs.length - 1].id : null);
     }
   }, [tabs, activeTabId]);
@@ -258,6 +261,10 @@ export default function Home() {
     } else if (activeTabId === "symphony") {
       if (window.location.pathname !== "/symphony") {
         window.history.replaceState(null, "", "/symphony");
+      }
+    } else if (activeTabId === "conversations") {
+      if (window.location.pathname !== "/conversations") {
+        window.history.replaceState(null, "", "/conversations");
       }
     } else if (activeTab === null) {
       if (window.location.pathname !== "/") {
@@ -330,10 +337,18 @@ export default function Home() {
       );
     }
 
-    // Kill the tmux session
-    fetch(`/api/sessions/${encodeURIComponent(leaf.sessionName)}`, { method: "DELETE" })
-      .then(() => loadSessions())
-      .catch(() => {});
+    // Rich sessions: soft-close (keeps data for conversation browsing)
+    // Terminal sessions: hard delete
+    const mode = sessionModes[leaf.sessionName];
+    if (mode === "rich") {
+      fetch(`/api/sessions/${encodeURIComponent(leaf.sessionName)}/close`, { method: "POST" })
+        .then(() => loadSessions())
+        .catch(() => {});
+    } else {
+      fetch(`/api/sessions/${encodeURIComponent(leaf.sessionName)}`, { method: "DELETE" })
+        .then(() => loadSessions())
+        .catch(() => {});
+    }
   }
 
   async function splitActivePane(direction: "h" | "v", fork = true) {
@@ -442,12 +457,18 @@ export default function Home() {
   function closeTabById(tabId: string) {
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
-    // Kill all sessions in this tab
+    // Close all sessions in this tab
     const leaves = getAllLeaves(tab.layout);
     for (const leaf of leaves) {
       closedTabsRef.current.add(leaf.sessionName);
-      fetch(`/api/sessions/${encodeURIComponent(leaf.sessionName)}`, { method: "DELETE" })
-        .catch(() => {});
+      const mode = sessionModes[leaf.sessionName];
+      if (mode === "rich") {
+        fetch(`/api/sessions/${encodeURIComponent(leaf.sessionName)}/close`, { method: "POST" })
+          .catch(() => {});
+      } else {
+        fetch(`/api/sessions/${encodeURIComponent(leaf.sessionName)}`, { method: "DELETE" })
+          .catch(() => {});
+      }
     }
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== tabId);
@@ -622,6 +643,15 @@ export default function Home() {
             </svg>
           </button>
           <button
+            className={`app-header-settings ${activeTabId === "conversations" ? "app-header-settings-active" : ""}`}
+            onClick={() => setActiveTabId(activeTabId === "conversations" ? null : "conversations")}
+            title="Conversations"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+            </svg>
+          </button>
+          <button
             className={`app-header-settings ${activeTabId === "executors" ? "app-header-settings-active" : ""}`}
             onClick={() => setActiveTabId(activeTabId === "executors" ? null : "executors")}
             title="Executors"
@@ -756,6 +786,15 @@ export default function Home() {
           flexDirection: "column",
         }}>
           <SymphonyPage />
+        </div>
+        <div style={{
+          position: "absolute", inset: 0,
+          display: activeTabId === "conversations" ? "flex" : "none",
+          flexDirection: "column",
+        }}>
+          <ConversationsPage onReopen={(name) => {
+            connectSession(name, "rich");
+          }} />
         </div>
         {tabs.map((tab) => (
           <div

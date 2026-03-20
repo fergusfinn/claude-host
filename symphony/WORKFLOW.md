@@ -19,7 +19,7 @@ workspace:
 
 hooks:
   after_create: |
-    git clone https://github.com:doublewordai/workspace.git .
+    git clone https://github.com/doublewordai/workspace .
 agent:
   max_concurrent_agents: 1
   max_turns: 3

@@ -430,6 +430,68 @@ class SessionManager {
     this.db.prepare("DELETE FROM sessions WHERE name = ? AND user_id = ?").run(name, userId);
   }
 
+  /** Soft-close a rich session: kill tmux, compute metadata, mark as closed */
+  async close(name: string, userId: string): Promise<void> {
+    if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
+    if (this.getMode(name) !== "rich") throw new Error("Only rich sessions can be closed");
+
+    const executor = this.getSessionExecutorId(name);
+
+    // Kill tmux but keep data dir (close_rich_session RPC)
+    try {
+      const { rpcId } = await import("../shared/protocol");
+      await this._registry!.sendRpc(executor, {
+        type: "close_rich_session",
+        id: rpcId(),
+        name,
+      });
+    } catch {
+      // tmux may already be gone — that's fine
+    }
+
+    // Compute metadata from events.ndjson via executor
+    let metadata = { lastActivity: Math.floor(Date.now() / 1000), messageCount: 0, totalCost: 0 };
+    try {
+      const { rpcId } = await import("../shared/protocol");
+      metadata = await this._registry!.sendRpc(executor, {
+        type: "compute_rich_metadata",
+        id: rpcId(),
+        name,
+      });
+    } catch {
+      // Fall back to defaults
+    }
+
+    this.db.prepare(
+      "UPDATE sessions SET status = 'closed', last_activity = ?, message_count = ?, total_cost = ? WHERE name = ? AND user_id = ?"
+    ).run(metadata.lastActivity, metadata.messageCount, metadata.totalCost, name, userId);
+  }
+
+  /** Reopen a closed session: set status back to active, assign a new tab position */
+  reopen(name: string, userId: string): void {
+    if (!this.isOwnedBy(name, userId)) throw new Error("Not found");
+    this.db.prepare(
+      "UPDATE sessions SET status = 'active', position = ? WHERE name = ? AND user_id = ?"
+    ).run(this.nextPosition(), name, userId);
+  }
+
+  /** List closed rich sessions for the conversations browser */
+  listClosed(userId: string): Array<{
+    name: string;
+    description: string;
+    provider: string;
+    created_at: string;
+    last_activity: number;
+    message_count: number;
+    total_cost: number;
+    executor: string;
+    parent: string | null;
+  }> {
+    return this.db.prepare(
+      "SELECT name, description, provider, created_at, last_activity, message_count, total_cost, executor, parent FROM sessions WHERE user_id = ? AND status = 'closed' AND mode = 'rich' ORDER BY last_activity DESC"
+    ).all(userId) as any[];
+  }
+
   getConfig(key: string, userId: string): string | null {
     const row = this.db.prepare("SELECT value FROM user_config WHERE key = ? AND user_id = ?").get(key, userId) as
       | { value: string }

@@ -123,6 +123,18 @@ export interface GetRichSessionIdRpc {
   name: string;
 }
 
+export interface CloseRichSessionRpc {
+  type: "close_rich_session";
+  id: string;
+  name: string;
+}
+
+export interface ComputeRichMetadataRpc {
+  type: "compute_rich_metadata";
+  id: string;
+  name: string;
+}
+
 export interface PingMessage {
   type: "ping";
   id: string;
@@ -150,6 +162,8 @@ export type ControlToExecutorMessage =
   | SnapshotRichSessionRpc
   | DiagnoseRichSessionRpc
   | GetRichSessionIdRpc
+  | CloseRichSessionRpc
+  | ComputeRichMetadataRpc
   | PingMessage
   | UpgradeMessage;
 

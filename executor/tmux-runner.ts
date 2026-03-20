@@ -307,6 +307,39 @@ export class TmuxRunner {
     return { name, command };
   }
 
+  /** Close a rich session: kill tmux but keep data dir intact */
+  closeRichSession(name: string): void {
+    const tName = `rich-${name}`;
+    if (spawnSync(TMUX, ["has-session", "-t", tName], { stdio: "pipe" }).status === 0) {
+      spawnSync(TMUX, ["kill-session", "-t", tName], { stdio: "pipe" });
+    }
+    // Deliberately NOT removing data/rich/<name>/ — data is preserved for browsing
+  }
+
+  /** Compute metadata from a rich session's events.ndjson */
+  computeRichMetadata(name: string): { lastActivity: number; messageCount: number; totalCost: number } {
+    const eventsFile = join(DATA_DIR, "rich", name, "events.ndjson");
+    if (!existsSync(eventsFile)) return { lastActivity: Math.floor(Date.now() / 1000), messageCount: 0, totalCost: 0 };
+
+    const content = readFileSync(eventsFile, "utf-8");
+    let messageCount = 0;
+    let totalCost = 0;
+    let lastActivity = Math.floor(Date.now() / 1000);
+
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const event = JSON.parse(line);
+        if (event.type === "user") messageCount++;
+        if (event.type === "result" && typeof event.total_cost_usd === "number") {
+          totalCost = event.total_cost_usd; // cumulative — last value wins
+        }
+      } catch {}
+    }
+
+    return { lastActivity, messageCount, totalCost };
+  }
+
   /** Extract session_id from a rich session's events.ndjson file */
   getRichSessionId(name: string): string | null {
     const eventsFile = join(DATA_DIR, "rich", name, "events.ndjson");

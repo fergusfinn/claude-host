@@ -233,6 +233,18 @@ export class ExecutorClient {
           break;
         }
 
+        case "close_rich_session": {
+          this.runner.closeRichSession(msg.name);
+          this.send({ type: "response", id, ok: true });
+          break;
+        }
+
+        case "compute_rich_metadata": {
+          const metadata = this.runner.computeRichMetadata(msg.name);
+          this.send({ type: "response", id, ok: true, data: metadata });
+          break;
+        }
+
         case "get_rich_session_id": {
           const sessionId = this.runner.getRichSessionId(msg.name);
           this.send({ type: "response", id, ok: true, data: sessionId });
