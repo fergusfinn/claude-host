@@ -69,8 +69,14 @@ deploy() {
   # Migrate session ownership to 'local' (for AUTH_DISABLED=1)
   if [ -f "$REMOTE_DIR/data/sessions.db" ]; then
     echo "  -> Migrating session ownership to 'local'"
-    sqlite3 "$REMOTE_DIR/data/sessions.db" "UPDATE sessions SET user_id = 'local' WHERE user_id != 'local' OR user_id IS NULL;"
-    sqlite3 "$REMOTE_DIR/data/sessions.db" "UPDATE executors SET user_id = 'local' WHERE user_id != 'local' OR user_id IS NULL;"
+    node -e "
+      const Database = require('$REMOTE_DIR/node_modules/better-sqlite3');
+      const db = new Database('$REMOTE_DIR/data/sessions.db');
+      const s = db.prepare(\"UPDATE sessions SET user_id = 'local' WHERE user_id != 'local' OR user_id IS NULL\").run();
+      const e = db.prepare(\"UPDATE executors SET user_id = 'local' WHERE user_id != 'local' OR user_id IS NULL\").run();
+      console.log('     sessions: ' + s.changes + ', executors: ' + e.changes);
+      db.close();
+    "
   fi
 
   rm -rf "$REMOTE_DIR/.next"
