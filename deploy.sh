@@ -65,6 +65,14 @@ deploy() {
   # Atomic swap: stop service, swap build dirs, then start
   echo "  -> Swapping build output"
   systemctl --user stop claude-host 2>/dev/null || true
+
+  # Migrate session ownership to 'local' (for AUTH_DISABLED=1)
+  if [ -f "$REMOTE_DIR/data/sessions.db" ]; then
+    echo "  -> Migrating session ownership to 'local'"
+    sqlite3 "$REMOTE_DIR/data/sessions.db" "UPDATE sessions SET user_id = 'local' WHERE user_id != 'local' OR user_id IS NULL;"
+    sqlite3 "$REMOTE_DIR/data/sessions.db" "UPDATE executors SET user_id = 'local' WHERE user_id != 'local' OR user_id IS NULL;"
+  fi
+
   rm -rf "$REMOTE_DIR/.next"
   mv "$REMOTE_DIR/.next-staging" "$REMOTE_DIR/.next"
 
@@ -86,7 +94,7 @@ Restart=on-failure
 RestartSec=5
 TimeoutStopSec=10
 Environment=NODE_ENV=production
-Environment=ADMIN_EMAIL=fergus.finn@doubleword.ai
+Environment=AUTH_DISABLED=1
 Environment=BETTER_AUTH_TRUSTED_ORIGINS=http://gotenks:3000
 Environment=EXECUTOR_TOKEN=$(cat /home/fergus/.claude-host-executor-token 2>/dev/null)
 Environment=PATH=${NVM_NODE_DIR}:/home/fergus/.local/bin:/usr/local/bin:/usr/bin:/bin
