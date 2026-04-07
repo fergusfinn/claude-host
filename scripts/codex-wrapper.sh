@@ -25,16 +25,16 @@ SESSION_ID=""
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NORMALIZER="$SCRIPT_DIR/../executor/codex-normalize.mjs"
 
-trap 'kill $CODEX_PID 2>/dev/null; exit 0' TERM
+trap 'kill $CODEX_PID 2>/dev/null; exec 3>&-; exit 0' TERM
 trap 'kill -INT $CODEX_PID 2>/dev/null' INT
 
-while true; do
-  # Open FIFO read-write (fd 3) so it stays open even when no writer is connected.
-  exec 3<>"$FIFO_PATH"
+# Open FIFO read-write (fd 3) so it stays open even when no writer is connected.
+# Keep it open across the entire loop so writers never see ENXIO between prompts.
+exec 3<>"$FIFO_PATH"
 
+while true; do
   # Wait for a prompt line from the FIFO
   if ! IFS= read -r line <&3; then
-    exec 3>&-
     sleep 0.5
     continue
   fi
@@ -52,7 +52,6 @@ while true; do
   ")
 
   if [ -z "$PROMPT_TEXT" ]; then
-    exec 3>&-
     continue
   fi
 
@@ -78,11 +77,9 @@ while true; do
   # Wait for codex to exit
   wait $CODEX_PID 2>/dev/null || wait $CODEX_PID 2>/dev/null
 
-  # Close fd 3
-  exec 3>&-
-
   # Extract the thread/session ID from events for resume
-  NEW_SESSION_ID=$(grep -o '"thread_id":"[^"]*"' "$EVENTS_FILE" 2>/dev/null \
+  # The normalizer emits "session_id" (from the raw codex "thread_id")
+  NEW_SESSION_ID=$(grep -o '"session_id":"[^"]*"' "$EVENTS_FILE" 2>/dev/null \
     | tail -1 | cut -d'"' -f4)
   if [ -n "$NEW_SESSION_ID" ]; then
     SESSION_ID="$NEW_SESSION_ID"
